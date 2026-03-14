@@ -134,17 +134,19 @@ def _description_to_query(description: str) -> str:
 
 
 def trim_clip(input_path: str, output_path: str, duration: float, start: float = 0) -> str:
-    """Trim a video clip to a specific duration."""
+    """Trim a video clip to a specific duration with forced re-encode."""
     _run_ffmpeg(
         [
             "-ss", str(start),
             "-i", input_path,
             "-t", str(duration),
-            "-vf", "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:-1:-1:color=black",
+            "-vf", "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:-1:-1:color=black,fps=30",
             "-c:v", "libx264",
             "-preset", "fast",
-            "-an",  # Strip audio from stock clips
+            "-an",
             "-pix_fmt", "yuv420p",
+            "-movflags", "+faststart",
+            "-video_track_timescale", "30000",
             output_path,
         ],
         description=f"trim {os.path.basename(input_path)} to {duration}s",
@@ -175,7 +177,10 @@ def concatenate_clips(clip_paths: list[str], output_path: str) -> str:
             "-f", "concat",
             "-safe", "0",
             "-i", concat_file,
-            "-c", "copy",
+            "-c:v", "libx264",
+            "-preset", "fast",
+            "-pix_fmt", "yuv420p",
+            "-movflags", "+faststart",
             output_path,
         ],
         description="concat clips",
