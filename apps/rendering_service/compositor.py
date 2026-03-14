@@ -1,16 +1,16 @@
-"""Video compositor — assembles slides, voiceover, and subtitles into a final MP4.
+"""Video compositor — assembles stock footage, voiceover, and subtitles into a final MP4.
 
-Uses FFmpeg to:
-1. Convert each slide into a video clip with Ken Burns (slow zoom) effect
-2. Concatenate all clips
-3. Mix in voiceover audio
-4. Burn in subtitles from SRT file
-5. Output a final MP4 ready for YouTube upload
+Pipeline:
+1. For each shot, search Pexels for relevant stock footage
+2. Trim clips to 2-4 seconds each
+3. Concatenate with crossfade transitions
+4. Mix in voiceover audio
+5. Burn in subtitles
+6. Output final MP4
 """
 
 import os
 import subprocess
-import tempfile
 
 import structlog
 
@@ -23,12 +23,7 @@ def _run_ffmpeg(args: list[str], description: str = "") -> subprocess.CompletedP
     log = logger.bind(service="rendering", action="ffmpeg")
     log.debug("running ffmpeg", description=description)
 
-    result = subprocess.run(
-        cmd,
-        capture_output=True,
-        text=True,
-        timeout=600,
-    )
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
 
     if result.returncode != 0:
         log.error("ffmpeg failed", stderr=result.stderr[-500:] if result.stderr else "")
@@ -37,94 +32,149 @@ def _run_ffmpeg(args: list[str], description: str = "") -> subprocess.CompletedP
     return result
 
 
-def create_slide_clip(
-    image_path: str,
-    duration: float,
-    output_path: str,
-    zoom_speed: float = 0.0003,
-) -> str:
-    """Create a video clip from a static image with Ken Burns zoom effect.
+def _get_video_duration(path: str) -> float:
+    """Get duration of a video file in seconds."""
+    result = subprocess.run(
+        ["ffprobe", "-v", "quiet", "-show_entries", "format=duration", "-of", "csv=p=0", path],
+        capture_output=True, text=True, timeout=10,
+    )
+    return float(result.stdout.strip())
 
-    Args:
-        image_path: Path to the PNG slide.
-        duration: Clip duration in seconds.
-        output_path: Where to save the MP4 clip.
-        zoom_speed: Zoom speed (higher = faster zoom). 0.0003 is subtle.
 
-    Returns:
-        Path to the output clip.
+def download_stock_clips(shots: list[dict], output_dir: str) -> list[str]:
+    """Download stock video clips from Pexels for each shot.
+
+    Falls back to a generic tech query if the specific description finds nothing.
     """
-    fps = 30
-    total_frames = int(duration * fps)
+    from packages.clients.pexels import search_and_download
 
-    # Ken Burns: slow zoom from 1.0x to ~1.05x, centered
+    clips_dir = os.path.join(output_dir, "stock_clips")
+    os.makedirs(clips_dir, exist_ok=True)
+    log = logger.bind(service="rendering", action="download_stock")
+    log.info("downloading stock clips", count=len(shots))
+
+    paths = []
+    fallback_queries = ["technology", "computer", "digital", "abstract light", "circuit board", "data"]
+    fallback_idx = 0
+
+    for i, shot in enumerate(shots):
+        clip_path = os.path.join(clips_dir, f"stock_{i:03d}.mp4")
+        desc = shot.get("description", "technology")
+
+        # Extract key visual terms from description
+        query = _description_to_query(desc)
+        result = search_and_download(query, clip_path)
+
+        if not result:
+            # Fallback to generic tech footage
+            fb_query = fallback_queries[fallback_idx % len(fallback_queries)]
+            fallback_idx += 1
+            log.info("using fallback query", original=query, fallback=fb_query)
+            result = search_and_download(fb_query, clip_path)
+
+        if result:
+            paths.append(result)
+            log.info("clip downloaded", scene=i + 1, query=query)
+        else:
+            log.warning("no clip found", scene=i + 1)
+
+    return paths
+
+
+def _description_to_query(description: str) -> str:
+    """Convert a shot description to a Pexels search query.
+
+    Extracts the most visual/searchable terms.
+    """
+    # Remove common filler words
+    skip = {"the", "a", "an", "of", "in", "on", "with", "and", "or", "for", "to", "is", "are",
+            "that", "this", "from", "by", "at", "as", "it", "its", "be", "was", "were", "been",
+            "being", "have", "has", "had", "do", "does", "did", "will", "would", "could", "should",
+            "may", "might", "shall", "can", "scene", "shot", "showing", "shows", "display",
+            "displays", "featuring", "features", "animated", "animation"}
+
+    words = description.lower().split()
+    key_words = [w for w in words if w not in skip and len(w) > 2]
+
+    # Take first 3-4 meaningful words
+    return " ".join(key_words[:4])
+
+
+def trim_clip(input_path: str, output_path: str, duration: float, start: float = 0) -> str:
+    """Trim a video clip to a specific duration."""
     _run_ffmpeg(
         [
-            "-loop", "1",
-            "-i", image_path,
-            "-vf", (
-                f"zoompan=z='1+{zoom_speed}*in':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'"
-                f":d={total_frames}:s=1920x1080:fps={fps}"
-            ),
+            "-ss", str(start),
+            "-i", input_path,
             "-t", str(duration),
+            "-vf", "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:-1:-1:color=black",
             "-c:v", "libx264",
-            "-pix_fmt", "yuv420p",
             "-preset", "fast",
+            "-an",  # Strip audio from stock clips
+            "-pix_fmt", "yuv420p",
             output_path,
         ],
-        description=f"slide clip {os.path.basename(image_path)}",
+        description=f"trim {os.path.basename(input_path)} to {duration}s",
     )
     return output_path
 
 
-def concatenate_clips(clip_paths: list[str], output_path: str) -> str:
-    """Concatenate multiple video clips into one.
+def concatenate_with_crossfades(clip_paths: list[str], output_path: str, fade_duration: float = 0.5) -> str:
+    """Concatenate clips with crossfade transitions between them."""
+    log = logger.bind(service="rendering", action="crossfade")
 
-    Args:
-        clip_paths: List of MP4 clip file paths.
-        output_path: Where to save the concatenated video.
+    if len(clip_paths) == 0:
+        raise ValueError("No clips to concatenate")
 
-    Returns:
-        Path to the output file.
-    """
-    log = logger.bind(service="rendering", action="concatenate")
-    log.info("concatenating clips", count=len(clip_paths))
+    if len(clip_paths) == 1:
+        os.rename(clip_paths[0], output_path)
+        return output_path
 
-    # Write concat file list
-    concat_file = output_path + ".concat.txt"
-    with open(concat_file, "w") as f:
-        for path in clip_paths:
-            f.write(f"file '{os.path.abspath(path)}'\n")
+    log.info("concatenating with crossfades", clips=len(clip_paths), fade=fade_duration)
+
+    # Build the complex filter for xfade transitions
+    # Chain: [0][1] xfade -> [v01], [v01][2] xfade -> [v012], etc.
+    inputs = []
+    for p in clip_paths:
+        inputs.extend(["-i", p])
+
+    # Get durations to calculate offsets
+    durations = []
+    for p in clip_paths:
+        durations.append(_get_video_duration(p))
+
+    filter_parts = []
+    current_label = "[0:v]"
+    offset = durations[0] - fade_duration
+
+    for i in range(1, len(clip_paths)):
+        next_label = f"[{i}:v]"
+        out_label = f"[v{i}]"
+        filter_parts.append(
+            f"{current_label}{next_label}xfade=transition=fade:duration={fade_duration}:offset={offset}{out_label}"
+        )
+        current_label = out_label
+        offset += durations[i] - fade_duration
+
+    filter_str = ";".join(filter_parts)
 
     _run_ffmpeg(
-        [
-            "-f", "concat",
-            "-safe", "0",
-            "-i", concat_file,
-            "-c", "copy",
+        inputs + [
+            "-filter_complex", filter_str,
+            "-map", current_label,
+            "-c:v", "libx264",
+            "-preset", "fast",
+            "-pix_fmt", "yuv420p",
             output_path,
         ],
-        description="concatenate clips",
+        description="crossfade concatenation",
     )
 
-    os.remove(concat_file)
     return output_path
 
 
 def mix_audio(video_path: str, audio_path: str, output_path: str) -> str:
-    """Mix voiceover audio onto the video.
-
-    The audio track replaces any existing audio. If the audio is shorter
-    than the video, the video is trimmed to match the audio duration.
-
-    Args:
-        video_path: Path to the video (no audio or silent).
-        audio_path: Path to the voiceover MP3.
-        output_path: Where to save the output.
-
-    Returns:
-        Path to the output file.
-    """
+    """Mix voiceover audio onto the video."""
     log = logger.bind(service="rendering", action="mix_audio")
     log.info("mixing audio")
 
@@ -146,20 +196,10 @@ def mix_audio(video_path: str, audio_path: str, output_path: str) -> str:
 
 
 def burn_subtitles(video_path: str, srt_path: str, output_path: str) -> str:
-    """Burn SRT subtitles into the video.
-
-    Args:
-        video_path: Path to the video with audio.
-        srt_path: Path to the SRT subtitle file.
-        output_path: Where to save the output.
-
-    Returns:
-        Path to the output file.
-    """
+    """Burn SRT subtitles into the video."""
     log = logger.bind(service="rendering", action="burn_subtitles")
     log.info("burning subtitles")
 
-    # Escape special characters in path for FFmpeg subtitles filter
     escaped_srt = srt_path.replace("\\", "\\\\").replace(":", "\\:").replace("'", "\\'")
 
     _run_ffmpeg(
@@ -167,8 +207,8 @@ def burn_subtitles(video_path: str, srt_path: str, output_path: str) -> str:
             "-i", video_path,
             "-vf", (
                 f"subtitles='{escaped_srt}'"
-                ":force_style='FontName=DejaVu Sans,FontSize=22,PrimaryColour=&H00FFFFFF,"
-                "OutlineColour=&H00000000,Outline=2,Shadow=1,MarginV=40'"
+                ":force_style='FontName=DejaVu Sans,FontSize=13,PrimaryColour=&H00FFFFFF,"
+                "OutlineColour=&H00000000,Outline=1,Shadow=1,MarginV=25'"
             ),
             "-c:a", "copy",
             "-c:v", "libx264",
@@ -187,12 +227,12 @@ def render_video(
     srt_content: str | None,
     output_dir: str,
 ) -> dict:
-    """Full rendering pipeline: slides → clips → concatenate → audio → subtitles → MP4.
+    """Full rendering pipeline: stock footage → trim → crossfade → audio → subtitles → MP4.
 
     Args:
-        shots: List of shot dicts from VisualPlan (scene_number, description, duration_seconds, etc.)
-        voiceover_path: Path to voiceover MP3 (or None to skip audio).
-        srt_content: SRT subtitle text (or None to skip subtitles).
+        shots: List of shot dicts from VisualPlan.
+        voiceover_path: Path to voiceover MP3 (or None).
+        srt_content: SRT subtitle text (or None).
         output_dir: Directory for all output files.
 
     Returns:
@@ -202,31 +242,36 @@ def render_video(
     log.info("starting video render", shots=len(shots))
 
     os.makedirs(output_dir, exist_ok=True)
-    slides_dir = os.path.join(output_dir, "slides")
-    clips_dir = os.path.join(output_dir, "clips")
-    os.makedirs(slides_dir, exist_ok=True)
-    os.makedirs(clips_dir, exist_ok=True)
+    trimmed_dir = os.path.join(output_dir, "trimmed")
+    os.makedirs(trimmed_dir, exist_ok=True)
 
-    # Step 1: Generate slides
-    from apps.rendering_service.image_gen import generate_all_slides
-    slide_paths = generate_all_slides(shots, slides_dir)
-    log.info("slides generated", count=len(slide_paths))
+    # Step 1: Download stock clips
+    stock_paths = download_stock_clips(shots, output_dir)
+    log.info("stock clips downloaded", count=len(stock_paths))
 
-    # Step 2: Convert each slide to a video clip with Ken Burns effect
-    clip_paths = []
-    for i, (slide_path, shot) in enumerate(zip(slide_paths, shots)):
-        duration = shot.get("duration_seconds", 10)
-        clip_path = os.path.join(clips_dir, f"clip_{i:03d}.mp4")
-        create_slide_clip(slide_path, duration, clip_path)
-        clip_paths.append(clip_path)
-        log.info("clip created", scene=i + 1, duration=duration)
+    if not stock_paths:
+        raise RuntimeError("No stock footage found for any shot")
 
-    # Step 3: Concatenate all clips
+    # Step 2: Trim each clip to target duration (2-4 seconds for fast cuts)
+    trimmed_paths = []
+    for i, (stock_path, shot) in enumerate(zip(stock_paths, shots)):
+        target_duration = min(shot.get("duration_seconds", 3), 4)  # Cap at 4s for fast cuts
+        clip_duration = _get_video_duration(stock_path)
+
+        # Start from a random-ish point if clip is longer than needed
+        start = min(1.0, max(0, clip_duration - target_duration - 1))
+
+        trimmed_path = os.path.join(trimmed_dir, f"trimmed_{i:03d}.mp4")
+        trim_clip(stock_path, trimmed_path, target_duration, start=start)
+        trimmed_paths.append(trimmed_path)
+        log.info("clip trimmed", scene=i + 1, duration=target_duration)
+
+    # Step 3: Concatenate with crossfades
     concat_path = os.path.join(output_dir, "concat.mp4")
-    concatenate_clips(clip_paths, concat_path)
-    log.info("clips concatenated")
+    concatenate_with_crossfades(trimmed_paths, concat_path, fade_duration=0.4)
+    log.info("clips concatenated with crossfades")
 
-    # Step 4: Mix in voiceover audio
+    # Step 4: Mix voiceover
     if voiceover_path and os.path.exists(voiceover_path):
         with_audio_path = os.path.join(output_dir, "with_audio.mp4")
         mix_audio(concat_path, voiceover_path, with_audio_path)
@@ -236,7 +281,7 @@ def render_video(
         current_video = concat_path
         log.info("no voiceover, skipping audio mix")
 
-    # Step 5: Burn in subtitles
+    # Step 5: Burn subtitles
     final_path = os.path.join(output_dir, "final.mp4")
     if srt_content:
         srt_path = os.path.join(output_dir, "subtitles.srt")
@@ -245,19 +290,15 @@ def render_video(
         burn_subtitles(current_video, srt_path, final_path)
         log.info("subtitles burned")
     else:
-        # Just copy/rename
         os.rename(current_video, final_path)
-        log.info("no subtitles, video finalized")
 
-    # Get file size
     file_size = os.path.getsize(final_path)
-
     result = {
         "status": "rendered",
         "path": os.path.abspath(final_path),
         "size_bytes": file_size,
-        "slides_count": len(slide_paths),
-        "total_duration_seconds": sum(s.get("duration_seconds", 10) for s in shots),
+        "clips_count": len(trimmed_paths),
+        "total_duration_seconds": sum(min(s.get("duration_seconds", 3), 4) for s in shots),
     }
 
     log.info("video render complete", **result)

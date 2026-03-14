@@ -40,6 +40,8 @@ def generate_speech(
 ) -> bytes:
     """Generate speech audio from text.
 
+    Automatically chunks long text to stay within API limits.
+
     Args:
         text: The text to convert to speech.
         voice: Voice name or ID.
@@ -53,23 +55,51 @@ def generate_speech(
     log = logger.bind(voice=voice, model=model, text_length=len(text))
     log.info("generating speech")
 
-    response = client.text_to_speech.convert(
-        text=text,
-        voice_id=_resolve_voice_id(client, voice),
-        model_id=model,
-    )
+    voice_id = _resolve_voice_id(client, voice)
 
-    # Collect all chunks into bytes
-    audio_bytes = b"".join(response)
+    # Chunk text at sentence boundaries to stay under 5000 chars per request
+    MAX_CHUNK = 4500
+    if len(text) <= MAX_CHUNK:
+        chunks = [text]
+    else:
+        chunks = _split_text(text, MAX_CHUNK)
+        log.info("text chunked for api limits", chunks=len(chunks))
 
-    log.info("speech generated", audio_size=len(audio_bytes))
+    all_audio = b""
+    for i, chunk in enumerate(chunks):
+        log.info("generating chunk", chunk=i + 1, total=len(chunks), chars=len(chunk))
+        response = client.text_to_speech.convert(
+            text=chunk,
+            voice_id=voice_id,
+            model_id=model,
+        )
+        all_audio += b"".join(response)
+
+    log.info("speech generated", audio_size=len(all_audio))
 
     if output_path:
         with open(output_path, "wb") as f:
-            f.write(audio_bytes)
+            f.write(all_audio)
         log.info("audio saved", path=output_path)
 
-    return audio_bytes
+    return all_audio
+
+
+def _split_text(text: str, max_chars: int) -> list[str]:
+    """Split text into chunks at sentence boundaries."""
+    import re
+    sentences = re.split(r'(?<=[.!?])\s+', text)
+    chunks = []
+    current = ""
+    for sentence in sentences:
+        if len(current) + len(sentence) + 1 > max_chars and current:
+            chunks.append(current.strip())
+            current = sentence
+        else:
+            current = current + " " + sentence if current else sentence
+    if current:
+        chunks.append(current.strip())
+    return chunks
 
 
 def _resolve_voice_id(client: ElevenLabs, voice: str) -> str:

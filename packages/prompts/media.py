@@ -7,7 +7,7 @@ def build_visual_plan_prompt(script_content: str, idea_title: str) -> tuple[str,
         "You are a YouTube video director who creates shot lists and visual plans. "
         "You think in terms of what keeps viewers watching — dynamic visuals, clear information display, and pacing."
     )
-    user = f"""Create a visual plan (shot list) for this YouTube video script. Keep it to 6-10 shots maximum.
+    user = f"""Create a visual plan (shot list) for this YouTube video. These will be used to search for STOCK FOOTAGE on Pexels, so descriptions must be concrete, filmable scenes — not abstract concepts.
 
 TITLE: {idea_title}
 
@@ -15,16 +15,18 @@ SCRIPT (first 500 words):
 {' '.join(script_content.split()[:500])}
 
 RULES:
-- Maximum 10 shots
-- Keep descriptions SHORT (under 15 words each)
-- text_overlay should be 2-5 words or null
+- 10-15 shots for fast-paced editing
+- Each shot 3-4 seconds (duration_seconds: 3 or 4)
+- Descriptions must be SEARCHABLE stock footage terms (e.g., "close up of circuit board", "person typing on laptop", "server room with blinking lights")
+- Do NOT describe abstract concepts, animations, or graphics — only real filmable scenes
+- text_overlay should be null (we handle text separately)
 
 Return ONLY valid JSON, no markdown:
 {{
   "shots": [
-    {{"scene_number": 1, "description": "short desc", "duration_seconds": 8, "visual_style": "motion graphics", "text_overlay": null}}
+    {{"scene_number": 1, "description": "person using smartphone in dark room", "duration_seconds": 3, "visual_style": "b-roll", "text_overlay": null}}
   ],
-  "total_duration_seconds": 480,
+  "total_duration_seconds": 45,
   "style_notes": "brief style note"
 }}"""
     return system, user
