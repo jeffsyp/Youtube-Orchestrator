@@ -119,9 +119,9 @@ def trim_clip(input_path: str, output_path: str, duration: float, start: float =
     return output_path
 
 
-def concatenate_with_crossfades(clip_paths: list[str], output_path: str, fade_duration: float = 0.3) -> str:
-    """Concatenate clips with fade-in/fade-out on each clip for smooth transitions."""
-    log = logger.bind(service="rendering", action="crossfade")
+def concatenate_clips(clip_paths: list[str], output_path: str) -> str:
+    """Concatenate clips using simple concat demuxer."""
+    log = logger.bind(service="rendering", action="concat")
 
     if len(clip_paths) == 0:
         raise ValueError("No clips to concatenate")
@@ -130,35 +130,11 @@ def concatenate_with_crossfades(clip_paths: list[str], output_path: str, fade_du
         os.rename(clip_paths[0], output_path)
         return output_path
 
-    log.info("concatenating with fades", clips=len(clip_paths), fade=fade_duration)
+    log.info("concatenating clips", count=len(clip_paths))
 
-    # Add fade-in/fade-out to each clip, then concat
-    faded_dir = os.path.dirname(clip_paths[0])
-    faded_paths = []
-
-    for i, path in enumerate(clip_paths):
-        duration = _get_video_duration(path)
-        fade_out_start = max(0, duration - fade_duration)
-        faded_path = os.path.join(faded_dir, f"faded_{i:03d}.mp4")
-
-        _run_ffmpeg(
-            [
-                "-i", path,
-                "-vf", f"fade=in:st=0:d={fade_duration},fade=out:st={fade_out_start}:d={fade_duration}",
-                "-c:v", "libx264",
-                "-preset", "fast",
-                "-pix_fmt", "yuv420p",
-                "-an",
-                faded_path,
-            ],
-            description=f"fade clip {i}",
-        )
-        faded_paths.append(faded_path)
-
-    # Simple concat
     concat_file = output_path + ".concat.txt"
     with open(concat_file, "w") as f:
-        for p in faded_paths:
+        for p in clip_paths:
             f.write(f"file '{os.path.abspath(p)}'\n")
 
     _run_ffmpeg(
@@ -169,7 +145,7 @@ def concatenate_with_crossfades(clip_paths: list[str], output_path: str, fade_du
             "-c", "copy",
             output_path,
         ],
-        description="concat faded clips",
+        description="concat clips",
     )
 
     os.remove(concat_file)
@@ -181,16 +157,19 @@ def mix_audio(video_path: str, audio_path: str, output_path: str) -> str:
     log = logger.bind(service="rendering", action="mix_audio")
     log.info("mixing audio")
 
+    # Use -t to force duration to match audio length
+    audio_duration = _get_video_duration(audio_path)
+
     _run_ffmpeg(
         [
             "-i", video_path,
             "-i", audio_path,
+            "-t", str(audio_duration),
             "-c:v", "copy",
             "-c:a", "aac",
             "-b:a", "192k",
             "-map", "0:v:0",
             "-map", "1:a:0",
-            "-shortest",
             output_path,
         ],
         description="mix audio",
@@ -301,7 +280,7 @@ def render_video(
 
     # Step 3: Concatenate with fades
     concat_path = os.path.join(output_dir, "concat.mp4")
-    concatenate_with_crossfades(trimmed_paths, concat_path, fade_duration=0.3)
+    concatenate_clips(trimmed_paths, concat_path)
     log.info("clips concatenated", total_clips=len(trimmed_paths))
 
     # Step 4: Mix voiceover
