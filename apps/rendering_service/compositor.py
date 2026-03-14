@@ -119,8 +119,8 @@ def trim_clip(input_path: str, output_path: str, duration: float, start: float =
     return output_path
 
 
-def concatenate_with_crossfades(clip_paths: list[str], output_path: str, fade_duration: float = 0.5) -> str:
-    """Concatenate clips with crossfade transitions between them."""
+def concatenate_with_crossfades(clip_paths: list[str], output_path: str, fade_duration: float = 0.3) -> str:
+    """Concatenate clips with fade-in/fade-out on each clip for smooth transitions."""
     log = logger.bind(service="rendering", action="crossfade")
 
     if len(clip_paths) == 0:
@@ -130,46 +130,49 @@ def concatenate_with_crossfades(clip_paths: list[str], output_path: str, fade_du
         os.rename(clip_paths[0], output_path)
         return output_path
 
-    log.info("concatenating with crossfades", clips=len(clip_paths), fade=fade_duration)
+    log.info("concatenating with fades", clips=len(clip_paths), fade=fade_duration)
 
-    # Build the complex filter for xfade transitions
-    # Chain: [0][1] xfade -> [v01], [v01][2] xfade -> [v012], etc.
-    inputs = []
-    for p in clip_paths:
-        inputs.extend(["-i", p])
+    # Add fade-in/fade-out to each clip, then concat
+    faded_dir = os.path.dirname(clip_paths[0])
+    faded_paths = []
 
-    # Get durations to calculate offsets
-    durations = []
-    for p in clip_paths:
-        durations.append(_get_video_duration(p))
+    for i, path in enumerate(clip_paths):
+        duration = _get_video_duration(path)
+        fade_out_start = max(0, duration - fade_duration)
+        faded_path = os.path.join(faded_dir, f"faded_{i:03d}.mp4")
 
-    filter_parts = []
-    current_label = "[0:v]"
-    offset = durations[0] - fade_duration
-
-    for i in range(1, len(clip_paths)):
-        next_label = f"[{i}:v]"
-        out_label = f"[v{i}]"
-        filter_parts.append(
-            f"{current_label}{next_label}xfade=transition=fade:duration={fade_duration}:offset={offset}{out_label}"
+        _run_ffmpeg(
+            [
+                "-i", path,
+                "-vf", f"fade=in:st=0:d={fade_duration},fade=out:st={fade_out_start}:d={fade_duration}",
+                "-c:v", "libx264",
+                "-preset", "fast",
+                "-pix_fmt", "yuv420p",
+                "-an",
+                faded_path,
+            ],
+            description=f"fade clip {i}",
         )
-        current_label = out_label
-        offset += durations[i] - fade_duration
+        faded_paths.append(faded_path)
 
-    filter_str = ";".join(filter_parts)
+    # Simple concat
+    concat_file = output_path + ".concat.txt"
+    with open(concat_file, "w") as f:
+        for p in faded_paths:
+            f.write(f"file '{os.path.abspath(p)}'\n")
 
     _run_ffmpeg(
-        inputs + [
-            "-filter_complex", filter_str,
-            "-map", current_label,
-            "-c:v", "libx264",
-            "-preset", "fast",
-            "-pix_fmt", "yuv420p",
+        [
+            "-f", "concat",
+            "-safe", "0",
+            "-i", concat_file,
+            "-c", "copy",
             output_path,
         ],
-        description="crossfade concatenation",
+        description="concat faded clips",
     )
 
+    os.remove(concat_file)
     return output_path
 
 
