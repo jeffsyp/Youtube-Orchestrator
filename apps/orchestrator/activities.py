@@ -473,8 +473,8 @@ async def generate_voiceover(run_id: int, channel_id: int, script: dict) -> dict
 
 
 @activity.defn
-async def render_video(run_id: int, channel_id: int, visual: dict, voiceover: dict, srt_content: str | None) -> dict:
-    """Render the final video — slides + Ken Burns + voiceover + subtitles."""
+async def render_video(run_id: int, channel_id: int, visual: dict, voiceover: dict, srt_content: str | None, script_content: str | None = None) -> dict:
+    """Render the final video — stock footage + voiceover + text overlays."""
     await _update_run_step(run_id, "render_video")
     log = logger.bind(activity="render_video", run_id=run_id)
     log.info("rendering video")
@@ -489,6 +489,7 @@ async def render_video(run_id: int, channel_id: int, visual: dict, voiceover: di
         voiceover_path=voiceover_path,
         srt_content=srt_content,
         output_dir=output_dir,
+        script_content=script_content,
     )
 
     await _execute(

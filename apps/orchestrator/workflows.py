@@ -149,10 +149,10 @@ class DailyContentPipeline:
             start_to_close_timeout=ACTIVITY_TIMEOUT,
         )
 
-        # 14. Render final video (slides + voiceover + subtitles → MP4)
+        # 14. Render final video (stock footage + voiceover + text overlays → MP4)
         rendered = await workflow.execute_activity(
             render_video,
-            args=[run_id, channel_id, visual, voiceover, package.get("srt_content")],
+            args=[run_id, channel_id, visual, voiceover, package.get("srt_content"), final_script.get("content")],
             start_to_close_timeout=RENDER_TIMEOUT,
         )
 

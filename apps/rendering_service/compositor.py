@@ -246,14 +246,16 @@ def render_video(
     voiceover_path: str | None,
     srt_content: str | None,
     output_dir: str,
+    script_content: str | None = None,
 ) -> dict:
-    """Full rendering pipeline: stock footage → trim → crossfade → audio → subtitles → MP4.
+    """Full rendering pipeline: stock footage → trim → concat → audio → overlays → MP4.
 
     Args:
         shots: List of shot dicts from VisualPlan.
         voiceover_path: Path to voiceover MP3 (or None).
         srt_content: SRT subtitle text (or None).
         output_dir: Directory for all output files.
+        script_content: Full script text (used to generate text overlays).
 
     Returns:
         Dict with status, final video path, and metadata.
@@ -307,7 +309,25 @@ def render_video(
         current_video = concat_path
         log.info("no voiceover, skipping audio mix")
 
-    # Step 5: Save SRT file separately (for YouTube upload, not burned in)
+    # Step 5: Generate and apply text overlays
+    if script_content and target_duration > 0:
+        try:
+            from apps.rendering_service.overlays import generate_cues, apply_overlays
+            cues = generate_cues(script_content, target_duration)
+            if cues:
+                with_overlays_path = os.path.join(output_dir, "with_overlays.mp4")
+                apply_overlays(current_video, with_overlays_path, cues)
+                current_video = with_overlays_path
+                log.info("text overlays applied", cues=len(cues))
+
+                # Save cues for reference
+                import json as json_mod
+                with open(os.path.join(output_dir, "overlay_cues.json"), "w") as f:
+                    json_mod.dump(cues, f, indent=2)
+        except Exception as e:
+            log.warning("overlay generation failed, continuing without", error=str(e))
+
+    # Step 6: Save SRT file separately (for YouTube upload, not burned in)
     final_path = os.path.join(output_dir, "final.mp4")
     if srt_content:
         srt_path = os.path.join(output_dir, "subtitles.srt")
