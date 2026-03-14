@@ -1,0 +1,11 @@
+.env
+client_secrets.json
+youtube_token.json
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+dist/
+.pytest_cache/
+output/
+.claude/
