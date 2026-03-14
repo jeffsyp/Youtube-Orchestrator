@@ -1,14 +1,15 @@
 """YouTube video uploader using OAuth2.
 
-Phase 5: Uploads videos to YouTube using the YouTube Data API v3.
+Uploads rendered videos to YouTube with title, description, tags, and captions.
 
 Setup required:
 1. Create OAuth2 credentials in Google Cloud Console (Desktop App type)
 2. Download client_secrets.json to project root
-3. Run `python -m apps.publishing_service.auth` to complete OAuth flow and generate token
-4. Set YOUTUBE_CLIENT_SECRETS_FILE and YOUTUBE_TOKEN_FILE in .env
+3. Run `python -m apps.publishing_service.auth` to complete OAuth flow
+4. Token is saved to youtube_token.json automatically
 """
 
+import json
 import os
 
 import structlog
@@ -26,39 +27,11 @@ def is_upload_configured() -> bool:
     return os.path.exists(YOUTUBE_CLIENT_SECRETS) and os.path.exists(YOUTUBE_TOKEN_FILE)
 
 
-def upload_video(
-    title: str,
-    description: str,
-    tags: list[str],
-    category: str = "22",  # "People & Blogs" default; "28" = Science & Technology
-    privacy_status: str = "private",
-) -> dict:
-    """Upload a video to YouTube.
-
-    Returns dict with video_id and url on success.
-
-    NOTE: This is the upload metadata step. The actual video file upload
-    requires a rendered video file, which is outside the scope of this
-    orchestrator (it produces the package, not the final video).
-    """
-    if not is_upload_configured():
-        logger.warning("youtube upload not configured — missing OAuth2 credentials")
-        return {
-            "published": False,
-            "status": "oauth2_not_configured",
-            "message": (
-                "YouTube OAuth2 not configured. To set up:\n"
-                "1. Create OAuth2 Desktop App credentials in Google Cloud Console\n"
-                "2. Download client_secrets.json\n"
-                "3. Run: python -m apps.publishing_service.auth\n"
-                "4. Set YOUTUBE_CLIENT_SECRETS_FILE and YOUTUBE_TOKEN_FILE in .env"
-            ),
-        }
-
+def _get_youtube_client():
+    """Build an authenticated YouTube API client."""
     from google.oauth2.credentials import Credentials
+    from google.auth.transport.requests import Request
     from googleapiclient.discovery import build
-
-    import json
 
     with open(YOUTUBE_TOKEN_FILE) as f:
         token_data = json.load(f)
@@ -71,7 +44,56 @@ def upload_video(
         client_secret=token_data.get("client_secret"),
     )
 
-    youtube = build("youtube", "v3", credentials=creds)
+    # Refresh token if expired
+    if creds.expired and creds.refresh_token:
+        creds.refresh(Request())
+        # Save refreshed token
+        token_data["token"] = creds.token
+        with open(YOUTUBE_TOKEN_FILE, "w") as f:
+            json.dump(token_data, f, indent=2)
+
+    return build("youtube", "v3", credentials=creds)
+
+
+def upload_video(
+    video_path: str,
+    title: str,
+    description: str,
+    tags: list[str],
+    category: str = "Science & Technology",
+    privacy_status: str = "private",
+    captions_path: str | None = None,
+) -> dict:
+    """Upload a video file to YouTube.
+
+    Args:
+        video_path: Path to the MP4 file.
+        title: Video title.
+        description: Video description.
+        tags: List of tags.
+        category: YouTube category name.
+        privacy_status: "private", "unlisted", or "public".
+        captions_path: Optional path to SRT file for captions.
+
+    Returns:
+        Dict with published status, video_id, and url.
+    """
+    log = logger.bind(title=title, privacy=privacy_status, video_path=video_path)
+
+    if not is_upload_configured():
+        log.error("youtube upload not configured")
+        return {
+            "published": False,
+            "error": "YouTube OAuth2 not configured. Run: python -m apps.publishing_service.auth",
+        }
+
+    if not os.path.exists(video_path):
+        log.error("video file not found", path=video_path)
+        return {"published": False, "error": f"Video file not found: {video_path}"}
+
+    from googleapiclient.http import MediaFileUpload
+
+    youtube = _get_youtube_client()
 
     # Map category names to IDs
     category_map = {
@@ -82,13 +104,13 @@ def upload_video(
         "News & Politics": "25",
         "Howto & Style": "26",
     }
-    category_id = category_map.get(category, category)
+    category_id = category_map.get(category, "28")
 
     body = {
         "snippet": {
-            "title": title,
+            "title": title[:100],  # YouTube max 100 chars
             "description": description,
-            "tags": tags,
+            "tags": tags[:30],  # YouTube max 30 tags
             "categoryId": category_id,
         },
         "status": {
@@ -97,21 +119,59 @@ def upload_video(
         },
     }
 
-    log = logger.bind(title=title, privacy=privacy_status)
-    log.info("video metadata prepared for upload", tags=tags[:3])
+    log.info("uploading video to youtube")
 
-    # NOTE: Actual file upload requires MediaFileUpload with a video file.
-    # This orchestrator produces the content package, not the rendered video.
-    # When a video file is available, the upload would be:
-    #
-    # from googleapiclient.http import MediaFileUpload
-    # media = MediaFileUpload(video_file_path, chunksize=-1, resumable=True)
-    # request = youtube.videos().insert(part="snippet,status", body=body, media_body=media)
-    # response = request.execute()
+    media = MediaFileUpload(video_path, chunksize=10 * 1024 * 1024, resumable=True)
+    request = youtube.videos().insert(
+        part="snippet,status",
+        body=body,
+        media_body=media,
+    )
 
-    return {
-        "published": False,
-        "status": "metadata_ready",
-        "upload_body": body,
-        "message": "Upload metadata prepared. Video file rendering required before upload.",
+    # Execute with resumable upload
+    response = None
+    while response is None:
+        status, response = request.next_chunk()
+        if status:
+            log.info("upload progress", percent=int(status.progress() * 100))
+
+    video_id = response["id"]
+    log.info("video uploaded", video_id=video_id)
+
+    # Upload captions if provided
+    if captions_path and os.path.exists(captions_path):
+        try:
+            _upload_captions(youtube, video_id, captions_path)
+            log.info("captions uploaded", video_id=video_id)
+        except Exception as e:
+            log.warning("caption upload failed", error=str(e))
+
+    result = {
+        "published": True,
+        "video_id": video_id,
+        "url": f"https://youtube.com/watch?v={video_id}",
+        "privacy": privacy_status,
     }
+
+    log.info("publish complete", **result)
+    return result
+
+
+def _upload_captions(youtube, video_id: str, srt_path: str):
+    """Upload SRT captions to a YouTube video."""
+    from googleapiclient.http import MediaFileUpload
+
+    caption_body = {
+        "snippet": {
+            "videoId": video_id,
+            "language": "en",
+            "name": "English",
+        },
+    }
+
+    media = MediaFileUpload(srt_path, mimetype="application/x-subrip")
+    youtube.captions().insert(
+        part="snippet",
+        body=caption_body,
+        media_body=media,
+    ).execute()

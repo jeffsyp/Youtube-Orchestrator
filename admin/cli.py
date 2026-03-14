@@ -342,6 +342,83 @@ def qa_video(run_id):
 
 @cli.command()
 @click.argument("run_id", type=int)
+@click.option("--public", is_flag=True, default=False, help="Upload as public (default: private)")
+@click.option("--unlisted", is_flag=True, default=False, help="Upload as unlisted")
+def upload(run_id, public, unlisted):
+    """Upload a completed run's video to YouTube."""
+    async def _run():
+        # Get package metadata
+        async with async_session() as session:
+            pkg_result = await session.execute(
+                text("SELECT title, description, tags, category FROM packages WHERE run_id = :id ORDER BY id DESC LIMIT 1"),
+                {"id": run_id},
+            )
+            pkg = pkg_result.fetchone()
+
+            asset_result = await session.execute(
+                text("SELECT content FROM assets WHERE run_id = :id AND asset_type = 'rendered_video' ORDER BY id DESC LIMIT 1"),
+                {"id": run_id},
+            )
+            asset = asset_result.fetchone()
+
+        if not pkg:
+            click.echo(f"No package found for run {run_id}.")
+            return
+
+        if not asset:
+            click.echo(f"No rendered video found for run {run_id}.")
+            return
+
+        render_info = json.loads(asset[0])
+        video_path = render_info.get("path")
+
+        if not video_path or not os.path.exists(video_path):
+            click.echo(f"Video file not found: {video_path}")
+            return
+
+        tags = json.loads(pkg[2]) if pkg[2] else []
+        srt_path = f"output/run_{run_id}/subtitles.srt"
+        captions = srt_path if os.path.exists(srt_path) else None
+
+        privacy = "public" if public else ("unlisted" if unlisted else "private")
+
+        click.echo(f"\n=== Uploading to YouTube ===")
+        click.echo(f"Title:   {pkg[0]}")
+        click.echo(f"Privacy: {privacy}")
+        click.echo(f"Video:   {video_path}")
+        click.echo(f"Captions: {captions or 'none'}")
+        click.echo()
+
+        from apps.publishing_service.uploader import upload_video, is_upload_configured
+
+        if not is_upload_configured():
+            click.echo("YouTube OAuth2 not configured. Run:")
+            click.echo("  python -m apps.publishing_service.auth")
+            return
+
+        result = upload_video(
+            video_path=video_path,
+            title=pkg[0],
+            description=pkg[1],
+            tags=tags,
+            category=pkg[3] or "Science & Technology",
+            privacy_status=privacy,
+            captions_path=captions,
+        )
+
+        if result.get("published"):
+            click.echo(f"Uploaded! {result['url']}")
+            click.echo(f"Privacy: {result['privacy']}")
+        else:
+            click.echo(f"Upload failed: {result.get('error', 'unknown error')}")
+        click.echo()
+
+    import os
+    run_async(_run())
+
+
+@cli.command()
+@click.argument("run_id", type=int)
 def show_ideas(run_id):
     """Show generated ideas for a run, ready for selection."""
     async def _run():
