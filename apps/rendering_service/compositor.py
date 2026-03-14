@@ -17,13 +17,13 @@ import structlog
 logger = structlog.get_logger()
 
 
-def _run_ffmpeg(args: list[str], description: str = "") -> subprocess.CompletedProcess:
+def _run_ffmpeg(args: list[str], description: str = "", timeout: int = 600) -> subprocess.CompletedProcess:
     """Run an FFmpeg command and handle errors."""
     cmd = ["ffmpeg", "-y"] + args
     log = logger.bind(service="rendering", action="ffmpeg")
     log.debug("running ffmpeg", description=description)
 
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
 
     if result.returncode != 0:
         log.error("ffmpeg failed", stderr=result.stderr[-500:] if result.stderr else "")
@@ -170,6 +170,7 @@ def trim_clip(input_path: str, output_path: str, duration: float, start: float =
             "-vf", "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:-1:-1:color=black,fps=30",
             "-c:v", "libx264",
             "-preset", "fast",
+            "-crf", "18",
             "-an",
             "-pix_fmt", "yuv420p",
             "-movflags", "+faststart",
@@ -204,11 +205,16 @@ def concatenate_clips(clip_paths: list[str], output_path: str) -> str:
             "-f", "concat",
             "-safe", "0",
             "-i", concat_file,
-            "-c", "copy",
+            "-c:v", "libx264",
+            "-preset", "ultrafast",
+            "-crf", "18",
+            "-pix_fmt", "yuv420p",
+            "-r", "30",
             "-movflags", "+faststart",
             output_path,
         ],
         description="concat clips",
+        timeout=1800,
     )
 
     os.remove(concat_file)

@@ -56,11 +56,30 @@ def generate_image(
     revised_prompt = response.data[0].revised_prompt
     log.info("image generated", revised_prompt=revised_prompt[:80])
 
-    # Download and save
+    # Download and save, compress if needed for YouTube thumbnail (2MB limit)
     img_data = requests.get(image_url, timeout=30).content
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
-    with open(output_path, "wb") as f:
-        f.write(img_data)
 
-    log.info("image saved", path=output_path, size_bytes=len(img_data))
+    if len(img_data) > 2_000_000 or output_path.endswith(".jpg"):
+        # Compress with Pillow
+        from PIL import Image as PILImage
+        import io
+        img = PILImage.open(io.BytesIO(img_data))
+        img = img.convert("RGB")
+        # Save as JPEG with quality reduction until under 2MB
+        quality = 90
+        while quality > 30:
+            buf = io.BytesIO()
+            img.save(buf, format="JPEG", quality=quality)
+            if buf.tell() < 2_000_000:
+                break
+            quality -= 10
+        with open(output_path, "wb") as f:
+            f.write(buf.getvalue())
+        log.info("image saved (compressed)", path=output_path, size_bytes=buf.tell(), quality=quality)
+    else:
+        with open(output_path, "wb") as f:
+            f.write(img_data)
+        log.info("image saved", path=output_path, size_bytes=len(img_data))
+
     return output_path
