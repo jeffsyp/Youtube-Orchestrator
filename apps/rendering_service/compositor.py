@@ -255,24 +255,54 @@ def render_video(
     if not stock_paths:
         raise RuntimeError("No stock footage found for any shot")
 
-    # Step 2: Trim each clip to target duration (2-4 seconds for fast cuts)
-    trimmed_paths = []
-    for i, (stock_path, shot) in enumerate(zip(stock_paths, shots)):
-        target_duration = min(shot.get("duration_seconds", 3), 4)  # Cap at 4s for fast cuts
-        clip_duration = _get_video_duration(stock_path)
+    # Calculate target video duration from voiceover if available
+    target_duration = None
+    if voiceover_path and os.path.exists(voiceover_path):
+        target_duration = _get_video_duration(voiceover_path)
+        log.info("target duration from voiceover", seconds=target_duration)
 
-        # Start from a random-ish point if clip is longer than needed
-        start = min(1.0, max(0, clip_duration - target_duration - 1))
+    # Step 2: Trim clips and loop to fill the full audio duration
+    trimmed_paths = []
+    clip_duration_each = 5  # 5 seconds per clip for natural pacing
+    total_video_needed = target_duration or sum(s.get("duration_seconds", 5) for s in shots)
+
+    # First pass: trim all stock clips
+    base_clips = []
+    for i, stock_path in enumerate(stock_paths):
+        source_duration = _get_video_duration(stock_path)
+        # Use up to 8 seconds from each clip
+        use_duration = min(source_duration, 8)
+        start = min(1.0, max(0, source_duration - use_duration - 0.5))
 
         trimmed_path = os.path.join(trimmed_dir, f"trimmed_{i:03d}.mp4")
-        trim_clip(stock_path, trimmed_path, target_duration, start=start)
-        trimmed_paths.append(trimmed_path)
-        log.info("clip trimmed", scene=i + 1, duration=target_duration)
+        trim_clip(stock_path, trimmed_path, use_duration, start=start)
+        base_clips.append(trimmed_path)
+        log.info("clip trimmed", scene=i + 1, duration=use_duration)
 
-    # Step 3: Concatenate with crossfades
+    # Loop clips to fill the full duration
+    total_so_far = sum(_get_video_duration(c) for c in base_clips)
+    loop_idx = 0
+    while total_so_far < total_video_needed:
+        # Reuse clips in order, trimmed to different segments
+        source_clip = stock_paths[loop_idx % len(stock_paths)]
+        source_duration = _get_video_duration(source_clip)
+        use_duration = min(source_duration, 6)
+        # Use a different start point for variety
+        start = min(2.0, max(0, source_duration - use_duration - 1))
+
+        extra_path = os.path.join(trimmed_dir, f"loop_{loop_idx:03d}.mp4")
+        trim_clip(source_clip, extra_path, use_duration, start=start)
+        base_clips.append(extra_path)
+        total_so_far += use_duration
+        loop_idx += 1
+        log.info("looped clip added", total_so_far=round(total_so_far), target=round(total_video_needed))
+
+    trimmed_paths = base_clips
+
+    # Step 3: Concatenate with fades
     concat_path = os.path.join(output_dir, "concat.mp4")
-    concatenate_with_crossfades(trimmed_paths, concat_path, fade_duration=0.4)
-    log.info("clips concatenated with crossfades")
+    concatenate_with_crossfades(trimmed_paths, concat_path, fade_duration=0.3)
+    log.info("clips concatenated", total_clips=len(trimmed_paths))
 
     # Step 4: Mix voiceover
     if voiceover_path and os.path.exists(voiceover_path):
