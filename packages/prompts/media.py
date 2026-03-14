@@ -72,22 +72,36 @@ def build_package_prompt(
         "You are a YouTube SEO and packaging expert. "
         "You write titles, descriptions, and tags that maximize click-through rate while being honest."
     )
+    # Calculate approximate total duration from word count
+    word_count = len(script_content.split())
+    approx_duration_min = round(word_count / 150)  # ~150 wpm narration
+
     user = f"""Create the YouTube upload package for this video.
 
 TITLE: {idea_title}
 NICHE: {niche}
+APPROXIMATE LENGTH: {approx_duration_min} minutes
 
-SCRIPT (first 300 words):
-{' '.join(script_content.split()[:300])}
+SCRIPT (first 400 words):
+{' '.join(script_content.split()[:400])}
 
 Provide:
 1. title: Optimized YouTube title (under 60 chars, clickable but not clickbait)
-2. description: YouTube description (150-300 words, include key points, timestamps placeholder, and relevant hashtags)
+2. description: YouTube description that includes:
+   - A compelling 2-3 sentence summary at the top
+   - YouTube chapters with timestamps (start at 0:00, space them roughly evenly across {approx_duration_min} minutes)
+   - 3-5 relevant hashtags at the bottom
 3. tags: List of 8-12 relevant YouTube tags
 4. category: YouTube category (e.g., "Science & Technology", "Education")
 5. thumbnail_text: Short text for thumbnail (2-4 words, high contrast)
 
-Return EXACTLY this JSON format (no markdown, no extra text):
+IMPORTANT: The chapters in the description MUST follow this exact format:
+0:00 Introduction
+1:30 Chapter Title
+3:45 Another Chapter
+(Use realistic timestamps spread across {approx_duration_min} minutes)
+
+Return ONLY valid JSON, no markdown:
 {{
   "title": "...",
   "description": "...",

@@ -63,6 +63,7 @@ def upload_video(
     category: str = "Science & Technology",
     privacy_status: str = "private",
     captions_path: str | None = None,
+    thumbnail_path: str | None = None,
 ) -> dict:
     """Upload a video file to YouTube.
 
@@ -138,6 +139,14 @@ def upload_video(
     video_id = response["id"]
     log.info("video uploaded", video_id=video_id)
 
+    # Upload thumbnail if provided
+    if thumbnail_path and os.path.exists(thumbnail_path):
+        try:
+            _upload_thumbnail(youtube, video_id, thumbnail_path)
+            log.info("thumbnail uploaded", video_id=video_id)
+        except Exception as e:
+            log.warning("thumbnail upload failed", error=str(e))
+
     # Upload captions if provided
     if captions_path and os.path.exists(captions_path):
         try:
@@ -155,6 +164,17 @@ def upload_video(
 
     log.info("publish complete", **result)
     return result
+
+
+def _upload_thumbnail(youtube, video_id: str, thumbnail_path: str):
+    """Upload a custom thumbnail to a YouTube video."""
+    from googleapiclient.http import MediaFileUpload
+
+    media = MediaFileUpload(thumbnail_path, mimetype="image/png")
+    youtube.thumbnails().set(
+        videoId=video_id,
+        media_body=media,
+    ).execute()
 
 
 def _upload_captions(youtube, video_id: str, srt_path: str):

@@ -377,16 +377,20 @@ def upload(run_id, public, unlisted):
             return
 
         tags = json.loads(pkg[2]) if pkg[2] else []
-        srt_path = f"output/run_{run_id}/subtitles.srt"
+        output_dir = f"output/run_{run_id}"
+        srt_path = os.path.join(output_dir, "subtitles.srt")
         captions = srt_path if os.path.exists(srt_path) else None
+        thumb_path = os.path.join(output_dir, "thumbnail.png")
+        thumbnail = thumb_path if os.path.exists(thumb_path) else None
 
         privacy = "public" if public else ("unlisted" if unlisted else "private")
 
         click.echo(f"\n=== Uploading to YouTube ===")
-        click.echo(f"Title:   {pkg[0]}")
-        click.echo(f"Privacy: {privacy}")
-        click.echo(f"Video:   {video_path}")
-        click.echo(f"Captions: {captions or 'none'}")
+        click.echo(f"Title:     {pkg[0]}")
+        click.echo(f"Privacy:   {privacy}")
+        click.echo(f"Video:     {video_path}")
+        click.echo(f"Thumbnail: {thumbnail or 'none'}")
+        click.echo(f"Captions:  {captions or 'none'}")
         click.echo()
 
         from apps.publishing_service.uploader import upload_video, is_upload_configured
@@ -404,6 +408,7 @@ def upload(run_id, public, unlisted):
             category=pkg[3] or "Science & Technology",
             privacy_status=privacy,
             captions_path=captions,
+            thumbnail_path=thumbnail,
         )
 
         if result.get("published"):
