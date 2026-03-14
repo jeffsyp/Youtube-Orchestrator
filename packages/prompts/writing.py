@@ -37,9 +37,11 @@ def write_script_prompt(outline: dict, niche: str, tone: str) -> tuple[str, str]
     key_points_text = "\n".join(f"  - {p}" for p in outline["key_points"])
 
     system = (
-        f"You are a top YouTube scriptwriter. Your tone is: {tone}. "
-        "You write scripts that feel natural when read aloud — conversational, punchy, no filler. "
-        "Every sentence earns its place. You never use cliches or generic transitions."
+        f"You are a top YouTube scriptwriter who writes for voice performance. Your tone is: {tone}. "
+        "You write scripts that sound like a real person talking — not reading. "
+        "You use rhythm, pacing, and word choice to control how the narrator sounds. "
+        "You know that the script IS the performance — every pause, every short sentence, "
+        "every rhetorical question shapes how the AI voice delivers it."
     )
     user = f"""Write a complete YouTube video script based on this outline.
 
@@ -53,13 +55,28 @@ OUTLINE:
 KEY POINTS TO COVER:
 {key_points_text}
 
-REQUIREMENTS:
+VOICE PERFORMANCE RULES (critical — this will be read by an AI voice):
+- Write exactly as it should be SPOKEN, not read
+- Use punctuation to control pacing:
+  * Short sentences = urgency and impact. Like this. Three words.
+  * Ellipses (...) = dramatic pause, building tension
+  * Dashes — = quick aside or pivot
+  * Question marks = natural vocal uptick, engages the listener
+- Break up big numbers for emphasis: "Three. Point. Two. Billion dollars."
+- Add conversational asides: "And honestly?" or "Here's the thing..." or "Think about that for a second."
+- Vary sentence length constantly — long flowing explanation, then BAM. Short hit.
+- Use humor where natural — dry wit, unexpected comparisons, understatement
+- Start sections with a pattern interrupt — something that resets attention
+- Never use filler transitions like "Moving on..." or "Next up..." or "Let's talk about..."
+- Instead, transition with hooks: "But that's not even the scary part." or "Now... this is where it gets interesting."
+
+SCRIPT RULES:
 - Write the FULL script, word for word as it would be narrated
 - Start with a strong hook in the first 5 seconds
 - Include a clear call-to-action near the end
-- Use short paragraphs (1-3 sentences each)
 - Aim for ~{outline['estimated_duration_seconds'] * 150 // 60} words
 - Do NOT include stage directions, visual cues, or [brackets]
+- No emojis
 
 Return ONLY the script text, no JSON wrapping."""
     return system, user
@@ -68,33 +85,41 @@ Return ONLY the script text, no JSON wrapping."""
 def critique_script_prompt(script_content: str, idea_title: str) -> tuple[str, str]:
     """Return (system, user) prompts for critiquing a script."""
     system = (
-        "You are a ruthless but constructive YouTube script editor. "
+        "You are a ruthless but constructive YouTube script editor who specializes in voice-first content. "
         "You identify weak points that would cause viewers to click away. "
+        "You evaluate both the content AND how it will sound when read aloud by an AI voice. "
         "You are specific, actionable, and honest."
     )
-    user = f"""Critique this YouTube script. Be specific about what works and what doesn't.
+    user = f"""Critique this YouTube script. It will be read by an AI text-to-speech voice.
 
 TITLE: {idea_title}
 
 SCRIPT:
 {script_content}
 
-Provide your critique in this format:
+Evaluate:
 
 STRENGTHS:
-- (list 2-3 things that work well)
+- (2-3 things that work well)
 
-WEAKNESSES:
-- (list 3-5 specific issues with line references or quotes)
+CONTENT WEAKNESSES:
+- (3-5 specific content issues)
+
+VOICE PERFORMANCE ISSUES:
+- (Does the pacing vary enough? Are there monotonous sections?)
+- (Are sentences too uniform in length? Does it sound robotic when read aloud?)
+- (Are there natural pauses, questions, and conversational moments?)
+- (Would a listener zone out during any section? Where?)
 
 RETENTION RISKS:
-- (list moments where viewers might click away and why)
+- (Moments where viewers would click away and why)
 
-WORD COUNT ASSESSMENT:
-- Current word count and whether it matches the target duration
+HUMOR/PERSONALITY CHECK:
+- (Does it have any personality? Or does it sound like a Wikipedia article?)
+- (Are there moments of wit, surprise, or human connection?)
 
 PRIORITY FIXES:
-- (numbered list of the top 3 changes that would most improve this script)
+- (Top 3 changes that would most improve this script for voice delivery)
 
 Return ONLY the critique text, no JSON wrapping."""
     return system, user
