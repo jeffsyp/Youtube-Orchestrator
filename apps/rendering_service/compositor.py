@@ -41,11 +41,36 @@ def _get_video_duration(path: str) -> float:
     return float(result.stdout.strip())
 
 
-def download_stock_clips(shots: list[dict], output_dir: str, target_duration: float = 0) -> list[str]:
+def _generate_script_queries(script_content: str, target_duration: float, clip_duration: int = 6) -> list[str]:
+    """Use Claude to generate footage search queries matched to script content."""
+    import json as json_mod
+    from packages.clients.claude import generate
+    from packages.prompts.footage import generate_footage_queries_prompt
+
+    log = logger.bind(service="rendering", action="generate_queries")
+    log.info("generating script-matched footage queries")
+
+    system, user = generate_footage_queries_prompt(script_content, target_duration, clip_duration)
+    response = generate(user, system=system, max_tokens=2048, temperature=0.4)
+
+    text = response.strip()
+    if text.startswith("```"):
+        lines = text.split("\n")
+        start = 1
+        end = len(lines) - 1 if lines[-1].strip() == "```" else len(lines)
+        text = "\n".join(lines[start:end])
+
+    queries = json_mod.loads(text)
+    log.info("queries generated", count=len(queries))
+    return queries
+
+
+def download_stock_clips(shots: list[dict], output_dir: str, target_duration: float = 0, script_content: str | None = None) -> list[str]:
     """Download enough unique stock video clips to fill the target duration.
 
-    Downloads clips for each shot, then downloads additional unique clips
-    using varied search terms to avoid repetition.
+    If script_content is provided, uses Claude to generate search queries
+    matched to what's being discussed at each point in the script.
+    Otherwise falls back to shot descriptions.
     """
     from packages.clients.pexels import search_videos, download_video
 
@@ -53,23 +78,25 @@ def download_stock_clips(shots: list[dict], output_dir: str, target_duration: fl
     os.makedirs(clips_dir, exist_ok=True)
     log = logger.bind(service="rendering", action="download_stock")
 
-    # Collect all search queries — from shots + generic filler
-    queries = []
-    for shot in shots:
-        queries.append(_description_to_query(shot.get("description", "technology")))
+    # Generate queries matched to script content if available
+    if script_content and target_duration > 0:
+        try:
+            queries = _generate_script_queries(script_content, target_duration)
+        except Exception as e:
+            log.warning("script query generation failed, falling back", error=str(e))
+            queries = [_description_to_query(s.get("description", "technology")) for s in shots]
+    else:
+        queries = [_description_to_query(s.get("description", "technology")) for s in shots]
 
-    # Add diverse filler queries for when we need more clips
+    # Add filler queries in case we need more
     filler_queries = [
         "technology abstract", "computer code screen", "data center servers",
         "digital network connection", "circuit board macro", "city skyline night",
         "office workspace modern", "scientist laboratory", "world map digital",
         "futuristic interface", "coding programming", "cybersecurity lock",
         "satellite space", "factory robotics", "electronics manufacturing",
-        "cloud computing", "fiber optic cable", "military technology",
-        "drone aerial view", "neural network visualization", "stock market graph",
-        "research development", "engineer working", "dark room monitors",
-        "binary code matrix", "hologram display", "submarine underwater",
-        "radar screen green", "night vision footage", "control room monitors",
+        "cloud computing", "fiber optic cable", "drone aerial view",
+        "research development", "engineer working", "control room monitors",
     ]
 
     all_queries = queries + filler_queries
@@ -274,7 +301,7 @@ def render_video(
         log.info("target duration from voiceover", seconds=target_duration)
 
     # Step 1: Download enough unique stock clips to fill the duration
-    stock_paths = download_stock_clips(shots, output_dir, target_duration=target_duration)
+    stock_paths = download_stock_clips(shots, output_dir, target_duration=target_duration, script_content=script_content)
     log.info("stock clips downloaded", count=len(stock_paths))
 
     if not stock_paths:
@@ -294,10 +321,19 @@ def render_video(
 
     log.info("clips trimmed", count=len(trimmed_paths))
 
-    # Step 3: Concatenate
+    # Step 3: Generate intro/outro
+    from apps.rendering_service.branding import generate_intro, generate_outro
+    intro_path = os.path.join(output_dir, "intro.mp4")
+    outro_path = os.path.join(output_dir, "outro.mp4")
+    channel_name = os.getenv("CHANNEL_NAME", "TechPulse")
+    generate_intro(channel_name, intro_path)
+    generate_outro(channel_name, outro_path)
+
+    # Step 4: Concatenate: intro + clips + outro
+    all_clips = [intro_path] + trimmed_paths + [outro_path]
     concat_path = os.path.join(output_dir, "concat.mp4")
-    concatenate_clips(trimmed_paths, concat_path)
-    log.info("clips concatenated", total_clips=len(trimmed_paths))
+    concatenate_clips(all_clips, concat_path)
+    log.info("clips concatenated with intro/outro", total_clips=len(all_clips))
 
     # Step 4: Mix voiceover
     if voiceover_path and os.path.exists(voiceover_path):
