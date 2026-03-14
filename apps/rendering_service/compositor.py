@@ -41,43 +41,76 @@ def _get_video_duration(path: str) -> float:
     return float(result.stdout.strip())
 
 
-def download_stock_clips(shots: list[dict], output_dir: str) -> list[str]:
-    """Download stock video clips from Pexels for each shot.
+def download_stock_clips(shots: list[dict], output_dir: str, target_duration: float = 0) -> list[str]:
+    """Download enough unique stock video clips to fill the target duration.
 
-    Falls back to a generic tech query if the specific description finds nothing.
+    Downloads clips for each shot, then downloads additional unique clips
+    using varied search terms to avoid repetition.
     """
-    from packages.clients.pexels import search_and_download
+    from packages.clients.pexels import search_videos, download_video
 
     clips_dir = os.path.join(output_dir, "stock_clips")
     os.makedirs(clips_dir, exist_ok=True)
     log = logger.bind(service="rendering", action="download_stock")
-    log.info("downloading stock clips", count=len(shots))
 
+    # Collect all search queries — from shots + generic filler
+    queries = []
+    for shot in shots:
+        queries.append(_description_to_query(shot.get("description", "technology")))
+
+    # Add diverse filler queries for when we need more clips
+    filler_queries = [
+        "technology abstract", "computer code screen", "data center servers",
+        "digital network connection", "circuit board macro", "city skyline night",
+        "office workspace modern", "scientist laboratory", "world map digital",
+        "futuristic interface", "coding programming", "cybersecurity lock",
+        "satellite space", "factory robotics", "electronics manufacturing",
+        "cloud computing", "fiber optic cable", "military technology",
+        "drone aerial view", "neural network visualization", "stock market graph",
+        "research development", "engineer working", "dark room monitors",
+        "binary code matrix", "hologram display", "submarine underwater",
+        "radar screen green", "night vision footage", "control room monitors",
+    ]
+
+    all_queries = queries + filler_queries
     paths = []
-    fallback_queries = ["technology", "computer", "digital", "abstract light", "circuit board", "data"]
-    fallback_idx = 0
+    seen_video_ids = set()
+    clip_idx = 0
+    query_idx = 0
+    clips_duration = 0
+    clip_length = 6  # seconds per clip
 
-    for i, shot in enumerate(shots):
-        clip_path = os.path.join(clips_dir, f"stock_{i:03d}.mp4")
-        desc = shot.get("description", "technology")
+    # Calculate how many unique clips we need
+    needed_duration = max(target_duration, sum(s.get("duration_seconds", 4) for s in shots))
+    needed_clips = int(needed_duration / clip_length) + 5  # Some buffer
 
-        # Extract key visual terms from description
-        query = _description_to_query(desc)
-        result = search_and_download(query, clip_path)
+    log.info("downloading stock clips", needed_clips=needed_clips, needed_duration=round(needed_duration))
 
-        if not result:
-            # Fallback to generic tech footage
-            fb_query = fallback_queries[fallback_idx % len(fallback_queries)]
-            fallback_idx += 1
-            log.info("using fallback query", original=query, fallback=fb_query)
-            result = search_and_download(fb_query, clip_path)
+    while clip_idx < needed_clips and query_idx < len(all_queries):
+        query = all_queries[query_idx]
+        query_idx += 1
 
-        if result:
-            paths.append(result)
-            log.info("clip downloaded", scene=i + 1, query=query)
-        else:
-            log.warning("no clip found", scene=i + 1)
+        results = search_videos(query, per_page=5)
 
+        for video in results:
+            if video["id"] in seen_video_ids:
+                continue
+            if clip_idx >= needed_clips:
+                break
+
+            seen_video_ids.add(video["id"])
+            clip_path = os.path.join(clips_dir, f"stock_{clip_idx:03d}.mp4")
+
+            try:
+                download_video(video["download_url"], clip_path)
+                paths.append(clip_path)
+                clip_idx += 1
+                clips_duration += clip_length
+                log.info("clip downloaded", clip=clip_idx, query=query, video_id=video["id"])
+            except Exception as e:
+                log.warning("download failed", error=str(e), video_id=video["id"])
+
+    log.info("stock clips downloaded", total=len(paths), unique_videos=len(seen_video_ids))
     return paths
 
 
@@ -227,58 +260,34 @@ def render_video(
     trimmed_dir = os.path.join(output_dir, "trimmed")
     os.makedirs(trimmed_dir, exist_ok=True)
 
-    # Step 1: Download stock clips
-    stock_paths = download_stock_clips(shots, output_dir)
+    # Calculate target video duration from voiceover if available
+    target_duration = 0
+    if voiceover_path and os.path.exists(voiceover_path):
+        target_duration = _get_video_duration(voiceover_path)
+        log.info("target duration from voiceover", seconds=target_duration)
+
+    # Step 1: Download enough unique stock clips to fill the duration
+    stock_paths = download_stock_clips(shots, output_dir, target_duration=target_duration)
     log.info("stock clips downloaded", count=len(stock_paths))
 
     if not stock_paths:
         raise RuntimeError("No stock footage found for any shot")
 
-    # Calculate target video duration from voiceover if available
-    target_duration = None
-    if voiceover_path and os.path.exists(voiceover_path):
-        target_duration = _get_video_duration(voiceover_path)
-        log.info("target duration from voiceover", seconds=target_duration)
-
-    # Step 2: Trim clips and loop to fill the full audio duration
+    # Step 2: Trim each clip to 6 seconds
+    clip_duration = 6
     trimmed_paths = []
-    clip_duration_each = 5  # 5 seconds per clip for natural pacing
-    total_video_needed = target_duration or sum(s.get("duration_seconds", 5) for s in shots)
-
-    # First pass: trim all stock clips
-    base_clips = []
     for i, stock_path in enumerate(stock_paths):
         source_duration = _get_video_duration(stock_path)
-        # Use up to 8 seconds from each clip
-        use_duration = min(source_duration, 8)
+        use_duration = min(source_duration, clip_duration)
         start = min(1.0, max(0, source_duration - use_duration - 0.5))
 
         trimmed_path = os.path.join(trimmed_dir, f"trimmed_{i:03d}.mp4")
         trim_clip(stock_path, trimmed_path, use_duration, start=start)
-        base_clips.append(trimmed_path)
-        log.info("clip trimmed", scene=i + 1, duration=use_duration)
+        trimmed_paths.append(trimmed_path)
 
-    # Loop clips to fill the full duration
-    total_so_far = sum(_get_video_duration(c) for c in base_clips)
-    loop_idx = 0
-    while total_so_far < total_video_needed:
-        # Reuse clips in order, trimmed to different segments
-        source_clip = stock_paths[loop_idx % len(stock_paths)]
-        source_duration = _get_video_duration(source_clip)
-        use_duration = min(source_duration, 6)
-        # Use a different start point for variety
-        start = min(2.0, max(0, source_duration - use_duration - 1))
+    log.info("clips trimmed", count=len(trimmed_paths))
 
-        extra_path = os.path.join(trimmed_dir, f"loop_{loop_idx:03d}.mp4")
-        trim_clip(source_clip, extra_path, use_duration, start=start)
-        base_clips.append(extra_path)
-        total_so_far += use_duration
-        loop_idx += 1
-        log.info("looped clip added", total_so_far=round(total_so_far), target=round(total_video_needed))
-
-    trimmed_paths = base_clips
-
-    # Step 3: Concatenate with fades
+    # Step 3: Concatenate
     concat_path = os.path.join(output_dir, "concat.mp4")
     concatenate_clips(trimmed_paths, concat_path)
     log.info("clips concatenated", total_clips=len(trimmed_paths))
