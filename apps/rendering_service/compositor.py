@@ -284,16 +284,15 @@ def render_video(
         current_video = concat_path
         log.info("no voiceover, skipping audio mix")
 
-    # Step 5: Burn subtitles
+    # Step 5: Save SRT file separately (for YouTube upload, not burned in)
     final_path = os.path.join(output_dir, "final.mp4")
     if srt_content:
         srt_path = os.path.join(output_dir, "subtitles.srt")
         with open(srt_path, "w") as f:
             f.write(srt_content)
-        burn_subtitles(current_video, srt_path, final_path)
-        log.info("subtitles burned")
-    else:
-        os.rename(current_video, final_path)
+        log.info("srt saved separately", path=srt_path)
+
+    os.rename(current_video, final_path)
 
     file_size = os.path.getsize(final_path)
     result = {
