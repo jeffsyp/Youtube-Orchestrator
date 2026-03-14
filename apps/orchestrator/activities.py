@@ -541,24 +541,46 @@ async def package_video(run_id: int, channel_id: int, script: dict, visual: dict
 
 
 @activity.defn
-async def qa_check(run_id: int, channel_id: int, package: dict) -> dict:
+async def qa_check(run_id: int, channel_id: int, package: dict, rendered: dict) -> dict:
+    """Run QA checks on both the package metadata and the rendered video."""
     await _update_run_step(run_id, "qa_check")
     log = logger.bind(activity="qa_check", run_id=run_id)
-    log.info("running QA check")
+    log.info("running QA checks")
 
-    checks = {
+    # Package metadata checks
+    package_checks = {
         "has_title": bool(package.get("title")),
         "has_description": bool(package.get("description")),
         "has_tags": bool(package.get("tags")),
-        "has_srt": bool(package.get("srt_content")),
-        "passed": True,
+    }
+    package_passed = all(package_checks.values())
+
+    # Video QA checks
+    video_qa = {"passed": True, "issues": []}
+    video_path = rendered.get("path")
+    if video_path and os.path.exists(video_path):
+        from apps.rendering_service.qa import run_all_checks
+        voiceover_path = f"output/run_{run_id}/voiceover.mp3"
+        vo_path = voiceover_path if os.path.exists(voiceover_path) else None
+        video_qa = run_all_checks(video_path, voiceover_path=vo_path)
+    else:
+        video_qa["passed"] = False
+        video_qa["issues"] = ["No rendered video file found"]
+
+    result = {
+        "package_checks": package_checks,
+        "package_passed": package_passed,
+        "video_qa": video_qa,
+        "passed": package_passed and video_qa["passed"],
+        "issues": video_qa.get("issues", []),
     }
 
-    # Determine overall pass/fail
-    checks["passed"] = all([checks["has_title"], checks["has_description"], checks["has_tags"]])
+    if result["passed"]:
+        log.info("QA passed", checks=video_qa.get("checks_run", 0))
+    else:
+        log.warning("QA FAILED", issues=result["issues"])
 
-    log.info("QA check complete", **checks)
-    return checks
+    return result
 
 
 @activity.defn

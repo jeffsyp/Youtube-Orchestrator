@@ -156,11 +156,11 @@ class DailyContentPipeline:
             start_to_close_timeout=RENDER_TIMEOUT,
         )
 
-        # 15. QA check
+        # 15. QA check (package metadata + video quality)
         qa = await workflow.execute_activity(
             qa_check,
-            args=[run_id, channel_id, package],
-            start_to_close_timeout=ACTIVITY_TIMEOUT,
+            args=[run_id, channel_id, package, rendered],
+            start_to_close_timeout=timedelta(seconds=600),  # Video analysis takes time
         )
 
         # 16. Publish (human gate later)

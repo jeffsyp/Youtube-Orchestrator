@@ -285,6 +285,63 @@ def status():
 
 @cli.command()
 @click.argument("run_id", type=int)
+def qa_video(run_id):
+    """Run video QA checks on a completed run."""
+    async def _run():
+        # Find the video path
+        async with async_session() as session:
+            result = await session.execute(
+                text("SELECT content FROM assets WHERE run_id = :id AND asset_type = 'rendered_video' ORDER BY id DESC LIMIT 1"),
+                {"id": run_id},
+            )
+            row = result.fetchone()
+
+        if not row:
+            click.echo(f"No rendered video found for run {run_id}.")
+            return
+
+        import json as json_mod
+        render_info = json_mod.loads(row[0])
+        video_path = render_info.get("path")
+
+        if not video_path or not os.path.exists(video_path):
+            click.echo(f"Video file not found: {video_path}")
+            return
+
+        voiceover_path = f"output/run_{run_id}/voiceover.mp3"
+        vo_path = voiceover_path if os.path.exists(voiceover_path) else None
+
+        click.echo(f"\n=== Video QA for Run #{run_id} ===")
+        click.echo(f"Video: {video_path}\n")
+
+        from apps.rendering_service.qa import run_all_checks
+        report = run_all_checks(video_path, voiceover_path=vo_path)
+
+        for check in report["details"]:
+            status = "PASS" if check["passed"] else "FAIL"
+            click.echo(f"  [{status}] {check['check']}")
+            # Show key metrics
+            for key, val in check.items():
+                if key not in ("check", "passed", "issues"):
+                    click.echo(f"         {key}: {val}")
+            for issue in check.get("issues", []):
+                click.echo(f"         !! {issue}")
+            click.echo()
+
+        overall = "PASSED" if report["passed"] else "FAILED"
+        click.echo(f"Overall: {overall} ({report['checks_passed']}/{report['checks_run']} checks passed)")
+        if report["issues"]:
+            click.echo(f"\nIssues to fix:")
+            for issue in report["issues"]:
+                click.echo(f"  - {issue}")
+        click.echo()
+
+    import os
+    run_async(_run())
+
+
+@cli.command()
+@click.argument("run_id", type=int)
 def show_ideas(run_id):
     """Show generated ideas for a run, ready for selection."""
     async def _run():
