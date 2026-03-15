@@ -10,6 +10,11 @@ import subprocess
 import structlog
 from dotenv import load_dotenv
 
+# Fix Pillow compatibility for MoviePy (ANTIALIAS removed in Pillow 10+)
+import PIL.Image
+if not hasattr(PIL.Image, 'ANTIALIAS'):
+    PIL.Image.ANTIALIAS = PIL.Image.LANCZOS
+
 load_dotenv()
 logger = structlog.get_logger()
 
@@ -195,33 +200,30 @@ def _make_footage_clip(scene: dict, index: int, stock_dir: str):
     if use_duration < available:
         clip = clip.subclip(0, use_duration)
 
-    # Resize to 1080p
-    clip = clip.resize((1920, 1080))
+    # Resize to 1080p using ffmpeg (avoids Pillow ANTIALIAS issue)
+    clip = clip.resize(newsize=(1920, 1080))
 
     # Ken Burns: slow zoom from 100% to 108% over the clip duration
+    clip_dur = clip.duration
+
     def zoom_effect(get_frame, t):
         import numpy as np
-        from PIL import Image
+        import cv2
 
         frame = get_frame(t)
         h, w = frame.shape[:2]
 
-        # Zoom from 1.0 to 1.08 over the clip
-        progress = t / max(clip.duration, 1)
+        progress = t / max(clip_dur, 1)
         scale = 1.0 + 0.08 * progress
 
-        # Calculate crop region (zoom into center)
         new_w = int(w / scale)
         new_h = int(h / scale)
         x = (w - new_w) // 2
         y = (h - new_h) // 2
 
         cropped = frame[y:y + new_h, x:x + new_w]
-
-        # Resize back to original dimensions
-        img = Image.fromarray(cropped)
-        img = img.resize((w, h), Image.LANCZOS)
-        return np.array(img)
+        resized = cv2.resize(cropped, (w, h), interpolation=cv2.INTER_LINEAR)
+        return resized
 
     clip = clip.fl(zoom_effect)
     clip = clip.without_audio()
