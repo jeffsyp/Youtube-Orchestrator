@@ -205,6 +205,11 @@ def check_frozen_frames(video_path: str, max_frozen_seconds: float = 15.0) -> di
             f"Very low scene change rate ({changes_per_minute:.1f}/min) — video feels static"
         )
 
+    if changes_per_minute > 3 and changes_per_minute < 6:
+        result["issues"].append(
+            f"Scene change rate is low ({changes_per_minute:.1f}/min) — consider faster cuts"
+        )
+
     return result
 
 
