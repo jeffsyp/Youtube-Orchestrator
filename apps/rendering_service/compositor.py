@@ -161,13 +161,34 @@ def _description_to_query(description: str) -> str:
 
 
 def trim_clip(input_path: str, output_path: str, duration: float, start: float = 0) -> str:
-    """Trim a video clip to a specific duration with forced re-encode."""
+    """Trim a video clip to a specific duration with forced re-encode.
+
+    Detects slow-motion clips (high fps) and speeds them up to look natural.
+    """
+    # Detect source fps to catch slow-motion clips
+    fps_result = subprocess.run(
+        ["ffprobe", "-v", "quiet", "-select_streams", "v:0",
+         "-show_entries", "stream=r_frame_rate", "-of", "csv=p=0", input_path],
+        capture_output=True, text=True, timeout=10,
+    )
+    source_fps = 30
+    try:
+        num, den = fps_result.stdout.strip().split("/")
+        source_fps = int(num) / int(den)
+    except (ValueError, ZeroDivisionError):
+        pass
+
+    # If source is high fps (60+), speed up 2x to look natural instead of slow-mo
+    speed_filter = ""
+    if source_fps >= 48:
+        speed_filter = "setpts=0.5*PTS,"
+
     _run_ffmpeg(
         [
             "-ss", str(start),
             "-i", input_path,
             "-t", str(duration),
-            "-vf", "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:-1:-1:color=black,fps=30",
+            "-vf", f"{speed_filter}scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:-1:-1:color=black,fps=30",
             "-c:v", "libx264",
             "-preset", "fast",
             "-crf", "18",
