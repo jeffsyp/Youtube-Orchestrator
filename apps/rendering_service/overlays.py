@@ -17,18 +17,9 @@ from packages.prompts.overlays import generate_overlay_cues_prompt
 
 logger = structlog.get_logger()
 
-FONT_PATHS = [
-    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-    "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
-]
-
-
 def _get_font_path() -> str:
-    for path in FONT_PATHS:
-        if os.path.exists(path):
-            return path
-    return ""
+    from apps.rendering_service.fonts import FONT_PATH_STR
+    return FONT_PATH_STR
 
 
 def generate_cues(script_content: str, duration_seconds: float) -> list[dict]:
@@ -108,41 +99,70 @@ def build_drawtext_filter(cues: list[dict]) -> str:
         text = _escape_text(cue["text"])
         style = cue["style"]
         end = start + dur
+        fade_in = 0.4
+        fade_out = 0.4
 
         enable = f"between(t\\,{start}\\,{end})"
 
+        # Alpha envelope: fade in over fade_in seconds, hold, fade out over fade_out seconds
+        alpha = (
+            f"if(lt(t\\,{start + fade_in})\\,"
+            f"(t-{start})/{fade_in}\\,"
+            f"if(gt(t\\,{end - fade_out})\\,"
+            f"({end}-t)/{fade_out}\\,"
+            f"1))"
+        )
+
         if style == "section_title":
+            # Slide up from +20px while fading in
+            slide_y = (
+                f"if(lt(t\\,{start + fade_in})\\,"
+                f"(h/2-24)+20*(1-(t-{start})/{fade_in})\\,"
+                f"(h/2-24))"
+            )
             filters.append(
                 f"drawtext=fontfile='{font_esc}'"
                 f":text='{text}'"
                 f":fontsize=48"
-                f":fontcolor=white"
+                f":fontcolor=white@{{{alpha}}}"
                 f":x=(w-text_w)/2"
-                f":y=(h/2-24)"
+                f":y={slide_y}"
                 f":box=1:boxcolor=black@0.6:boxborderw=15"
-                f":shadowcolor=black@0.8:shadowx=2:shadowy=2"
+                f":shadowcolor=black@0.8:shadowx=3:shadowy=3"
                 f":enable='{enable}'"
             )
 
         elif style == "key_fact":
+            # Slide in from left while fading in
+            slide_x = (
+                f"if(lt(t\\,{start + fade_in})\\,"
+                f"60-40*(1-(t-{start})/{fade_in})\\,"
+                f"60)"
+            )
             filters.append(
                 f"drawtext=fontfile='{font_esc}'"
                 f":text='{text}'"
                 f":fontsize=32"
-                f":fontcolor=white"
-                f":x=60"
+                f":fontcolor=white@{{{alpha}}}"
+                f":x={slide_x}"
                 f":y=h-100"
                 f":box=1:boxcolor=black@0.5:boxborderw=10"
-                f":shadowcolor=black@0.8:shadowx=1:shadowy=1"
+                f":shadowcolor=black@0.8:shadowx=2:shadowy=2"
                 f":enable='{enable}'"
             )
 
         elif style == "emphasis":
+            # Scale-in effect via font size change + fade
+            scale_size = (
+                f"if(lt(t\\,{start + fade_in})\\,"
+                f"48+8*(t-{start})/{fade_in}\\,"
+                f"56)"
+            )
             filters.append(
                 f"drawtext=fontfile='{font_esc}'"
                 f":text='{text}'"
-                f":fontsize=56"
-                f":fontcolor=white"
+                f":fontsize={scale_size}"
+                f":fontcolor=white@{{{alpha}}}"
                 f":x=(w-text_w)/2"
                 f":y=(h/2-28)"
                 f":box=1:boxcolor=black@0.7:boxborderw=12"

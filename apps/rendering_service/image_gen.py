@@ -43,16 +43,8 @@ SUBTITLE_COLOR = (200, 200, 200)
 
 def _get_font(size: int) -> ImageFont.FreeTypeFont:
     """Get a font, falling back to default if system fonts aren't available."""
-    font_paths = [
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-        "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
-        "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf",
-    ]
-    for path in font_paths:
-        if os.path.exists(path):
-            return ImageFont.truetype(path, size)
-    return ImageFont.load_default()
+    from apps.rendering_service.fonts import get_font
+    return get_font(size)
 
 
 def _draw_gradient_bg(draw: ImageDraw.Draw, bg_color: tuple[int, int, int]):

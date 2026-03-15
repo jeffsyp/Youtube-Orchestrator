@@ -10,7 +10,7 @@ from packages.schemas.writing import IdeaVariant, OutlineDraft, ScriptDraft, Scr
 
 FAKE_CHANNEL = ChannelConfig(
     channel_id=1,
-    name="TechPulse",
+    name="Signal Intel",
     niche="tech explainers",
     search_terms=["AI breakthrough", "tech explained", "future technology"],
     tone="informative and engaging",

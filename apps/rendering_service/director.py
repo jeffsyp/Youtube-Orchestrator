@@ -118,7 +118,14 @@ Return ONLY a JSON array, no markdown:
     for scene in scenes:
         if "type" not in scene:
             continue
-        scene["duration"] = max(2, min(10, float(scene.get("duration", 5))))
+        if scene["type"] == "footage":
+            scene["duration"] = max(8, min(45, float(scene.get("duration", 20))))
+        elif scene["type"] == "stat_card":
+            scene["duration"] = max(3, min(5, float(scene.get("duration", 4))))
+        elif scene["type"] == "title_card":
+            scene["duration"] = max(2, min(4, float(scene.get("duration", 3))))
+        else:
+            scene["duration"] = max(2, min(10, float(scene.get("duration", 5))))
         if scene["type"] == "footage" and "search_query" not in scene:
             continue
         if scene["type"] == "stat_card" and "stat_text" not in scene:

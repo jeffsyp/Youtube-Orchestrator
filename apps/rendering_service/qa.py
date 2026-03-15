@@ -135,7 +135,7 @@ def check_audio_present(video_path: str) -> dict:
     return result
 
 
-def check_frozen_frames(video_path: str, max_frozen_seconds: float = 15.0) -> dict:
+def check_frozen_frames(video_path: str, max_frozen_seconds: float = 45.0) -> dict:
     """Detect frozen/stuck frames using scene change detection.
 
     If no scene changes are detected for more than max_frozen_seconds,
@@ -199,15 +199,15 @@ def check_frozen_frames(video_path: str, max_frozen_seconds: float = 15.0) -> di
             f"Video appears frozen for {max_gap:.1f}s starting at {max_gap_at:.1f}s"
         )
 
-    if changes_per_minute < 3:
+    if changes_per_minute < 1.5:
         result["passed"] = False
         result["issues"].append(
             f"Very low scene change rate ({changes_per_minute:.1f}/min) — video feels static"
         )
 
-    if changes_per_minute > 3 and changes_per_minute < 6:
+    if 1.5 <= changes_per_minute < 3:
         result["issues"].append(
-            f"Scene change rate is low ({changes_per_minute:.1f}/min) — consider faster cuts"
+            f"Scene change rate is low ({changes_per_minute:.1f}/min) — deliberate pacing"
         )
 
     return result

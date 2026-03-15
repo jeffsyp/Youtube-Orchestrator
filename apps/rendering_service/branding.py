@@ -18,15 +18,8 @@ HEIGHT = 1080
 
 
 def _get_font(size: int) -> ImageFont.FreeTypeFont:
-    paths = [
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-        "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
-    ]
-    for path in paths:
-        if os.path.exists(path):
-            return ImageFont.truetype(path, size)
-    return ImageFont.load_default()
+    from apps.rendering_service.fonts import get_font
+    return get_font(size)
 
 
 def _run_ffmpeg(args: list[str], description: str = ""):
