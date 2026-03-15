@@ -542,6 +542,40 @@ async def package_video(run_id: int, channel_id: int, script: dict, visual: dict
 
 
 @activity.defn
+async def generate_thumbnail(run_id: int, channel_id: int, package: dict) -> dict:
+    """Generate a branded YouTube thumbnail from the package title."""
+    await _update_run_step(run_id, "generate_thumbnail")
+    log = logger.bind(activity="generate_thumbnail", run_id=run_id)
+
+    from apps.rendering_service.thumbnail import generate_thumbnail as gen_thumb
+
+    output_dir = f"output/run_{run_id}"
+    os.makedirs(output_dir, exist_ok=True)
+    output_path = os.path.join(output_dir, "thumbnail.png")
+
+    title = package.get("thumbnail_text") or package.get("title", "")
+    try:
+        gen_thumb(title, output_path)
+    except Exception as e:
+        log.warning("thumbnail generation failed", error=str(e))
+        return {"status": "failed", "error": str(e)}
+
+    result = {"status": "generated", "path": os.path.abspath(output_path)}
+    await _execute(
+        """INSERT INTO assets (run_id, channel_id, asset_type, content)
+           VALUES (:run_id, :channel_id, :type, :content)""",
+        {
+            "run_id": run_id, "channel_id": channel_id,
+            "type": "thumbnail",
+            "content": json.dumps(result),
+        },
+    )
+
+    log.info("thumbnail generated", path=output_path)
+    return result
+
+
+@activity.defn
 async def qa_check(run_id: int, channel_id: int, package: dict, rendered: dict) -> dict:
     """Run QA checks on both the package metadata and the rendered video."""
     await _update_run_step(run_id, "qa_check")
@@ -585,8 +619,8 @@ async def qa_check(run_id: int, channel_id: int, package: dict, rendered: dict) 
 
 
 @activity.defn
-async def publish(run_id: int, channel_id: int, package: dict, qa: dict) -> dict:
-    """Phase 5: Will upload to YouTube. Currently logs as ready-to-publish."""
+async def publish(run_id: int, channel_id: int, package: dict, qa: dict, rendered: dict, thumbnail: dict | None = None) -> dict:
+    """Upload video to YouTube if OAuth2 is configured, otherwise mark as ready."""
     await _update_run_step(run_id, "publish")
     log = logger.bind(activity="publish", run_id=run_id)
 
@@ -594,14 +628,44 @@ async def publish(run_id: int, channel_id: int, package: dict, qa: dict) -> dict
         log.warning("QA check failed, skipping publish")
         return {"published": False, "reason": "QA check failed"}
 
-    # Phase 5 TODO: Real YouTube upload using OAuth2
-    # For now, mark as ready for manual upload
-    result = {
-        "published": False,
-        "status": "ready_for_manual_upload",
-        "title": package.get("title"),
-        "message": "Package is ready. YouTube upload requires OAuth2 setup (Phase 5).",
-    }
+    from apps.publishing_service.uploader import is_upload_configured, upload_video
+
+    video_path = rendered.get("path")
+    if not video_path or not os.path.exists(video_path):
+        log.error("no rendered video found for upload")
+        return {"published": False, "reason": "No rendered video file"}
+
+    if not is_upload_configured():
+        log.info("youtube oauth2 not configured, marking as ready for manual upload")
+        return {
+            "published": False,
+            "status": "ready_for_manual_upload",
+            "title": package.get("title"),
+            "video_path": video_path,
+        }
+
+    # Resolve paths for optional assets
+    run_dir = f"output/run_{run_id}"
+    captions_path = os.path.join(run_dir, "subtitles.srt")
+    captions = captions_path if os.path.exists(captions_path) else None
+    thumb_path = thumbnail.get("path") if thumbnail and thumbnail.get("status") == "generated" else None
+
+    result = upload_video(
+        video_path=video_path,
+        title=package.get("title", ""),
+        description=package.get("description", ""),
+        tags=package.get("tags", []),
+        category=package.get("category", "Science & Technology"),
+        privacy_status="private",  # Always upload as private first
+        captions_path=captions,
+        thumbnail_path=thumb_path,
+    )
+
+    if result.get("published"):
+        await _execute(
+            "UPDATE content_runs SET status = 'published' WHERE id = :run_id",
+            {"run_id": run_id},
+        )
 
     log.info("publish step complete", **result)
     return result

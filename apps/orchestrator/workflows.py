@@ -14,6 +14,7 @@ with workflow.unsafe.imports_passed_through():
         extract_templates,
         generate_variants,
         generate_voiceover,
+        generate_thumbnail,
         mark_run_awaiting_approval,
         package_video,
         publish,
@@ -156,19 +157,27 @@ class DailyContentPipeline:
             start_to_close_timeout=RENDER_TIMEOUT,
         )
 
-        # 15. QA check (package metadata + video quality)
+        # 15. Generate thumbnail
+        thumbnail = await workflow.execute_activity(
+            generate_thumbnail,
+            args=[run_id, channel_id, package],
+            start_to_close_timeout=ACTIVITY_TIMEOUT,
+        )
+
+        # 16. QA check (package metadata + video quality)
         qa = await workflow.execute_activity(
             qa_check,
             args=[run_id, channel_id, package, rendered],
             start_to_close_timeout=timedelta(seconds=600),  # Video analysis takes time
         )
 
-        # 16. Publish (human gate later)
+        # 17. Publish to YouTube (or mark as ready)
         result = await workflow.execute_activity(
             publish,
-            args=[run_id, channel_id, package, qa],
-            start_to_close_timeout=ACTIVITY_TIMEOUT,
+            args=[run_id, channel_id, package, qa, rendered, thumbnail],
+            start_to_close_timeout=timedelta(seconds=600),  # Upload can be slow
         )
 
         result["video_path"] = rendered.get("path")
+        result["thumbnail_path"] = thumbnail.get("path")
         return result

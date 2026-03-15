@@ -8,4 +8,5 @@ __pycache__/
 dist/
 .pytest_cache/
 output/
+*.mp4
 .claude/
