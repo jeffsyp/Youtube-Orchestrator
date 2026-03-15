@@ -37,14 +37,14 @@ def create_visual_plan(script_content: str, duration_seconds: float, title: str)
 
     wpm = 150
     words = len(script_content.split())
-    num_scenes = int(duration_seconds / 5) + 2  # ~5 seconds per scene
+    num_scenes = int(duration_seconds / 20) + 5  # ~20 seconds per scene, fewer longer clips
 
     system = (
-        "You are a professional YouTube video director. You read narration scripts and create "
-        "visual plans that make the content compelling. You think about PACING — fast cuts during "
-        "energy moments, longer holds during emotional points. You think about VARIETY — mixing "
-        "stock footage with stat cards and title cards so the viewer never gets bored. You think "
-        "about RELEVANCE — every visual reinforces what the narrator is saying at that exact moment."
+        "You are a professional YouTube video director. You create CALM, DELIBERATE visual plans. "
+        "You know that good faceless videos let clips BREATHE — holding on a single shot for 20-40 seconds "
+        "while the narrator talks, not cutting every 5 seconds like a slideshow. "
+        "You use stat cards and title cards as punctuation — not filler. "
+        "You think about what the viewer is FEELING, not just what they're seeing."
     )
 
     user = f"""Read this script and create a scene-by-scene visual plan for a {duration_seconds/60:.0f}-minute video.
@@ -60,39 +60,37 @@ SCENE TYPES YOU CAN USE:
 
 1. "footage" — Stock video clip from Pexels
    - search_query: 2-4 word CONCRETE search (e.g., "person typing laptop", "city traffic night")
-   - duration: 4-8 seconds
-   - text_overlay: optional short text shown on the clip (or null)
-   - IMPORTANT: queries must be REAL FILMABLE scenes, not abstract concepts
-   - Speed up any b-roll that might be slow-mo by describing ACTIVE scenes
+   - duration: 15-40 seconds (LET IT BREATHE — this is not a slideshow)
+   - text_overlay: optional short text shown briefly on the clip (or null)
+   - IMPORTANT: queries must be REAL FILMABLE scenes with natural movement
+   - Think: what would a documentary show during this narration?
 
 2. "stat_card" — Full-screen stat/number on dark background
    - stat_text: The big number or stat (e.g., "56%", "$3.2B", "10x")
    - subtitle: One line of context (e.g., "of Americans use AI monthly")
    - duration: 3-4 seconds
-   - Use these for impactful numbers, percentages, dollar amounts
-   - These break up footage and make key stats memorable
+   - Use SPARINGLY — only for the 3-5 most impactful numbers in the entire video
 
 3. "title_card" — Section heading on dark background
    - title_text: Section title (e.g., "The Paradox", "Why People Don't Trust It")
    - duration: 2-3 seconds
-   - Use at major topic transitions (like chapter markers)
+   - Use only at major topic transitions (3-5 per video max)
 
-DIRECTING RULES:
-- Start with a footage scene (NOT a title card — hook the viewer immediately)
-- Use stat_cards when a key number is mentioned — make it visual
-- Use title_cards at major section transitions (4-6 per video)
-- Never put two stat_cards or title_cards back to back — always have footage between them
-- Vary footage duration: 4s for fast energy, 6-8s for emotional/reflective moments
-- Search queries should describe ACTIVE scenes with MOVEMENT (people doing things, not static objects)
-- Add text_overlay on footage only for key terms or names (not stats — use stat_cards for those)
-- Total duration of all scenes should equal ~{int(duration_seconds)} seconds
+CRITICAL DIRECTING RULES:
+- FEWER SCENES IS BETTER. Aim for {num_scenes}-{num_scenes + 5} total scenes, not 50+
+- Footage clips should be 15-40 seconds each. Let them hold while the narrator talks.
+- Only 3-5 stat cards in the ENTIRE video — the most impactful numbers only
+- Only 3-5 title cards — at major section breaks
+- Search queries should find PEOPLE DOING THINGS (not static objects or landscapes)
+- Total duration of all scenes must equal ~{int(duration_seconds)} seconds
+- 70-80% of the video should be footage scenes
 
 Return ONLY a JSON array, no markdown:
 [
-  {{"type": "footage", "duration": 5, "search_query": "person scrolling phone quickly", "text_overlay": null}},
-  {{"type": "title_card", "duration": 3, "title_text": "The Numbers"}},
+  {{"type": "footage", "duration": 25, "search_query": "person scrolling phone cafe", "text_overlay": null}},
   {{"type": "stat_card", "duration": 4, "stat_text": "56%", "subtitle": "use AI every month"}},
-  {{"type": "footage", "duration": 6, "search_query": "office workers busy typing", "text_overlay": "Reluctant Adoption"}}
+  {{"type": "footage", "duration": 30, "search_query": "office workers at desks typing", "text_overlay": "Reluctant Adoption"}},
+  {{"type": "title_card", "duration": 3, "title_text": "The Numbers"}}
 ]"""
 
     response = generate(user, system=system, max_tokens=8192, temperature=0.5)
