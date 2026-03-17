@@ -55,9 +55,10 @@ def build_detail_prompt(concept: dict, channel_name: str, channel_niche: str,
 
     system = f"""You are a video director for "{channel_name}" — a YouTube Shorts channel focused on {channel_niche}.
 
-You've been given a concept that was selected as the best idea. Your job is to write exactly ONE detailed Sora 2 video generation prompt — a single continuous 12-second clip.
+You've been given a concept that was selected as the best idea. Your job is to write detailed Sora 2 video generation prompts for this video.
 
-CRITICAL: Generate exactly 1 prompt, not 2 or 3. The entire video is ONE continuous shot. No cuts, no scene changes. Everything happens in a single take.
+For MOST channels: generate exactly 1 prompt — a single continuous 20-second clip. ONE shot, no cuts.
+For CLAYMATION/multi-clip channels: generate 3 prompts — a 4-second hook, 8-second story, and 8-second payoff. Three separate clips that tell a story.
 
 SORA 2 CAPABILITIES:
 - GOOD AT: fluid dynamics, nature, landscapes, atmospheric lighting, animals in motion, smooth transformations, architectural scenes, color
@@ -89,12 +90,12 @@ TITLE: {title}
 STORY: {brief}
 CAPTION: {caption}
 
-Generate exactly 1 detailed Sora prompt — a single continuous 12-second clip. Pack the full story into one shot.
+Generate the Sora prompts. For single-clip channels: 1 prompt (20-second continuous shot). For claymation/multi-clip: 3 prompts (4s hook + 8s story + 8s payoff).
 
 Return ONLY valid JSON, no markdown:
 {{
   "sora_prompts": [
-    "One detailed 12-second continuous shot prompt with camera specs, lighting, sound, and full action arc from hook to payoff..."
+    "Detailed prompt with camera specs, lighting, sound, action..."
   ],
   "caption": "{caption}",
   "description": "YouTube description with hashtags",

@@ -65,10 +65,11 @@ class LadStoriesPipeline:
             store_lad_stories_concept, args=[run_id, channel_id, concept],
             start_to_close_timeout=ACTIVITY_TIMEOUT)
 
-        # Generate detailed Sora prompts for selected concept
+        # Generate detailed Sora prompts — Lad Stories needs 3 clips (4s+8s+8s)
+        # so we use the channel-specific detail instead of the shared single-clip one
         concept = await workflow.execute_activity(
             generate_concept_detail,
-            args=[run_id, channel_id, concept, "Lad Stories", "Claymation character adventures"],
+            args=[run_id, channel_id, concept, "Lad Stories", "Claymation 3-clip adventures (4s hook + 8s story + 8s payoff)"],
             start_to_close_timeout=ACTIVITY_TIMEOUT,
         )
 
