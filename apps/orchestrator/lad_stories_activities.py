@@ -141,18 +141,21 @@ async def generate_lad_stories_clips(run_id: int, channel_id: int, concept: dict
         from packages.prompts.lad_stories import refine_sora_prompt
 
         channel_config = await _get_channel_config_raw(channel_id)
-        sora_duration = channel_config.get("sora_duration", 8)
         sora_size = channel_config.get("sora_size", "720x1280")
+
+        # Lad Stories uses different durations: 4s hook, 8s story, 8s payoff
+        clip_durations = [4, 8, 8]
 
         for i, _ in enumerate(sora_prompts):
             refined = refine_sora_prompt(concept, i, len(sora_prompts))
             output_path = os.path.join(output_dir, f"clip_{i:02d}.mp4")
+            duration = clip_durations[i] if i < len(clip_durations) else 8
 
-            log.info("generating sora clip", clip=i + 1, total=len(sora_prompts))
+            log.info("generating sora clip", clip=i + 1, total=len(sora_prompts), duration=duration)
             result = await generate_video_async(
                 prompt=refined,
                 output_path=output_path,
-                duration=sora_duration,
+                duration=duration,
                 size=sora_size,
                 timeout=1200,
             )

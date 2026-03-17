@@ -34,21 +34,35 @@ THE CHARACTER:
 THE STYLE:
 {STYLE_BIBLE}
 
-STORY RULES:
-- NO dialogue — stories are told entirely through animation, body language, and sound effects
-- Each story is a 3-clip mini adventure with a clear setup → complication → punchline/payoff
-- Lad can be in ANY setting: forests, space, underwater, cities, mountains, kitchens, deserts
-- Other clay characters can appear (animals, creatures, objects) — all in the same claymation style
-- Stories should be FUNNY, CHARMING, or SURPRISING — physical comedy works great
-- The humor comes from Lad's reactions and the absurdity of the situation
-- Think Shaun the Sheep, Wallace & Gromit, or Pingu vibes — no words needed
+THE HOOK IS EVERYTHING:
+The first clip (4 seconds) must make the viewer think "WOAH what's going on?!" within the first 2 seconds. By the time they process what they're seeing, clip 2 is already happening and they HAVE to stay to find out what happens next.
 
-STORY TYPES TO MIX:
-- ADVENTURE: Lad explores a new place and discovers something unexpected
-- COMEDY: Lad tries to do something simple and it goes hilariously wrong
-- DISCOVERY: Lad finds a mysterious object/creature and interacts with it
-- CHALLENGE: Lad faces an obstacle and finds a creative solution
-- FRIENDSHIP: Lad meets a new clay creature and they have an interaction
+GOOD HOOKS (viewer instantly confused/intrigued):
+- Lad is mid-fall off a cliff, arms flailing — HOW did he get here?
+- Lad is running full speed from something huge chasing him — WHAT is that?
+- Lad is frozen mid-air, everything around him is chaos — what happened?
+- Something massive is growing/appearing right behind Lad and he doesn't notice yet
+- Lad is clinging to something flying through the sky — where is he going?
+
+BAD HOOKS (viewer scrolls away):
+- Lad walking through a forest (boring, nothing happening)
+- Lad standing and looking at something (static, no urgency)
+- Lad discovering a mushroom/flower/object (too slow, seen it before)
+- Any calm establishing shot before action starts
+
+STORY STRUCTURE — 3 clips of DIFFERENT lengths:
+- CLIP 1 (4 seconds): THE HOOK — Lad is already mid-action in something wild. The viewer must be confused/intrigued within 2 seconds. This clip is SHORT and punchy.
+- CLIP 2 (8 seconds): THE STORY — now we see what's actually happening. The situation develops, escalates, or reveals itself. This is the longest clip.
+- CLIP 3 (8 seconds): THE PAYOFF — satisfying conclusion, twist, or punchline. Leave the viewer wanting to rewatch.
+
+STORY RULES:
+- NO dialogue — stories told entirely through animation, body language, and sound effects
+- Lad can be in ANY setting: forests, space, underwater, cities, mountains, volcanoes, clouds
+- Other clay characters can appear (animals, creatures, objects) — all in the same claymation style
+- Think Shaun the Sheep, Wallace & Gromit, or Pingu vibes
+- The story should make someone want to REWATCH and SHARE
+
+NEVER include emojis in titles, captions, or descriptions.
 
 EVERY PROMPT MUST INCLUDE the character bible and style bible to maintain consistency."""
 
@@ -73,49 +87,47 @@ def build_lad_stories_concepts_prompt(
 
     system = _SYSTEM
 
-    user = f"""Generate {count} Lad Stories concepts. Each is a 3-clip claymation adventure.
+    user = f"""Generate {count} Lad Stories concepts. Each is a 3-clip claymation adventure with a KILLER hook.
 
-CRITICAL: Every Sora prompt MUST start with the exact same character + style description to maintain consistency:
+CRITICAL: Every Sora prompt MUST start with the exact same character + style description:
 "{CHARACTER_BIBLE} {STYLE_BIBLE}"
 
-Then add the specific scene action after that style block.
+CLIP DURATIONS: Clip 1 = 4 seconds (short, punchy hook). Clip 2 = 8 seconds (story). Clip 3 = 8 seconds (payoff).
 
 EXAMPLE:
 {{
-  "title": "Lad Finds a Magic Mushroom",
+  "title": "Lad and the Runaway Boulder",
   "sora_prompts": [
-    "{CHARACTER_BIBLE} {STYLE_BIBLE} Lad is walking through a tiny clay forest diorama with handmade felt trees and paper leaves. He spots a glowing mushroom on the ground and tilts his head curiously, leaning toward it. The mushroom pulses with a soft warm light. Camera at eye level, gentle stop-motion animation.",
-    "{CHARACTER_BIBLE} {STYLE_BIBLE} Same clay forest diorama. Lad pokes the glowing mushroom with one stubby arm. The mushroom suddenly grows to three times Lad's size, launching him backwards. He tumbles across the mossy ground, arms flailing. The giant mushroom wobbles and glows brighter. Comical bouncy sound effects.",
-    "{CHARACTER_BIBLE} {STYLE_BIBLE} Same clay forest. Lad cautiously peeks out from behind a tiny felt bush at the giant glowing mushroom. He slowly approaches and climbs on top of it. The mushroom lifts off the ground like a hot air balloon, carrying Lad upward through the paper leaf canopy into a starry clay sky. Lad looks down in wonder, arms raised in excitement. Whimsical magical sounds."
+    "{CHARACTER_BIBLE} {STYLE_BIBLE} Lad is sprinting full speed directly toward the camera on a narrow clay mountain path, eyes wide in panic, stubby legs pumping. Behind him, a massive round clay boulder twice his size is rolling and gaining speed, crushing tiny clay flowers and pebbles. Dust clouds puff up with each bounce. Camera low angle looking up at Lad running toward us. 4 seconds, fast paced, dramatic bouncy sounds.",
+    "{CHARACTER_BIBLE} {STYLE_BIBLE} Same clay mountain path. Lad spots a tiny side tunnel in the cliff wall and dives into it just as the boulder thunders past, missing him by inches. The boulder smashes through a clay wall at the end of the path, revealing a hidden valley full of glowing crystal formations. Lad peeks out of the tunnel, sees the crystals, and his eyes go wide. Camera follows the action, 8 seconds, dramatic then wonder-filled sounds.",
+    "{CHARACTER_BIBLE} {STYLE_BIBLE} Same clay mountain setting. Lad cautiously walks into the crystal valley. He touches one crystal and it chimes like a bell. He touches another — different note. He starts bouncing between crystals making a little melody, getting more excited with each note. The whole valley starts glowing in rhythm with his music. Lad bounces with joy. Camera pulls back to show the entire glowing valley. 8 seconds, musical chiming sounds building to a crescendo."
   ],
-  "caption": "He should NOT have poked it",
-  "description": "Lad finds a mushroom in the forest and immediately regrets touching it. #claymation #animation #funny #Shorts",
+  "caption": "That boulder did him a favor",
+  "description": "Lad runs for his life but finds something amazing. #claymation #animation #funny #Shorts",
   "tags": ["claymation", "stop motion", "funny animation", "clay character", "Shorts"],
-  "score": 9.3
+  "score": 9.5
 }}
 
 RULES:
-- 3 prompts per story — setup / complication / payoff
-- EVERY prompt starts with the full character + style bible (copy-paste it exactly)
-- Settings should be miniature clay dioramas — everything looks handmade
-- No human dialogue — express everything through Lad's body language
-- Funny, charming, surprising — not dark or scary
-- Vary the settings and story types
+- Clip 1 MUST be a 4-second hook that makes the viewer say "WHAT is happening?!"
+- Clips 2 and 3 are 8 seconds each — story and payoff
+- EVERY prompt starts with the full character + style bible
+- Settings are miniature clay dioramas
+- No dialogue — body language and sound effects only
+- Must be something you'd REWATCH and SHARE
 {past_text}
 
 Return ONLY valid JSON array, no markdown:
 [
   {{
-    "title": "Under 50 chars",
-    "sora_prompts": ["Full bible + scene 1...", "Full bible + scene 2...", "Full bible + scene 3..."],
-    "caption": "Short funny caption",
+    "title": "Under 50 chars, no emojis",
+    "sora_prompts": ["4sec hook...", "8sec story...", "8sec payoff..."],
+    "caption": "Short funny caption, no emojis",
     "description": "Description with #claymation #animation #Shorts",
     "tags": ["claymation", "stop motion", "tag3", "tag4", "Shorts"],
     "score": 8.5
   }}
-]
-
-NEVER include emojis in titles, captions, or descriptions. Emojis render as empty boxes in video subtitles."""
+]"""
     return system, user
 
 
@@ -134,11 +146,11 @@ def refine_sora_prompt(concept: dict, clip_index: int, total_clips: int) -> str:
 
     if total_clips > 1:
         if clip_index == 0:
-            style_suffix = " Opening shot — Lad is already in the scene doing something. No title cards, no empty establishing shots."
+            style_suffix = " HOOK SHOT — 4 seconds only. Lad is ALREADY mid-action in something dramatic. The viewer must be hooked in 2 seconds. No walking, no standing, no establishing shots. Pure action from frame 1."
         elif clip_index == total_clips - 1:
-            style_suffix = " Final shot — the funny payoff or surprising conclusion. Same diorama set and lighting."
+            style_suffix = " PAYOFF SHOT — 8 seconds. The satisfying conclusion or twist. Same diorama set and lighting. Leave the viewer wanting to rewatch."
         else:
-            style_suffix = " Middle shot — the complication. Something unexpected happens. Same set, same lighting, same Lad."
+            style_suffix = " STORY SHOT — 8 seconds. The situation develops and escalates. Same set, same lighting, same Lad. Keep the momentum from the hook."
     else:
         style_suffix = ""
 
