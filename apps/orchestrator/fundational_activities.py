@@ -221,7 +221,7 @@ Score 1-10: Does it show a satisfying building step? Does it match the prompt? V
 Return JSON only (no markdown):
 {{"match_score": 7, "quality_score": 8, "satisfying_score": 7, "passed": true, "issues": [], "description": "What appears"}}
 
-Set "passed" to false if match_score < 8.5 or quality_score < 8.5."""
+Set "passed" to false if match_score < 6 or quality_score < 6."""
 
         try:
             response = review_video(clip_path, review_prompt)

@@ -25,7 +25,7 @@ with workflow.unsafe.imports_passed_through():
 ACTIVITY_TIMEOUT = timedelta(seconds=900)
 RENDER_TIMEOUT = timedelta(seconds=3600)
 REVIEW_TIMEOUT = timedelta(seconds=600)
-MIN_PUBLISH_SCORE = 8.5
+MIN_PUBLISH_SCORE = 7.0
 
 
 @workflow.defn

@@ -90,8 +90,8 @@ async def retry_failed_clips(
     log = logger.bind(activity="retry_failed_clips", run_id=run_id)
 
     # Code-level threshold enforcement — don't trust Gemini's "passed" field alone
-    MIN_MATCH = 8.5
-    MIN_QUALITY = 8.5
+    MIN_MATCH = 6.0
+    MIN_QUALITY = 6.0
     failed = []
     for r in prescreen_results:
         if not r.get("passed", True):

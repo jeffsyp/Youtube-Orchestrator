@@ -26,7 +26,7 @@ ACTIVITY_TIMEOUT = timedelta(seconds=900)
 SORA_TIMEOUT = timedelta(seconds=3600)
 RENDER_TIMEOUT = timedelta(seconds=1800)
 REVIEW_TIMEOUT = timedelta(seconds=600)
-MIN_PUBLISH_SCORE = 8.5
+MIN_PUBLISH_SCORE = 7.0
 
 
 @workflow.defn

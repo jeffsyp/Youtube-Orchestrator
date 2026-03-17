@@ -247,7 +247,7 @@ Return JSON only (no markdown):
   "description": "Brief description of what actually appears in the clip"
 }}
 
-Set "passed" to false if match_score < 8.5 or quality_score < 8.5, or if clip 1 has hook_score < 8.5."""
+Set "passed" to false if match_score < 6 or quality_score < 6, or if clip 1 has hook_score < 6."""
 
         try:
             response = review_video(clip_path, review_prompt)
