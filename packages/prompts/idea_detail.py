@@ -33,10 +33,12 @@ Return ONLY valid JSON array, no markdown:
     return system_text, user
 
 
-def build_detail_prompt(concept: dict, channel_name: str, channel_niche: str) -> tuple[str, str]:
+def build_detail_prompt(concept: dict, channel_name: str, channel_niche: str,
+                        feedback: str = "") -> tuple[str, str]:
     """Generate full detailed Sora prompts for a selected concept.
 
     This is the Phase 2 call — all creative energy focused on one concept.
+    Feedback from past Gemini reviews is injected to improve quality over time.
     """
     title = concept.get("title", "")
     brief = concept.get("brief", "")
@@ -60,7 +62,9 @@ EVERY PROMPT MUST INCLUDE:
 STORY ARC:
 - Clip 1: Hook — the viewer sees something interesting from frame 1. No establishing shots.
 - Clip 2: Escalation — the situation develops, something new happens.
-- Clip 3 (optional): Payoff — satisfying conclusion or twist."""
+- Clip 3 (optional): Payoff — satisfying conclusion or twist.
+
+{feedback}"""
 
     user = f"""Write the Sora 2 prompts for this concept:
 

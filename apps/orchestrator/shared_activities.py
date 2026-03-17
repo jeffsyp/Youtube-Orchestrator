@@ -43,13 +43,23 @@ async def generate_concept_detail(
     await _update_step()
 
     from apps.orchestrator.concept_engine import generate_detailed_prompts
+    from apps.orchestrator.feedback_loop import get_accumulated_feedback
     from packages.prompts.idea_detail import build_detail_prompt
+
+    # Pull accumulated feedback from past reviews
+    feedback = await get_accumulated_feedback(channel_id)
+    if feedback:
+        log.info("injecting feedback into prompts", feedback_length=len(feedback))
+
+    # Build detail prompt builder with feedback injected
+    def detail_builder(concept, name, niche):
+        return build_detail_prompt(concept, name, niche, feedback=feedback)
 
     result = await generate_detailed_prompts(
         concept=concept,
         channel_name=channel_name,
         channel_niche=channel_niche,
-        detail_prompt_builder=build_detail_prompt,
+        detail_prompt_builder=detail_builder,
     )
 
     log.info("concept detail generated", clips=len(result.get("sora_prompts", [])))

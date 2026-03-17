@@ -429,6 +429,10 @@ async def review_synthzoo_video(run_id: int, channel_id: int, rendered: dict, co
         },
     )
 
+    # Store feedback for the feedback loop
+    from apps.orchestrator.feedback_loop import store_feedback
+    await store_feedback(channel_id, review)
+
     log.info("video review complete",
              overall=review.get("overall_score"),
              recommendation=review.get("publish_recommendation"),

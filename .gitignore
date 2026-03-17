@@ -10,3 +10,4 @@ dist/
 output/
 *.mp4
 .claude/
+youtube_token_*.json

@@ -463,5 +463,9 @@ Return JSON (no markdown):
         {"run_id": run_id, "channel_id": channel_id, "type": "video_review", "content": json.dumps(review)},
     )
 
+    # Store feedback for the feedback loop
+    from apps.orchestrator.feedback_loop import store_feedback
+    await store_feedback(channel_id, review)
+
     log.info("review complete", overall=review.get("overall_score"))
     return review
