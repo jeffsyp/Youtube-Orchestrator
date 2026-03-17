@@ -17,6 +17,13 @@ def build_ideas_prompt_wrapper(system_text: str, past_titles: list[str] | None =
         past_text = f"\nAVOID THESE CONCEPTS (already made):\n" + "\n".join(f"- {t}" for t in recent)
 
     user = f"""Generate {count} concept ideas. For each, provide ONLY a pitch — no Sora prompts yet.
+
+EVERY concept must answer these 3 questions in the "brief":
+1. What's the HOOK? (what grabs attention in the first 2 seconds)
+2. What goes WRONG or UNEXPECTED? (the twist/escalation)
+3. What's the PAYOFF? (satisfying ending)
+
+Keep concepts SIMPLE and CONCRETE — describe what the viewer literally sees. Avoid abstract or overly complex scenarios that AI video can't execute convincingly.
 {past_text}
 
 Return ONLY valid JSON array, no markdown:
@@ -63,10 +70,14 @@ EVERY PROMPT MUST INCLUDE:
 - Specific material/texture/color details
 - REPEAT the same subject description, environment, and lighting in every prompt for visual continuity
 
-SINGLE SHOT STRUCTURE (all in one continuous 12-second clip):
-- Seconds 0-2: Hook — something interesting visible from frame 1
-- Seconds 3-8: Development — the action progresses
-- Seconds 9-12: Payoff — satisfying conclusion
+THE FORMULA THAT WORKS (learned from our best-performing video):
+1. INSTANT HOOK (first 2 seconds) — something is ALREADY happening. No establishing shots.
+2. ESCALATION (seconds 3-12) — something goes WRONG or UNEXPECTED. The surprise is what makes it rewatchable.
+3. PAYOFF (final seconds) — satisfying conclusion, twist, or comedic punchline.
+
+The concept must be SIMPLE enough for AI to execute. "A seed grows too big" = good. "Liquid chrome sphere absorbing dimensional color clouds" = too abstract and will look like noise.
+
+Keep it CONCRETE and VISUAL — describe what the viewer literally SEES, not abstract concepts.
 
 Everything in ONE continuous camera movement. No cuts.
 
