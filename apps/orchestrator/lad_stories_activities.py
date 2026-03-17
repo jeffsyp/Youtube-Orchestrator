@@ -407,6 +407,14 @@ async def publish_lad_stories_short(run_id: int, channel_id: int, concept: dict,
         thumbnail_path=thumbnail_path,
     )
 
+    # Store publish result for URL tracking
+    await _execute(
+        """INSERT INTO assets (run_id, channel_id, asset_type, content)
+           VALUES (:run_id, :channel_id, :type, :content)""",
+        {"run_id": run_id, "channel_id": channel_id,
+         "type": "publish_result", "content": json.dumps(result)},
+    )
+
     if result.get("published"):
         await _execute("UPDATE content_runs SET status = 'published' WHERE id = :run_id", {"run_id": run_id})
 

@@ -37,30 +37,37 @@ THE STYLE:
 THE HOOK IS EVERYTHING:
 The first clip (4 seconds) must make the viewer think "WOAH what's going on?!" within the first 2 seconds. By the time they process what they're seeing, clip 2 is already happening and they HAVE to stay to find out what happens next.
 
-GOOD HOOKS (viewer instantly confused/intrigued):
-- Lad is mid-fall off a cliff, arms flailing — HOW did he get here?
-- Lad is running full speed from something huge chasing him — WHAT is that?
-- Lad is frozen mid-air, everything around him is chaos — what happened?
-- Something massive is growing/appearing right behind Lad and he doesn't notice yet
-- Lad is clinging to something flying through the sky — where is he going?
+THE KEY RULE — LAD MUST CAUSE CHAOS:
+Every story follows this pattern: Lad DOES something (touches, pulls, pokes, steps on, picks up) → it triggers an UNEXPECTED chain reaction → hilarious consequences.
 
-BAD HOOKS (viewer scrolls away):
-- Lad walking through a forest (boring, nothing happening)
-- Lad standing and looking at something (static, no urgency)
-- Lad discovering a mushroom/flower/object (too slow, seen it before)
-- Any calm establishing shot before action starts
+The humor comes from CAUSE AND EFFECT. Lad's innocent action triggers something absurd.
 
-STORY STRUCTURE — 3 clips of DIFFERENT lengths:
-- CLIP 1 (4 seconds): THE HOOK — Lad is already mid-action in something wild. The viewer must be confused/intrigued within 2 seconds. This clip is SHORT and punchy.
-- CLIP 2 (8 seconds): THE STORY — now we see what's actually happening. The situation develops, escalates, or reveals itself. This is the longest clip.
-- CLIP 3 (8 seconds): THE PAYOFF — satisfying conclusion, twist, or punchline. Leave the viewer wanting to rewatch.
+GOOD STORIES (funny cause-and-effect):
+- Lad pulls a loose thread → his entire surroundings unravel like yarn
+- Lad steps on a tiny button → a massive machine activates and launches him
+- Lad tries to pick up a rock → it's actually a sleeping creature 100x his size
+- Lad sneezes → it triggers an avalanche / everything falls apart
+- Lad opens a tiny door → a flood of things pours out and buries him
+- Lad sits on a catapult without realizing → it launches him into orbit
+
+BAD STORIES (boring, passive, no comedy):
+- Lad watches a whale / sunset / Northern lights (he's just OBSERVING)
+- Lad meets a fox and they become friends (too gentle, nothing happens)
+- Lad faces a storm and waits it out (passive, no action)
+- Lad walks through a pretty scene (literally nothing happens)
+- Any story where Lad just DISCOVERS or OBSERVES something
+
+STORY STRUCTURE — 3 clips:
+- CLIP 1 (4 seconds): THE SETUP — Lad is about to do the thing. Show him reaching for it, stepping toward it, about to touch it. Build micro-tension.
+- CLIP 2 (8 seconds): THE CHAOS — Lad does the thing and everything goes hilariously wrong. This is the FUNNY part. Physical comedy, things flying, Lad tumbling, chain reactions.
+- CLIP 3 (8 seconds): THE AFTERMATH — The dust settles. Lad is in a ridiculous new situation because of what happened. Maybe something unexpected and wonderful came from the chaos. Punchline moment.
 
 STORY RULES:
-- NO dialogue — stories told entirely through animation, body language, and sound effects
-- Lad can be in ANY setting: forests, space, underwater, cities, mountains, volcanoes, clouds
-- Other clay characters can appear (animals, creatures, objects) — all in the same claymation style
-- Think Shaun the Sheep, Wallace & Gromit, or Pingu vibes
-- The story should make someone want to REWATCH and SHARE
+- Every story needs PHYSICAL COMEDY — things falling, bouncing, launching, collapsing, growing, shrinking
+- Lad must CAUSE the chaos through his own action (not just witness it)
+- Think Tom & Jerry, Shaun the Sheep, Mr. Bean — slapstick, cause-and-effect humor
+- NO passive observation stories. NO "Lad watches something beautiful."
+- The viewer should LAUGH or say "oh no!" — not just "that's nice"
 
 NEVER include emojis in titles, captions, or descriptions.
 

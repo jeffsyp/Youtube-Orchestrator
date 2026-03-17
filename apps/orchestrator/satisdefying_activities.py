@@ -476,6 +476,14 @@ async def publish_satisdefying_short(run_id: int, channel_id: int, concept: dict
             {"run_id": run_id},
         )
 
+    # Store publish result for URL tracking
+    await _execute(
+        """INSERT INTO assets (run_id, channel_id, asset_type, content)
+           VALUES (:run_id, :channel_id, :type, :content)""",
+        {"run_id": run_id, "channel_id": channel_id,
+         "type": "publish_result", "content": json.dumps(result)},
+    )
+
     log.info("publish step complete", **result)
     return result
 
