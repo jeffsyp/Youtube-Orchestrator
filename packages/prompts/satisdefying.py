@@ -98,7 +98,9 @@ Return ONLY valid JSON array, no markdown:
     "tags": ["oddly satisfying", "ASMR", "tag3", "tag4", "Shorts"],
     "score": 8.5
   }}
-]"""
+]
+
+NEVER include emojis in titles, captions, or descriptions. Emojis render as empty boxes in video subtitles."""
     return system, user
 
 
