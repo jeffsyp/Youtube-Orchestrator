@@ -112,6 +112,29 @@ def render_video(
     else:
         scenes = [{"type": "footage", "duration": 20, "search_query": "technology"} for _ in range(5)]
 
+    # Step 1b: Normalize scene durations to match voiceover
+    # Account for intro (3s) + outro (5s) + crossfade overlap (~0.5s per transition)
+    # Crossfades reduce total duration, so we need scenes to sum to MORE than target
+    if target_duration > 0 and scenes:
+        intro_outro = 8  # 3s intro + 5s outro
+        num_transitions = max(0, len(scenes) - 1)
+        crossfade_lost = 0.5 * num_transitions  # time lost to crossfade overlaps
+        content_target = target_duration - intro_outro + crossfade_lost
+        scene_total = sum(s["duration"] for s in scenes)
+        if scene_total > 0 and abs(scene_total - content_target) > 5:
+            scale = content_target / scene_total
+            for s in scenes:
+                s["duration"] = round(s["duration"] * scale, 1)
+                # Re-clamp after scaling
+                if s["type"] == "footage":
+                    s["duration"] = max(8, s["duration"])
+                elif s["type"] == "stat_card":
+                    s["duration"] = max(3, s["duration"])
+                elif s["type"] == "title_card":
+                    s["duration"] = max(2, s["duration"])
+            new_total = sum(s["duration"] for s in scenes)
+            log.info("scene durations normalized", original=round(scene_total), target=round(content_target), adjusted=round(new_total))
+
     # Step 2: Build MoviePy clips for each scene
     clips = []
     sfx_clips = []  # Sound effects to mix with voiceover
@@ -143,7 +166,7 @@ def render_video(
                 # Add whoosh SFX at transition point
                 whoosh_data = _generate_whoosh(duration=fade_duration)
                 whoosh_clip = AudioClip(
-                    lambda t, d=whoosh_data, sr=44100: d[min(int(t * sr), len(d) - 1)],
+                    lambda t, d=whoosh_data, sr=44100: d[np.clip((np.atleast_1d(t) * sr).astype(int), 0, len(d) - 1)],
                     duration=fade_duration, fps=44100,
                 )
                 sfx_clips.append(whoosh_clip.set_start(max(0, current_time - fade_duration / 2)))
@@ -152,7 +175,7 @@ def render_video(
             if scene["type"] == "stat_card":
                 impact_data = _generate_impact()
                 impact_clip = AudioClip(
-                    lambda t, d=impact_data, sr=44100: d[min(int(t * sr), len(d) - 1)],
+                    lambda t, d=impact_data, sr=44100: d[np.clip((np.atleast_1d(t) * sr).astype(int), 0, len(d) - 1)],
                     duration=0.2, fps=44100,
                 )
                 sfx_clips.append(impact_clip.set_start(current_time + 0.3))
@@ -232,11 +255,11 @@ def render_video(
         codec="libx264",
         audio_codec="aac",
         bitrate="8000k",
-        preset="slow",
+        preset="medium",
         threads=4,
         logger=None,
         ffmpeg_params=[
-            "-crf", "18",
+            "-crf", "20",
             "-profile:v", "high",
             "-level", "4.1",
             "-movflags", "+faststart",
@@ -293,11 +316,16 @@ def _make_footage_clip(scene: dict, index: int, stock_dir: str):
     # Speed up slightly (1.3x) to avoid slo-mo look
     clip = clip.fx(vfx.speedx, 1.3)
 
-    # Take what we need
+    # Fill the requested duration — loop if clip is too short
     available = clip.duration
-    use_duration = min(duration, available)
-    if use_duration < available:
-        clip = clip.subclip(0, use_duration)
+    if available >= duration:
+        clip = clip.subclip(0, duration)
+    else:
+        # Loop the clip to fill the full requested duration
+        from moviepy.editor import concatenate_videoclips as concat_clips
+        loops_needed = int(duration / available) + 1
+        looped = concat_clips([clip] * loops_needed)
+        clip = looped.subclip(0, duration)
 
     # Resize to 1080p
     clip = clip.resize(newsize=(1920, 1080))
@@ -563,8 +591,8 @@ def _burn_subtitles(input_path: str, ass_path: str, output_path: str):
         "-i", input_path,
         "-vf", f"ass={ass_escaped}",
         "-c:v", "libx264",
-        "-preset", "slow",
-        "-crf", "18",
+        "-preset", "medium",
+        "-crf", "20",
         "-profile:v", "high",
         "-c:a", "copy",
         "-movflags", "+faststart",

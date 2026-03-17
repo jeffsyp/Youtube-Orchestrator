@@ -22,18 +22,31 @@ YOUTUBE_CLIENT_SECRETS = os.getenv("YOUTUBE_CLIENT_SECRETS_FILE", "client_secret
 YOUTUBE_TOKEN_FILE = os.getenv("YOUTUBE_TOKEN_FILE", "youtube_token.json")
 
 
-def is_upload_configured() -> bool:
-    """Check if OAuth2 credentials are set up for YouTube upload."""
-    return os.path.exists(YOUTUBE_CLIENT_SECRETS) and os.path.exists(YOUTUBE_TOKEN_FILE)
+def is_upload_configured(youtube_token_file: str | None = None) -> bool:
+    """Check if OAuth2 credentials are set up for YouTube upload.
+
+    Args:
+        youtube_token_file: Optional override for the token file path.
+            If None, uses the default YOUTUBE_TOKEN_FILE.
+    """
+    token_file = youtube_token_file or YOUTUBE_TOKEN_FILE
+    return os.path.exists(YOUTUBE_CLIENT_SECRETS) and os.path.exists(token_file)
 
 
-def _get_youtube_client():
-    """Build an authenticated YouTube API client."""
+def _get_youtube_client(youtube_token_file: str | None = None):
+    """Build an authenticated YouTube API client.
+
+    Args:
+        youtube_token_file: Optional override for the token file path.
+            Allows per-channel tokens for multi-channel setups.
+    """
     from google.oauth2.credentials import Credentials
     from google.auth.transport.requests import Request
     from googleapiclient.discovery import build
 
-    with open(YOUTUBE_TOKEN_FILE) as f:
+    token_file = youtube_token_file or YOUTUBE_TOKEN_FILE
+
+    with open(token_file) as f:
         token_data = json.load(f)
 
     creds = Credentials(
@@ -49,7 +62,7 @@ def _get_youtube_client():
         creds.refresh(Request())
         # Save refreshed token
         token_data["token"] = creds.token
-        with open(YOUTUBE_TOKEN_FILE, "w") as f:
+        with open(token_file, "w") as f:
             json.dump(token_data, f, indent=2)
 
     return build("youtube", "v3", credentials=creds)
@@ -64,6 +77,8 @@ def upload_video(
     privacy_status: str = "private",
     captions_path: str | None = None,
     thumbnail_path: str | None = None,
+    youtube_token_file: str | None = None,
+    made_for_kids: bool = False,
 ) -> dict:
     """Upload a video file to YouTube.
 
@@ -75,13 +90,16 @@ def upload_video(
         category: YouTube category name.
         privacy_status: "private", "unlisted", or "public".
         captions_path: Optional path to SRT file for captions.
+        thumbnail_path: Optional path to thumbnail image.
+        youtube_token_file: Optional token file override for multi-channel setups.
+        made_for_kids: Whether the video is made for kids (COPPA).
 
     Returns:
         Dict with published status, video_id, and url.
     """
     log = logger.bind(title=title, privacy=privacy_status, video_path=video_path)
 
-    if not is_upload_configured():
+    if not is_upload_configured(youtube_token_file=youtube_token_file):
         log.error("youtube upload not configured")
         return {
             "published": False,
@@ -94,7 +112,7 @@ def upload_video(
 
     from googleapiclient.http import MediaFileUpload
 
-    youtube = _get_youtube_client()
+    youtube = _get_youtube_client(youtube_token_file=youtube_token_file)
 
     # Map category names to IDs
     category_map = {
@@ -104,6 +122,8 @@ def upload_video(
         "People & Blogs": "22",
         "News & Politics": "25",
         "Howto & Style": "26",
+        "Pets & Animals": "15",
+        "Sports": "17",
     }
     category_id = category_map.get(category, "28")
 
@@ -116,7 +136,7 @@ def upload_video(
         },
         "status": {
             "privacyStatus": privacy_status,
-            "selfDeclaredMadeForKids": False,
+            "selfDeclaredMadeForKids": made_for_kids,
         },
     }
 

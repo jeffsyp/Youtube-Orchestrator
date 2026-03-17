@@ -13,7 +13,7 @@ logger = structlog.get_logger()
 ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
 
 # Good default voices for YouTube narration
-DEFAULT_VOICE = "Laura"  # Enthusiast, Quirky Attitude
+DEFAULT_VOICE = "Liam"  # Energetic, Social Media Creator
 
 
 def _get_client() -> ElevenLabs:

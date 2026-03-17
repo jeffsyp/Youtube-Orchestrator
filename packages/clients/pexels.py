@@ -104,18 +104,30 @@ def download_video(url: str, output_path: str) -> str:
     return output_path
 
 
-def search_and_download(query: str, output_path: str) -> str | None:
+def search_and_download(query: str, output_path: str, orientation: str = "landscape") -> str | None:
     """Search for a stock video and download the best match.
 
     Returns the file path, or None if nothing found.
     """
-    results = search_videos(query, per_page=3)
+    results = search_videos(query, per_page=3, orientation=orientation)
     if not results:
         # Try simpler query (first 2 words)
         simple = " ".join(query.split()[:2])
-        results = search_videos(simple, per_page=3)
+        results = search_videos(simple, per_page=3, orientation=orientation)
 
     if not results:
         return None
 
     return download_video(results[0]["download_url"], output_path)
+
+
+def search_and_download_portrait(query: str, output_path: str) -> str | None:
+    """Search for a portrait-orientation stock video and download it.
+
+    Falls back to landscape if no portrait results found.
+    """
+    result = search_and_download(query, output_path, orientation="portrait")
+    if not result:
+        # Fallback to landscape — compositor will crop to vertical
+        result = search_and_download(query, output_path, orientation="landscape")
+    return result

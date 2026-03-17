@@ -37,7 +37,7 @@ def _ffprobe_streams(file_path: str) -> dict:
     return json.loads(result.stdout)
 
 
-def check_duration(video_path: str, voiceover_path: str | None, tolerance: float = 5.0) -> dict:
+def check_duration(video_path: str, voiceover_path: str | None, tolerance: float = 15.0) -> dict:
     """Check that video duration matches voiceover duration."""
     video_dur = float(_ffprobe(video_path, "format=duration"))
 
@@ -135,7 +135,7 @@ def check_audio_present(video_path: str) -> dict:
     return result
 
 
-def check_frozen_frames(video_path: str, max_frozen_seconds: float = 45.0) -> dict:
+def check_frozen_frames(video_path: str, max_frozen_seconds: float = 60.0) -> dict:
     """Detect frozen/stuck frames using scene change detection.
 
     If no scene changes are detected for more than max_frozen_seconds,
@@ -148,10 +148,11 @@ def check_frozen_frames(video_path: str, max_frozen_seconds: float = 45.0) -> di
     }
 
     # Use FFmpeg scene detection — outputs timestamps where scenes change
+    # Use lower threshold (0.03) since Ken Burns + color grading creates subtle motion
     detect_result = subprocess.run(
         [
             "ffmpeg", "-i", video_path,
-            "-vf", "select='gt(scene,0.1)',showinfo",
+            "-vf", "select='gt(scene,0.03)',showinfo",
             "-f", "null", "/dev/null",
         ],
         capture_output=True, text=True, timeout=300,

@@ -27,7 +27,7 @@ with workflow.unsafe.imports_passed_through():
 
 ACTIVITY_TIMEOUT = timedelta(seconds=300)   # Research + simple activities
 VOICE_TIMEOUT = timedelta(seconds=300)     # ElevenLabs voiceover
-RENDER_TIMEOUT = timedelta(seconds=600)    # FFmpeg video rendering
+RENDER_TIMEOUT = timedelta(seconds=7200)   # FFmpeg video rendering (up to 2 hours)
 
 
 @workflow.defn

@@ -59,7 +59,7 @@ def upgrade() -> None:
         sa.Column("channel_id", sa.Integer, sa.ForeignKey("channels.id"), nullable=False),
         sa.Column("pattern_name", sa.String(255), nullable=False),
         sa.Column("description", sa.Text, nullable=True),
-        sa.Column("hook_style", sa.String(255), nullable=True),
+        sa.Column("hook_style", sa.Text, nullable=True),
         sa.Column("structure", sa.Text, nullable=True),
         sa.Column("source_video_ids", sa.Text, nullable=True),
     )
