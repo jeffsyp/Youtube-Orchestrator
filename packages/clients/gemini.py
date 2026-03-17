@@ -9,7 +9,8 @@ load_dotenv()
 logger = structlog.get_logger()
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
-MODEL = "gemini-3-pro-preview"
+# TODO: switch back to gemini-3-pro-preview when Google resolves 503 outage
+MODEL = "gemini-2.5-flash"
 
 
 def _get_client():

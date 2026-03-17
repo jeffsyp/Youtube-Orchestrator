@@ -34,7 +34,13 @@ AVOID concepts that require:
 - Objects splitting perfectly in half
 - Mechanical devices (hydraulic presses, machines)
 
-Each clip should be visually COMPLETE on its own — the satisfaction comes from watching the flow/transformation, not from a precise physical interaction."""
+Each clip should be visually COMPLETE on its own — the satisfaction comes from watching the flow/transformation, not from a precise physical interaction.
+
+CRITICAL — CLIP COUNT:
+- Prefer 1-2 clips, NOT 3. A single 8-second satisfying moment is better than 3 disjointed scenes.
+- If using 2 clips: they must show the SAME object/scene from the SAME angle — just a continuation, not a scene change.
+- NEVER jump to a completely different view or object between clips. The viewer should feel like it's one continuous video.
+- One perfect satisfying loop > three mediocre disconnected scenes."""
 
 
 def build_satisdefying_ideas_prompt(

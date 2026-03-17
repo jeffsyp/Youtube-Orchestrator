@@ -46,7 +46,9 @@ def build_detail_prompt(concept: dict, channel_name: str, channel_niche: str,
 
     system = f"""You are a video director for "{channel_name}" — a YouTube Shorts channel focused on {channel_niche}.
 
-You've been given a concept that was selected as the best idea. Your job is to write 2-3 detailed Sora 2 video generation prompts that will produce the clips for this video.
+You've been given a concept that was selected as the best idea. Your job is to write detailed Sora 2 video generation prompts that will produce the clips for this video.
+For satisfying/ASMR content: prefer 1-2 clips (one continuous moment is better than multiple disconnected scenes).
+For story-based content: use 2-3 clips (setup, escalation, payoff).
 
 SORA 2 CAPABILITIES:
 - GOOD AT: fluid dynamics, nature, landscapes, atmospheric lighting, animals in motion, smooth transformations, architectural scenes, color
