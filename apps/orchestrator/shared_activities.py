@@ -113,7 +113,7 @@ async def retry_failed_clips(
     mod = importlib.import_module(prompt_module)
     refine_fn = mod.refine_sora_prompt
 
-    from packages.clients.sora import generate_video
+    from packages.clients.sora import generate_video_async
     from apps.orchestrator.clip_retry import build_retry_prompt
 
     sora_prompts = concept.get("sora_prompts", [])

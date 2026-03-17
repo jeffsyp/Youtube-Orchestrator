@@ -148,7 +148,7 @@ async def generate_yeah_thats_clean_clips(run_id: int, channel_id: int, concept:
     clip_paths = []
 
     if USE_SORA:
-        from packages.clients.sora import generate_video
+        from packages.clients.sora import generate_video_async
         from packages.prompts.yeah_thats_clean import refine_sora_prompt
 
         channel_config = await _get_channel_config_raw(channel_id)
@@ -160,7 +160,7 @@ async def generate_yeah_thats_clean_clips(run_id: int, channel_id: int, concept:
             output_path = os.path.join(output_dir, f"clip_{i:02d}.mp4")
 
             log.info("generating sora clip", clip=i + 1, total=len(sora_prompts))
-            result = generate_video(
+            result = await generate_video_async(
                 prompt=refined,
                 output_path=output_path,
                 duration=sora_duration,
