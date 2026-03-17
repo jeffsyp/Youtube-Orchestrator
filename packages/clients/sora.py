@@ -45,7 +45,7 @@ async def generate_video_async(
     seconds_str = str(duration)
 
     kwargs = {
-        "model": "sora-2-pro",
+        "model": "sora-2",
         "prompt": prompt,
         "seconds": seconds_str,
         "size": size,
@@ -125,7 +125,7 @@ def generate_video(
 
     seconds_str = str(duration)
     kwargs = {
-        "model": "sora-2-pro",
+        "model": "sora-2",
         "prompt": prompt,
         "seconds": seconds_str,
         "size": size,
