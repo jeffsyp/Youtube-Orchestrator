@@ -60,24 +60,25 @@ def render_synthzoo_short(
 
     log.info("valid clips", count=len(valid_clips))
 
-    # Step 1: Normalize all clips — consistent resolution, frame rate, color
-    normalized = []
-    for i, clip in enumerate(valid_clips):
-        norm_path = os.path.join(output_dir, f"norm_{i:02d}.mp4")
-        _normalize_clip(clip, norm_path)
-        normalized.append(norm_path)
-
-    # Step 2: Concat with cross-dissolves
+    # Step 1: For single clips, skip normalization to preserve original quality.
+    # For multi-clip, normalize for consistent resolution/frame rate.
     concat_path = os.path.join(output_dir, "synthzoo_concat.mp4")
-    if len(normalized) == 1:
-        _ffmpeg_copy(normalized[0], concat_path)
+    if len(valid_clips) == 1:
+        # Single clip — copy directly, no re-encoding, preserves full Sora quality
+        _ffmpeg_copy(valid_clips[0], concat_path)
     else:
+        # Multi-clip — normalize and crossfade
+        normalized = []
+        for i, clip in enumerate(valid_clips):
+            norm_path = os.path.join(output_dir, f"norm_{i:02d}.mp4")
+            _normalize_clip(clip, norm_path)
+            normalized.append(norm_path)
+
         _ffmpeg_crossfade_concat(normalized, concat_path)
 
-    # Cleanup normalized intermediates
-    for n in normalized:
-        if os.path.exists(n):
-            os.remove(n)
+        for n in normalized:
+            if os.path.exists(n):
+                os.remove(n)
 
     # Step 3: Enforce max duration
     trimmed_path = os.path.join(output_dir, "synthzoo_trimmed.mp4")
@@ -312,7 +313,7 @@ def _ffmpeg_crossfade_concat(clip_paths: list[str], output_path: str):
         *inputs,
         "-filter_complex", filter_str,
         "-map", "[outv]", "-map", "[outa]",
-        "-c:v", "libx264", "-preset", "medium", "-crf", "20",
+        "-c:v", "libx264", "-preset", "medium", "-crf", "15",
         "-profile:v", "high",
         "-c:a", "aac", "-b:a", "192k", "-ar", "44100", "-ac", "2",
         "-movflags", "+faststart",
@@ -346,7 +347,7 @@ def _ffmpeg_concat_hardcut(clip_paths: list[str], output_path: str):
         *inputs,
         "-filter_complex", filter_str,
         "-map", "[outv]", "-map", "[outa]",
-        "-c:v", "libx264", "-preset", "medium", "-crf", "20",
+        "-c:v", "libx264", "-preset", "medium", "-crf", "15",
         "-profile:v", "high",
         "-c:a", "aac", "-b:a", "192k",
         "-movflags", "+faststart",
@@ -375,7 +376,7 @@ def _ffmpeg_concat_video_only(clip_paths: list[str], output_path: str):
         *inputs,
         "-filter_complex", filter_str,
         "-map", "[outv]",
-        "-c:v", "libx264", "-preset", "medium", "-crf", "20",
+        "-c:v", "libx264", "-preset", "medium", "-crf", "15",
         "-profile:v", "high",
         "-movflags", "+faststart",
         output_path,
@@ -529,7 +530,7 @@ def _burn_subtitles(input_path: str, ass_path: str, output_path: str):
         "-vf", f"ass={ass_escaped}",
         "-c:v", "libx264",
         "-preset", "medium",
-        "-crf", "20",
+        "-crf", "15",
         "-profile:v", "high",
         "-c:a", "copy",
         "-movflags", "+faststart",
