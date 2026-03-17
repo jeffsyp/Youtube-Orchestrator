@@ -429,19 +429,8 @@ async def review_shorts_video(run_id: int, channel_id: int, rendered: dict, scri
 
     title = script.get("title", "Unknown")
 
-    prompt = f"""Watch this YouTube Short and critique it. It's a tech explainer with voiceover.
-
-Title: {title}
-
-Score 1-10:
-1. HOOK: Does the first 2 seconds grab attention?
-2. PACING: Is the voiceover well-timed with the visuals?
-3. VISUAL QUALITY: Do the stock footage/images match what's being discussed?
-4. AUDIO: Is the voiceover clear and well-mixed?
-5. INFORMATION: Is the content interesting and well-explained?
-
-Return JSON (no markdown):
-{{"hook_score": 7, "pacing_score": 7, "visual_score": 7, "audio_score": 8, "info_score": 7, "overall_score": 7.2, "publish_recommendation": "yes/no/maybe", "top_issue": "Biggest problem", "summary": "One sentence", "suggestions": ["Suggestion"], "reviewed": true}}"""
+    from packages.prompts.video_review import build_review_prompt
+    prompt = build_review_prompt(script, "Signal Intel", "Tech explainers")
 
     try:
         response = review_video(video_path, prompt)

@@ -212,20 +212,8 @@ async def prescreen_yeah_thats_clean_clips(run_id: int, channel_id: int, clips: 
 
         prompt_text = sora_prompts[i] if i < len(sora_prompts) else "Unknown"
 
-        review_prompt = f"""Watch this AI-generated satisfying cleaning video clip. This is clip {i+1} of {len(clips)}.
-
-INTENDED: {prompt_text}
-
-Score 1-10 on:
-1. Does it match the intended cleaning content? Is something dirty becoming clean?
-2. Visual quality — lighting, color contrast between dirty and clean areas?
-3. Audio quality — are there satisfying cleaning sounds? Water, scrubbing, fizzing, spraying?
-4. Does it start with action immediately (no boring establishing shot)?
-
-Return JSON only (no markdown):
-{{"match_score": 7, "quality_score": 8, "audio_score": 7, "hook_score": 7, "passed": true, "issues": [], "description": "What actually appears"}}
-
-Set "passed" to false if match_score < 6 or quality_score < 6."""
+        from packages.prompts.video_review import build_review_prompt
+        review_prompt = build_review_prompt(concept, "Yeah Thats Clean", "AI satisfying cleaning videos")
 
         try:
             response = review_video(clip_path, review_prompt)

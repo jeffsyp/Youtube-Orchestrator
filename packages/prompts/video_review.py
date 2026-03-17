@@ -1,84 +1,62 @@
-"""Prompts for Gemini video review — watches rendered Shorts and critiques them."""
+"""Prompts for Gemini video review — strict entertainment quality standard."""
 
 
-def build_synthzoo_review_prompt(concept: dict) -> str:
-    """Build a review prompt for a Synth Meow Short.
+def build_review_prompt(concept: dict, channel_name: str = "", channel_niche: str = "") -> str:
+    """Build a strict review prompt for any channel's video.
 
-    Args:
-        concept: The concept dict with title, caption, sora_prompts.
+    The review must judge ENTERTAINMENT VALUE, not just visual quality.
+    A pretty video that's boring should score LOW.
     """
     title = concept.get("title", "Unknown")
     caption = concept.get("caption", "")
-    sora_prompts = concept.get("sora_prompts", [])
 
-    prompts_text = ""
-    for i, p in enumerate(sora_prompts, 1):
-        prompts_text += f"\nClip {i}: {p}"
+    return f"""You are a HARSH YouTube Shorts critic. Your job is to decide if this video is good enough to publish. Be brutally honest — most AI-generated videos are mediocre and should NOT be published.
 
-    return f"""You are a YouTube Shorts quality reviewer AND a production pipeline consultant. Watch this AI-generated animal video and give two things: a critique AND specific suggestions to improve the pipeline that made it.
+TITLE: {title}
+CHANNEL: {channel_name} ({channel_niche})
+CAPTION: {caption}
 
-CONTEXT — HOW THIS VIDEO WAS MADE:
-1. An LLM (Claude) generated the concept: title, 3 Sora video prompts, and a caption
-2. Each Sora prompt was sent to OpenAI's Sora 2 separately to generate an 8-second vertical video clip
-3. The 3 clips were concatenated with FFmpeg, background music was mixed in, and the caption was burned in as a subtitle
-4. The clips are generated independently — Sora has no knowledge of the other clips
+Judge this video the way a real viewer scrolling YouTube Shorts would:
 
-CONCEPT:
-Title: {title}
-Caption: {caption}
-Sora prompts used:{prompts_text}
+1. **SCROLL TEST (most important, score 1-10)**: If you were scrolling YouTube Shorts and this appeared, would you STOP scrolling in the first 2 seconds? Or would you swipe past? Be honest — most videos fail this test. A score of 7+ means "yes, I'd actually stop."
 
-PART 1 — REVIEW (score each 1-10):
+2. **REWATCH VALUE (score 1-10)**: After watching once, would you watch it again? Would you send it to a friend? A 7+ means "yes, I'd rewatch or share this."
 
-1. **HOOK (first 2 seconds)**: Does the video grab attention immediately? Is there action from frame 1, or is it a boring establishing shot?
+3. **PROMISE DELIVERY (score 1-10)**: Does the video actually deliver what the title "{title}" promises? If the title says "house gets built brick by brick" but the video just shows branches moving, that's a 1/10. The video must MATCH its title.
 
-2. **VISUAL CONTINUITY**: Do the clips feel like they belong in the same video? Same animal appearance, environment, lighting across cuts? Or do they look like different videos spliced together?
+4. **VISUAL QUALITY (score 1-10)**: Does it look good? Sharp, well-lit, no obvious AI glitches or distortions?
 
-3. **STORY ARC**: Is there a clear progression — escalation and payoff? Does the video build to something? Would a viewer watch to the end?
+5. **ENTERTAINMENT (score 1-10)**: Is this actually interesting, funny, beautiful, satisfying, or compelling in any way? Or is it just... there? Pretty but boring = low score.
 
-4. **VISUAL QUALITY**: How good does the AI generation look? Any glitches, distortions, or uncanny-valley moments?
+SCORING GUIDE — BE STRICT:
+- 9-10: Exceptional — would go viral, people share this
+- 7-8: Good — worth publishing, people would watch to the end
+- 5-6: Mediocre — technically fine but nobody would care
+- 3-4: Bad — boring, confusing, or doesn't deliver on concept
+- 1-2: Terrible — unwatchable, would damage the channel
 
-5. **CAPTION FIT**: Does the caption "{caption}" work with what's actually shown?
+Most AI videos are 4-6. Only recommend publish for 7+.
 
-PART 2 — PIPELINE IMPROVEMENTS:
-Based on what you saw go wrong (or right), suggest specific, actionable changes to the production pipeline. Think about:
-
-- **Prompt engineering**: How should the Sora prompts be written differently to get better results? Be specific — what words/phrases to add or remove, what details to emphasize.
-- **Continuity tricks**: Since each clip is generated independently, what can we add to the prompts to make clips match better? (e.g., specific color descriptions, camera angles, consistent prop details)
-- **Concept selection**: What types of concepts/scenarios tend to work well with AI video generation, and which should be avoided?
-- **Rendering/editing**: Any changes to how clips are assembled? (transitions, speed ramps, color grading, timing)
-- **Caption/text**: How could the caption or text overlays be improved?
-
-Return your review as JSON (no markdown):
+Return JSON (no markdown):
 {{
-  "hook_score": 7,
-  "hook_note": "Brief explanation",
-  "continuity_score": 6,
-  "continuity_note": "Brief explanation",
-  "story_score": 8,
-  "story_note": "Brief explanation",
+  "scroll_test_score": 5,
+  "scroll_test_note": "Would I stop scrolling? Why or why not?",
+  "rewatch_score": 4,
+  "rewatch_note": "Would I watch again or share?",
+  "promise_score": 6,
+  "promise_note": "Does it deliver what the title promises?",
   "quality_score": 7,
-  "quality_note": "Brief explanation",
-  "caption_score": 8,
-  "caption_note": "Brief explanation",
-  "overall_score": 7.2,
-  "publish_recommendation": "yes/no/maybe",
-  "top_issue": "The single biggest problem",
-  "summary": "One sentence overall verdict",
-  "prompt_suggestions": [
-    "Specific suggestion for improving Sora prompts — e.g. 'Add exact hex color codes for the animal to maintain appearance across clips'",
-    "Another specific suggestion"
-  ],
-  "continuity_suggestions": [
-    "Specific suggestion for improving clip-to-clip consistency"
-  ],
-  "concept_suggestions": [
-    "What types of concepts to prefer or avoid based on what you saw"
-  ],
-  "rendering_suggestions": [
-    "Specific suggestion for the FFmpeg editing/compositing step"
-  ],
-  "general_suggestions": [
-    "Any other pipeline improvement ideas"
-  ]
+  "quality_note": "Visual quality assessment",
+  "entertainment_score": 5,
+  "entertainment_note": "Is this actually interesting/funny/beautiful/satisfying?",
+  "overall_score": 5.4,
+  "publish_recommendation": "no",
+  "top_issue": "The single biggest reason this video fails or succeeds",
+  "summary": "One sentence brutal honest verdict",
+  "suggestions": ["How to make the next video better"]
 }}"""
+
+
+# Keep backward compatibility — old channel-specific functions redirect to the universal one
+def build_synthzoo_review_prompt(concept: dict) -> str:
+    return build_review_prompt(concept, "Synth Meow", "AI-generated animal videos")

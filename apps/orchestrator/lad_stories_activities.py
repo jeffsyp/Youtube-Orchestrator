@@ -200,16 +200,8 @@ async def prescreen_lad_stories_clips(run_id: int, channel_id: int, clips: list[
 
         prompt_text = sora_prompts[i] if i < len(sora_prompts) else "Unknown"
 
-        review_prompt = f"""Watch this AI-generated claymation clip. Check:
-1. Does it look like claymation/stop-motion? (visible clay textures, handmade feel)
-2. Is there a small round terracotta-orange clay character (Lad)?
-3. Does the scene match: {prompt_text[:300]}
-4. Visual quality and charm factor?
-
-Return JSON (no markdown):
-{{"style_match": 7, "character_match": 7, "scene_match": 7, "quality_score": 7, "passed": true, "issues": [], "description": "What appears"}}
-
-Set passed=false if style_match < 4 or character_match < 3."""
+        from packages.prompts.video_review import build_review_prompt
+        review_prompt = build_review_prompt(concept, "Lad Stories", "Claymation character adventures")
 
         try:
             response = review_video(clip_path, review_prompt)

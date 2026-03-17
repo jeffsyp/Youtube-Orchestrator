@@ -492,6 +492,10 @@ def _generate_caption_ass(caption_text: str, duration: float, output_dir: str) -
         cs = int((seconds % 1) * 100)
         return f"{h}:{m:02d}:{s:02d}.{cs:02d}"
 
+    # Strip emojis — they render as empty boxes in ASS subtitles
+    import re
+    caption_text = re.sub(r'[\U0001F300-\U0001FAFF\U00002702-\U000027B0\U0000FE00-\U0000FE0F\U0000200D\U00002600-\U000026FF\U00002B50]', '', caption_text).strip()
+
     # Caption appears at 60% through, fades in over 0.4s
     caption_start = duration * 0.6
     start_time = _fmt(caption_start)

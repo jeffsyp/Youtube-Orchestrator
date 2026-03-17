@@ -212,16 +212,8 @@ async def prescreen_fundational_clips(run_id: int, channel_id: int, clips: list[
         prompt_text = sora_prompts[i] if i < len(sora_prompts) else "Unknown"
         step_label = "final reveal" if i == len(clips) - 1 else f"build step {i+1}"
 
-        review_prompt = f"""Watch this AI-generated building/construction clip. This is {step_label} ({i+1} of {len(clips)}).
-
-INTENDED: {prompt_text}
-
-Score 1-10: Does it show a satisfying building step? Does it match the prompt? Visual quality? Does it feel dreamlike/slightly surreal?
-
-Return JSON only (no markdown):
-{{"match_score": 7, "quality_score": 8, "satisfying_score": 7, "passed": true, "issues": [], "description": "What appears"}}
-
-Set "passed" to false if match_score < 6 or quality_score < 6."""
+        from packages.prompts.video_review import build_review_prompt
+        review_prompt = build_review_prompt(concept, "Fundational", "AI step-by-step building")
 
         try:
             response = review_video(clip_path, review_prompt)

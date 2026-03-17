@@ -403,9 +403,9 @@ async def review_synthzoo_video(run_id: int, channel_id: int, rendered: dict, co
         return {"reviewed": False, "reason": "GEMINI_API_KEY not set", "overall_score": 0}
 
     from packages.clients.gemini import review_video
-    from packages.prompts.video_review import build_synthzoo_review_prompt
+    from packages.prompts.video_review import build_review_prompt
 
-    prompt = build_synthzoo_review_prompt(concept)
+    prompt = build_review_prompt(concept, "Synth Meow", "AI-generated animal videos")
     response = review_video(video_path, prompt)
 
     # Parse JSON response
