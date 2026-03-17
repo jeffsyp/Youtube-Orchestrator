@@ -1,6 +1,8 @@
 """OpenAI Sora 2 API client for AI video generation."""
 
+import asyncio
 import os
+import time
 
 import structlog
 from dotenv import load_dotenv
@@ -15,6 +17,7 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 # Sora pricing: ~$0.10/sec at 720p
 DEFAULT_SECONDS = "8"  # Must be "4", "8", or "12"
 DEFAULT_SIZE = "720x1280"  # Vertical for Shorts
+POLL_INTERVAL = 5  # seconds between status checks
 
 
 def _get_client() -> OpenAI:
@@ -33,45 +36,51 @@ def generate_video(
 ) -> dict:
     """Generate a video with Sora 2 and save it.
 
-    Args:
-        prompt: Detailed description of the video to generate.
-        output_path: Where to save the MP4.
-        duration: Video duration in seconds (4, 8, or 12).
-        size: Video dimensions — "720x1280" (vertical), "1280x720" (landscape).
-        timeout: Max seconds to wait for generation (default 1200).
-        image_url: Optional reference image URL for image-to-video generation.
-            The image acts as the first frame.
-
-    Returns:
-        Dict with path, duration, size, and generation metadata.
+    Uses manual polling with sleep instead of create_and_poll to avoid
+    blocking the async event loop for minutes at a time.
     """
     client = _get_client()
     log = logger.bind(prompt=prompt[:100], duration=duration, size=size,
                       has_image=bool(image_url))
     log.info("generating sora video")
 
-    # Sora API uses string literals for seconds
     seconds_str = str(duration)
 
-    # Build kwargs
+    # Build kwargs for create (not create_and_poll)
     kwargs = {
         "model": "sora-2-pro",
         "prompt": prompt,
         "seconds": seconds_str,
         "size": size,
-        "timeout": timeout,
     }
     if image_url:
         kwargs["image"] = image_url
 
-    # create_and_poll handles polling automatically
-    video = client.videos.create_and_poll(**kwargs)
-
-    if video.status == "failed":
-        error = getattr(video, "error", "unknown error")
-        raise RuntimeError(f"Sora generation failed: {error}")
-
+    # Submit the generation request
+    video = client.videos.create(**kwargs)
     video_id = video.id
+    log.info("sora job submitted", video_id=video_id)
+
+    # Poll for completion — use time.sleep to release the thread
+    # (Temporal runs sync activities on thread pool, so time.sleep is fine
+    # and doesn't block the async event loop like create_and_poll does)
+    start_time = time.time()
+    while True:
+        elapsed = time.time() - start_time
+        if elapsed > timeout:
+            raise RuntimeError(f"Sora generation timed out after {timeout}s")
+
+        video = client.videos.retrieve(video_id)
+
+        if video.status == "completed":
+            break
+        elif video.status == "failed":
+            error = getattr(video, "error", "unknown error")
+            raise RuntimeError(f"Sora generation failed: {error}")
+
+        # Sleep briefly then poll again
+        time.sleep(POLL_INTERVAL)
+
     log.info("sora generation complete", video_id=video_id)
 
     # Download the video
