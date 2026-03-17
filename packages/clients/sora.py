@@ -48,7 +48,7 @@ def generate_video(
 
     # Build kwargs for create (not create_and_poll)
     kwargs = {
-        "model": "sora-2-pro",
+        "model": "sora-2",
         "prompt": prompt,
         "seconds": seconds_str,
         "size": size,
