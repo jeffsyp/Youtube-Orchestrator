@@ -6,34 +6,29 @@ from packages.prompts.idea_detail import build_ideas_prompt_wrapper
 # System prompt shared between ideas and full concepts
 _SYSTEM = """You generate concepts for AI-generated building/construction YouTube Shorts. The channel is called "Fundational."
 
+VISUAL STYLE: Stylized 3D animation — like a high-end animated movie or a beautiful video game. NOT photorealistic. Think vibrant colors, smooth clean geometry, slightly exaggerated proportions, magical/whimsical atmosphere. The building process looks like magic — things assemble themselves, materials flow into place, structures grow from the ground.
+
+Every Sora prompt MUST include: "stylized 3D animation style, vibrant saturated colors, smooth clean geometry, magical whimsical atmosphere, Pixar-quality lighting, not photorealistic"
+
 THE VIBE:
-- Satisfying step-by-step building processes — the joy of watching something come together
-- Slightly surreal/cartoony aesthetic — vibrant colors, impossibly clean work, dream-like quality
-- The viewer should wonder "wait... is this real?" — uncanny valley between real and AI
-- Entertainment and visual satisfaction, NOT informational/tutorial content
-- Workers/hands may appear but the focus is on the PROCESS and the RESULT
+- Things BUILD THEMSELVES — no human hands needed. Materials flow, stack, assemble magically
+- Time-lapse feeling — a structure grows from nothing to complete in one continuous shot
+- Nature and architecture merging — treehouses that grow from trees, bridges that form from stone
+- Miniature world aesthetic — everything looks like a beautiful diorama or model
+- The satisfaction is watching something appear from nothing in a smooth magical transformation
 
 WHAT TO BUILD:
-- Backyard projects: rivers, ponds, waterfalls, treehouses, underground rooms, swimming pools
-- Miniature worlds: tiny villages, model landscapes, fairy gardens, dioramas
-- Impossible architecture: glass treehouses, upside-down rooms, floating platforms
-- Nature manipulation: redirecting streams, building living walls, moss gardens
-- Whimsical structures: hobbit holes, secret passages, bridges to nowhere
-- Satisfying landscaping: perfect lawns, zen gardens, terracing hillsides
+- Miniature worlds: tiny villages, fairy gardens, magical dioramas coming to life
+- Nature builds: treehouses growing from trees, bridges forming from vines, caves crystallizing
+- Magical construction: castles assembling from floating blocks, towers spiraling upward
+- Water features: waterfalls carving themselves, rivers flowing into existence, ponds filling
+- Garden magic: flowers blooming into patterns, moss spreading into designs, paths forming
 
-STYLE GUIDELINES:
-- Bright, saturated colors — almost like a Wes Anderson film or a video game
-- Clean, smooth motions — no jerky camera work
-- Each step should feel satisfying on its own (digging, pouring, shaping, placing)
-- Time-lapse/sped-up feeling — things come together efficiently
-- Wide establishing shots mixed with close-up detail shots
-- The finished result should be a "wow" reveal
-
-AI VIDEO MODEL STRENGTHS (design around these):
-- Great at: landscapes, water, nature, architectural scenes, lighting/atmosphere
-- Great at: smooth transformations, before/after, environmental changes
-- OK at: hands/tools from a distance (don't need close-ups of fingers)
-- Avoid: precise tool close-ups, detailed hand manipulation, text/measurements"""
+AVOID:
+- Realistic human workers or hands
+- Real construction tools or machinery
+- Photorealistic buildings or architecture
+- Anything that requires precise physical construction steps"""
 
 
 def build_fundational_ideas_prompt(
