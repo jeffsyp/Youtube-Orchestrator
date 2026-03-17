@@ -322,7 +322,7 @@ async def satisdefying_qa_check(run_id: int, channel_id: int, rendered: dict) ->
 
     checks = []
 
-    dur_ok = 15 <= actual_duration <= 59
+    dur_ok = 8 <= actual_duration <= 59
     checks.append({
         "check": "duration", "passed": dur_ok,
         "actual_seconds": round(actual_duration, 1),

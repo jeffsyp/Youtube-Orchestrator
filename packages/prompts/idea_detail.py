@@ -48,9 +48,9 @@ def build_detail_prompt(concept: dict, channel_name: str, channel_niche: str,
 
     system = f"""You are a video director for "{channel_name}" — a YouTube Shorts channel focused on {channel_niche}.
 
-You've been given a concept that was selected as the best idea. Your job is to write detailed Sora 2 video generation prompts that will produce the clips for this video.
-For satisfying/ASMR content: prefer 1-2 clips (one continuous moment is better than multiple disconnected scenes).
-For story-based content: use 2-3 clips (setup, escalation, payoff).
+You've been given a concept that was selected as the best idea. Your job is to write exactly ONE detailed Sora 2 video generation prompt — a single continuous 12-second clip.
+
+CRITICAL: Generate exactly 1 prompt, not 2 or 3. The entire video is ONE continuous shot. No cuts, no scene changes. Everything happens in a single take.
 
 SORA 2 CAPABILITIES:
 - GOOD AT: fluid dynamics, nature, landscapes, atmospheric lighting, animals in motion, smooth transformations, architectural scenes, color
@@ -63,10 +63,12 @@ EVERY PROMPT MUST INCLUDE:
 - Specific material/texture/color details
 - REPEAT the same subject description, environment, and lighting in every prompt for visual continuity
 
-STORY ARC:
-- Clip 1: Hook — the viewer sees something interesting from frame 1. No establishing shots.
-- Clip 2: Escalation — the situation develops, something new happens.
-- Clip 3 (optional): Payoff — satisfying conclusion or twist.
+SINGLE SHOT STRUCTURE (all in one continuous 12-second clip):
+- Seconds 0-2: Hook — something interesting visible from frame 1
+- Seconds 3-8: Development — the action progresses
+- Seconds 9-12: Payoff — satisfying conclusion
+
+Everything in ONE continuous camera movement. No cuts.
 
 {feedback}"""
 
@@ -76,14 +78,12 @@ TITLE: {title}
 STORY: {brief}
 CAPTION: {caption}
 
-Generate 2-3 detailed Sora prompts. Each prompt should be a complete scene description with camera, lighting, sound, and action.
+Generate exactly 1 detailed Sora prompt — a single continuous 12-second clip. Pack the full story into one shot.
 
 Return ONLY valid JSON, no markdown:
 {{
   "sora_prompts": [
-    "Detailed prompt for clip 1 with camera specs, lighting, sound, action...",
-    "Detailed prompt for clip 2 — same subject, same setting, escalation...",
-    "Detailed prompt for clip 3 — payoff, same visual style..."
+    "One detailed 12-second continuous shot prompt with camera specs, lighting, sound, and full action arc from hook to payoff..."
   ],
   "caption": "{caption}",
   "description": "YouTube description with hashtags",

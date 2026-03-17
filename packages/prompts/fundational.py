@@ -54,9 +54,9 @@ def build_fundational_concepts_prompt(
         recent = past_titles[-30:]
         past_text = f"\nAVOID THESE CONCEPTS (already made):\n" + "\n".join(f"- {t}" for t in recent)
 
-    system = _SYSTEM + "\n\nEach concept is a 3-4 clip step-by-step build with a satisfying reveal."
+    system = _SYSTEM + "\n\nEach concept is a single continuous step-by-step build with a satisfying reveal."
 
-    user = f"""Generate {count} Fundational building concepts. Each should be a 3-4 clip step-by-step build with a satisfying reveal.
+    user = f"""Generate {count} Fundational building concepts. Each should be a single continuous step-by-step build with a satisfying reveal.
 
 EXAMPLE:
 {{

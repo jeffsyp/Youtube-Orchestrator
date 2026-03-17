@@ -341,7 +341,7 @@ async def synthzoo_qa_check(run_id: int, channel_id: int, rendered: dict) -> dic
     checks = []
 
     # Duration: 15-59s
-    dur_ok = 15 <= actual_duration <= 59
+    dur_ok = 8 <= actual_duration <= 59
     checks.append({
         "check": "duration",
         "passed": dur_ok,

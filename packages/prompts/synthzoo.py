@@ -47,7 +47,7 @@ def build_synthzoo_concepts_prompt(
         recent = past_titles[-30:]
         past_text = f"\nAVOID THESE CONCEPTS (already made):\n" + "\n".join(f"- {t}" for t in recent)
 
-    system = _SYSTEM + "\n\nEach concept is a 3-clip mini story told across Sora clips."
+    system = _SYSTEM + "\n\nEach concept is a single continuous 12-second video told across Sora clips."
 
     user = f"""Generate {count} concepts. Each must be photorealistic, cute, and almost-believable.
 
