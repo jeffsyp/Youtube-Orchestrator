@@ -45,12 +45,21 @@ async def store_feedback(channel_id: int, review: dict) -> None:
     score_keys = [k for k in review.keys() if k.endswith("_score") and k != "overall_score"]
     feedback["dimension_scores"] = {k: review[k] for k in score_keys if isinstance(review.get(k), (int, float))}
 
+    # Find the latest run_id for this channel to attach feedback to
     async with async_session() as session:
+        result = await session.execute(
+            text("SELECT id FROM content_runs WHERE channel_id = :cid ORDER BY id DESC LIMIT 1"),
+            {"cid": channel_id},
+        )
+        row = result.fetchone()
+        feedback_run_id = row[0] if row else 1
+
         await session.execute(
             text("""INSERT INTO assets (channel_id, run_id, asset_type, content)
-                    VALUES (:cid, 0, :type, :content)"""),
+                    VALUES (:cid, :rid, :type, :content)"""),
             {
                 "cid": channel_id,
+                "rid": feedback_run_id,
                 "type": "pipeline_feedback",
                 "content": json.dumps(feedback),
             },
