@@ -85,7 +85,7 @@ async def generate_idea_pitches(
             past_reviews=past_reviews,
         )
 
-        response = generate(user, system=system, max_tokens=4096, temperature=0.9)
+        response = generate(user, system=system, max_tokens=8192, temperature=0.9)
         text_resp = _parse_json_response(response)
 
         result = json.loads(text_resp)
@@ -97,7 +97,7 @@ async def generate_idea_pitches(
         log.info("using static idea generation", past_reviews=len(past_reviews))
 
         system, user = ideas_prompt_builder(past_titles, count)
-        response = generate(user, system=system, max_tokens=4096, temperature=0.9)
+        response = generate(user, system=system, max_tokens=8192, temperature=0.9)
         text_resp = _parse_json_response(response)
 
         concepts = json.loads(text_resp)
@@ -125,7 +125,7 @@ async def generate_detailed_prompts(
     from packages.clients.claude import generate
 
     system, user = detail_prompt_builder(concept, channel_name, channel_niche)
-    response = generate(user, system=system, max_tokens=4096, temperature=0.7)
+    response = generate(user, system=system, max_tokens=8192, temperature=0.7)
     text_resp = _parse_json_response(response)
 
     detail = json.loads(text_resp)
