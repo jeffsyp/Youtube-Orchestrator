@@ -89,8 +89,18 @@ async def retry_failed_clips(
     """
     log = logger.bind(activity="retry_failed_clips", run_id=run_id)
 
-    # Check if any clips failed
-    failed = [r for r in prescreen_results if not r.get("passed", True)]
+    # Code-level threshold enforcement — don't trust Gemini's "passed" field alone
+    MIN_MATCH = 8.5
+    MIN_QUALITY = 8.5
+    failed = []
+    for r in prescreen_results:
+        if not r.get("passed", True):
+            failed.append(r)
+        elif r.get("match_score", 10) < MIN_MATCH or r.get("quality_score", 10) < MIN_QUALITY:
+            r["passed"] = False
+            r["issues"] = r.get("issues", []) + [f"Code enforcement: match={r.get('match_score')}, quality={r.get('quality_score')} below {MIN_MATCH}/{MIN_QUALITY}"]
+            failed.append(r)
+            log.info("clip failed code threshold", clip=r.get("clip"), match=r.get("match_score"), quality=r.get("quality_score"))
     if not failed:
         log.info("all clips passed prescreen, no retries needed")
         return clips
