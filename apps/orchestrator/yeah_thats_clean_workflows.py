@@ -21,10 +21,10 @@ with workflow.unsafe.imports_passed_through():
     from apps.orchestrator.shared_activities import generate_concept_detail, retry_failed_clips
     from apps.orchestrator.activities import mark_run_awaiting_approval
 
-ACTIVITY_TIMEOUT = timedelta(seconds=300)
-SORA_TIMEOUT = timedelta(seconds=1800)
-RENDER_TIMEOUT = timedelta(seconds=600)
-REVIEW_TIMEOUT = timedelta(seconds=180)
+ACTIVITY_TIMEOUT = timedelta(seconds=900)
+SORA_TIMEOUT = timedelta(seconds=3600)
+RENDER_TIMEOUT = timedelta(seconds=1800)
+REVIEW_TIMEOUT = timedelta(seconds=600)
 MIN_PUBLISH_SCORE = 8.5
 
 

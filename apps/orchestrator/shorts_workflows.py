@@ -22,9 +22,9 @@ with workflow.unsafe.imports_passed_through():
     )
     from apps.orchestrator.activities import mark_run_awaiting_approval
 
-ACTIVITY_TIMEOUT = timedelta(seconds=300)
+ACTIVITY_TIMEOUT = timedelta(seconds=900)
 RENDER_TIMEOUT = timedelta(seconds=3600)
-REVIEW_TIMEOUT = timedelta(seconds=180)
+REVIEW_TIMEOUT = timedelta(seconds=600)
 MIN_PUBLISH_SCORE = 8.5
 
 
