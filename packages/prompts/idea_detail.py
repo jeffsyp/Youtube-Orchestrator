@@ -20,8 +20,8 @@ def build_ideas_prompt_wrapper(system_text: str, past_titles: list[str] | None =
 
 EVERY concept must answer these 3 questions in the "brief":
 1. What's the HOOK? (what grabs attention in the first 2 seconds)
-2. What goes WRONG or UNEXPECTED? (the twist/escalation)
-3. What's the PAYOFF? (satisfying ending)
+2. What DEVELOPS? (how does the scene progress — something changes, builds, unfolds, or transforms)
+3. What's the PAYOFF? (satisfying ending — a reveal, completion, or beautiful final moment)
 
 Keep concepts SIMPLE and CONCRETE — describe what the viewer literally sees. Avoid abstract or overly complex scenarios that AI video can't execute convincingly.
 {past_text}
@@ -72,10 +72,10 @@ EVERY PROMPT MUST INCLUDE:
 
 THE FORMULA THAT WORKS (learned from our best-performing video):
 1. INSTANT HOOK (first 2 seconds) — something is ALREADY happening. No establishing shots.
-2. ESCALATION (seconds 3-12) — something goes WRONG or UNEXPECTED. The surprise is what makes it rewatchable.
-3. PAYOFF (final seconds) — satisfying conclusion, twist, or comedic punchline.
+2. DEVELOPMENT (seconds 3-15) — the scene progresses. Something changes, builds, unfolds, or transforms. The viewer stays because they want to see where it goes.
+3. PAYOFF (final seconds) — satisfying conclusion. A reveal, a completion, a beautiful final moment.
 
-The concept must be SIMPLE enough for AI to execute. "A seed grows too big" = good. "Liquid chrome sphere absorbing dimensional color clouds" = too abstract and will look like noise.
+The concept must be SIMPLE enough for AI to execute. "A seed sprouts and grows into a huge tree" = good. "Liquid chrome sphere absorbing dimensional color clouds" = too abstract and will look like noise.
 
 Keep it CONCRETE and VISUAL — describe what the viewer literally SEES, not abstract concepts.
 
