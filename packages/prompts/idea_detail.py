@@ -64,13 +64,12 @@ Rules:
 - Total video should be 8-30 seconds. Shorter is usually better — people have very short attention spans.
 - NEVER pad or slow down the action to fill time. Cut it SHORT rather than make it boring.
 
-CRITICAL CUTTING RULE:
-- If the video stays in ONE location/setting → it MUST be ONE continuous clip. No cuts.
-- Multi-clip ONLY works when each clip is a COMPLETELY DIFFERENT scene/location.
-- Good: Clip 1 = dog in street, Clip 2 = dog at police station. (Different scenes, cut works)
-- Bad: Clip 1 = washing top of wall, Clip 2 = washing bottom of same wall. (Same scene, looks broken)
-- Satisfying/cleaning/building content → ALWAYS one continuous clip.
-- Stories with scene changes (Lad falling off cliff → Lad at auction) → multi-clip OK.
+CRITICAL CUTTING RULE — READ THIS CAREFULLY:
+- If ONE thing is being cleaned/built/pressed/cut → it is ONE clip. Period. No exceptions.
+- Power washing a wall = 1 clip. Pressing a jawbreaker = 1 clip. Building a castle = 1 clip.
+- The ENTIRE action from start to finish happens in ONE continuous shot.
+- Multi-clip ONLY for stories where the LOCATION completely changes (e.g. street → police station).
+- If you generate 2+ clips for cleaning/building/satisfying content, YOU ARE WRONG. Use 1 clip.
 
 You MUST include the duration for each clip in the JSON like: "clip_durations": [4, 8, 4]
 
