@@ -4,28 +4,32 @@ from packages.prompts.idea_detail import build_ideas_prompt_wrapper
 
 
 # System prompt shared between ideas and full concepts
-_SYSTEM = """You generate concepts for AI-generated satisfying cleaning YouTube Shorts.
+_SYSTEM = """You generate concepts for AI-generated satisfying cleaning YouTube Shorts. The channel is "Yeah Thats Clean."
 
-The channel is "Yeah Thats Clean" — every video shows something FILTHY getting transformed to FLAWLESS.
+VISUAL STYLE: Bright cel animation — bold outlines, flat vibrant colors, anime-inspired clean aesthetic. Smooth color transitions, crisp clean lines, studio animation quality. Everything looks like a high-quality animated show with bold graphic style.
 
-VISUAL STYLE: Stylized, colorful, slightly cartoon-like — NOT photorealistic. Think Pixar/animated movie quality with vibrant saturated colors, clean geometric shapes, and smooth surfaces. The world looks polished and exaggerated, like a high-end 3D animation or a video game cutscene. This style makes the cleaning transformations look more dramatic and satisfying because the contrast between dirty and clean is amplified.
+Every Sora prompt MUST include: "bright cel animation style, bold outlines, flat vibrant colors, anime-inspired clean aesthetic, smooth color transitions, crisp clean lines, studio animation quality"
 
-Every Sora prompt MUST include: "stylized 3D animation style, vibrant saturated colors, smooth clean surfaces, slightly cartoon-like, Pixar-quality lighting, not photorealistic"
+THE FORMULA — CAUSE AND EFFECT:
+Every video follows one rule: ONE cleaning action triggers a magical transformation that sweeps across the entire scene. A single touch, swipe, or wave causes grime to shatter, dissolve, or flee — and color floods in to replace it. The cleaning is not realistic scrubbing. It is MAGICAL and ANIMATED.
 
-CONCEPTS THAT WORK:
-- Magical cleaning transformations — dirt/grime melts away in a wave of color
-- Satisfying liquid/foam dynamics — foam cascading down and revealing clean surface
-- Before/after time-lapse — object goes from grimy to gleaming in one smooth motion
-- Color reveal — dull faded surface transforms to vibrant bright colors
-- Nature cleaning — rain washing away dust, water restoring color to faded things
+GOOD CONCEPTS (one magic action → transformation sweeps across scene):
+- A magic wave sweeps across a dirty surface leaving it sparkling with vibrant color
+- Color floods into a grey/brown scene making everything bright and vibrant in a cascade
+- Grime cracks and falls away like a shell, revealing gleaming color underneath
+- A single raindrop hits a dusty surface and a ripple of clean spreads outward
+- One touch sends a pulse of light that dissolves all the dirt in its path
 
-AVOID:
-- Realistic human hands or tools (cartoon style means no detailed hands needed)
-- Precise scrubbing motions
-- Interior household scenes with many small objects
-- Anything that needs exact physics
+BAD CONCEPTS (no magic, or no cause and effect):
+- Realistic scrubbing or wiping motions — too mundane, not animated
+- Human hands holding sponges or tools — no hands needed
+- Pressure washers or cleaning machines — too realistic
+- Anything needing real physics — the cleaning is magical, not mechanical
+- Dirt just fading away with no trigger moment — needs a clear cause
 
-The satisfaction comes from the DRAMATIC color transformation — dirty/dull to bright/clean in one smooth motion."""
+KEY PRINCIPLE: The cleaning is MAGICAL and ANIMATED — one sweep, one wave, one transformation. A single moment triggers the entire clean. No realistic tools, no human hands, no physics-based scrubbing.
+
+NEVER include emojis in titles, captions, or descriptions. Emojis render as empty boxes in video subtitles."""
 
 
 def build_yeah_thats_clean_ideas_prompt(
@@ -48,29 +52,29 @@ def build_yeah_thats_clean_concepts_prompt(
 
     system = _SYSTEM + "\n\nEach concept is a 2-3 clip dirty-to-clean transformation."
 
-    user = f"""Generate {count} satisfying cleaning concepts. Focus on DRAMATIC dirty-to-clean transformations using water, chemicals, foam, and restoration — NOT hand scrubbing or tool manipulation.
+    user = f"""Generate {count} satisfying cleaning concepts. Focus on MAGICAL ANIMATED transformations — one action triggers a wave of clean sweeping across the scene. Bright cel animation style.
 
 EXAMPLE:
 {{
-  "title": "Pressure Washing a Black Driveway",
+  "title": "One Touch Cleans the Whole Room",
   "sora_prompts": [
-    "Aerial establishing shot of a concrete driveway completely blackened with years of grime, moss, and oil stains, the surface barely recognizable as concrete, overcast daylight providing even flat lighting, wide angle 24mm lens, the driveway looks abandoned and neglected, ambient outdoor sounds with distant birds",
-    "Medium shot of a high-pressure washer stream hitting the black driveway surface, the water jet carving a perfect clean stripe through the grime revealing bright white concrete underneath, water spraying outward carrying black debris, the contrast between clean and dirty is extreme, same overcast daylight, 35mm lens at f/4, satisfying whooshing water pressure sounds with splashing",
-    "Wide overhead drone shot showing the driveway now three-quarters cleaned, the dramatic split between pristine white concrete and remaining black grime creating a geometric pattern, water still flowing across the surface catching light, same overcast daylight, 24mm lens, ambient water drainage sounds with a sense of completion"
+    "Bright cel animation style, bold outlines, flat vibrant colors, anime-inspired clean aesthetic, crisp clean lines, studio animation quality. A dusty grey-brown animated room with bold outlines, everything covered in a layer of dull grime, cobwebs in corners, faded colors on every surface, a single glowing fingertip reaches toward the nearest wall",
+    "Same animated room, same bold outline style. The moment the fingertip touches the wall, a brilliant wave of color explodes outward like a ripple in water, sweeping across every surface — the grime shatters and falls away like glass, vibrant blues, greens, and yellows flood in behind the wave, the room transforms from dull to gleaming in one continuous magical sweep",
+    "Same animated room, now completely transformed. Every surface gleams with flat vibrant colors and crisp clean lines, the room is spotless and radiant, bold outlines on every object, the colors are impossibly vivid and satisfying, studio animation quality, a few sparkles fade in the air where the last grime dissolved"
   ],
-  "caption": "Years of grime, gone in minutes",
-  "description": "This driveway hadn't been cleaned in YEARS. Watch the transformation. #satisfying #cleaning #pressurewashing #Shorts #oddlysatisfying",
-  "tags": ["satisfying", "cleaning", "pressure washing", "oddly satisfying", "Shorts"],
+  "caption": "One touch and it all just melts away",
+  "description": "The most satisfying clean you will ever see. #satisfying #cleaning #Shorts #oddlysatisfying",
+  "tags": ["satisfying", "cleaning", "oddly satisfying", "animation", "Shorts"],
   "score": 9.5
 }}
 
 RULES:
-- 2-3 prompts per concept — clip 1: dirty reveal, clip 2: cleaning action, clip 3: clean reveal
-- Every prompt must include camera specs (lens mm, f-stop), lighting description, and sound description
-- Repeat the same location, lighting, and camera style across all prompts for continuity
-- The DIRTIER the starting state, the more satisfying the transformation
-- Satisfaction comes from WATCHING the transformation happen, not from precise tool work
-- Vary the concepts: driveways, walls, pools, cars, fences, roofs, metal, stone, brick, tile
+- 2-3 prompts per concept — clip 1: grimy reveal, clip 2: magical cleaning wave, clip 3: sparkling result
+- CEL ANIMATION STYLE — every prompt must include "bright cel animation style, bold outlines, flat vibrant colors, anime-inspired clean aesthetic, crisp clean lines, studio animation quality"
+- Must have CAUSE AND EFFECT — one magic trigger causes the entire clean
+- NO realistic tools, NO human hands, NO pressure washers — the cleaning is MAGICAL
+- The contrast between dirty (grey/brown/dull) and clean (vibrant/bright/colorful) must be extreme
+- Same scene, same style across all prompts for continuity
 {past_text}
 
 Return ONLY valid JSON array, no markdown:
@@ -94,10 +98,10 @@ def refine_sora_prompt(concept: dict, clip_index: int, total_clips: int) -> str:
     raw_prompt = concept["sora_prompts"][clip_index]
 
     style_prefix = (
-        "Vertical 9:16 aspect ratio, photorealistic, cinematic photography, "
-        "high dynamic range, no text, no watermarks, no UI elements. "
-        "Generate rich, detailed audio synchronized with the visual action — "
-        "water splashing, fizzing, scrubbing, dripping, pressure hissing. "
+        "Vertical 9:16 aspect ratio, bright cel animation style, bold outlines, "
+        "flat vibrant colors, anime-inspired clean aesthetic, smooth color transitions, "
+        "crisp clean lines, studio animation quality, "
+        "no text, no watermarks, no UI elements. "
     )
 
     continuity = ""
@@ -107,11 +111,11 @@ def refine_sora_prompt(concept: dict, clip_index: int, total_clips: int) -> str:
 
     if total_clips > 1:
         if clip_index == 0:
-            style_suffix = " Opening shot — show the FILTHY surface immediately. The viewer must see how dirty it is from frame 1. No setup, no establishing shots — jump straight to the grime."
+            style_suffix = " Opening shot — show the grimy, dull, colorless scene immediately. Bold outlines, everything faded and dirty. The viewer must see how bad it is from frame 1."
         elif clip_index == total_clips - 1:
-            style_suffix = continuity + " Final shot — the BIG REVEAL. Show the surface now completely clean and pristine. Same location, same lighting — the transformation is unmistakable."
+            style_suffix = continuity + " Final shot — everything is now sparkling clean with vibrant cel animation colors. Bold outlines, flat bright colors, the transformation is complete and stunning."
         else:
-            style_suffix = continuity + " Middle shot — the cleaning action in progress. Water, foam, or chemicals actively removing grime. The transformation is happening before our eyes."
+            style_suffix = continuity + " Middle shot — the magical cleaning wave sweeps across the scene. Color floods in, grime shatters away. One continuous animated transformation."
     else:
         style_suffix = ""
 
