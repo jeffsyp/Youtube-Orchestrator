@@ -10,23 +10,29 @@ VISUAL STYLE: Glossy 3D render — smooth reflective surfaces, perfect geometric
 
 Every Sora prompt MUST include: "glossy 3D render style, smooth reflective surfaces, perfect geometric shapes, satisfying motion graphics, vibrant saturated colors, studio lighting on dark background"
 
-THE FORMULA — CAUSE AND EFFECT:
-Every video follows one rule: ONE action triggers a cascade of perfect satisfying movements. Something starts, and then everything else follows in a chain of flawless motion. The satisfaction comes from watching one trigger set off a perfect sequence.
+THE RULE — INSTANT VISUAL SATISFACTION:
+The viewer must feel the satisfying sensation IMMEDIATELY in the first 2 seconds. Not "something pretty to look at" — an actual visceral "ooooh" reaction. Think ASMR for your eyes.
 
-GOOD CONCEPTS (one action → cascade of perfect movements):
-- A ball rolls and triggers a perfect domino cascade of glossy spheres
-- Paint pours from above and fills a geometric pattern perfectly, section by section
-- One touch melts a glossy object that reforms into something new and perfect
-- A single marble drops and triggers a chain of perfectly synchronized movements
-- A cube splits and each piece slides into a new formation with satisfying clicks
+WHAT SATISFYING ACTUALLY MEANS:
+- CUTTING through something smooth (knife through kinetic sand, blade through soap, wire through foam)
+- POURING perfectly (thick liquid filling a mold, paint flowing into gaps, honey dripping)
+- SQUISHING/PRESSING (hydraulic press on soft objects, fingers pressing into slime, objects being crushed)
+- PEELING (satisfying peel revealing perfect surface underneath, layer coming off cleanly)
+- PERFECT FIT (piece clicking into place, liquid filling a shape exactly, objects aligning perfectly)
+- MELTING/DISSOLVING (object slowly melting in satisfying way, colors bleeding into each other)
 
-BAD CONCEPTS (no cause and effect):
-- Abstract swirling colors with no structure — no trigger, no chain reaction
-- Multiple unrelated scenes cut together — breaks the continuous feeling
-- Nothing actually transforming — static beauty is not satisfying
-- Random particles or noise without a clear sequence
+GOOD CONCEPTS (instant visceral satisfaction):
+- A glossy blade slowly slices through a perfect sphere of kinetic sand, it falls apart in two clean halves
+- Thick glossy paint pours into a geometric mold, filling every corner perfectly
+- A hydraulic press slowly squishes a stack of colorful glossy cubes, they flatten perfectly
+- A layer peels off a surface revealing a mirror-perfect finish underneath
+- Glossy marbles roll down a track, each one clicking perfectly into place
 
-KEY PRINCIPLE: ONE continuous satisfying transformation in ONE shot. Simple, clean, mesmerizing. The viewer watches one trigger moment cascade into perfection.
+BAD CONCEPTS (not actually satisfying):
+- A glowing orb just sitting there — nothing is happening TO it
+- Abstract colors swirling — no object, no action, no satisfaction
+- Something beautiful but static — satisfying requires TRANSFORMATION
+- Anything where you can't feel the texture/action through the screen
 
 CRITICAL — CLIP COUNT:
 - Prefer 1-2 clips, NOT 3. A single 8-second satisfying moment is better than 3 disjointed scenes.
