@@ -113,6 +113,13 @@ PACING RULES:
 - Satisfying content can be slower but still needs constant visual change.
 - Building/construction should show clear distinct steps, each one completing before the next starts.
 
+EVERY VIDEO MUST HAVE A CLEAR ENDING:
+- The last 2-3 seconds MUST show a satisfying conclusion — the final piece clicking in, the completed result gleaming, a moment of stillness after the action.
+- NEVER let the video just stop mid-action. The viewer must feel "ahh, done" not "wait, that's it?"
+- Build videos: final piece lands on top, camera holds on completed structure.
+- Satisfying videos: the last moment shows the perfect result — the flat disc, the clean surface, the finished product.
+- Story videos: a punchline moment or reaction shot.
+
 Return ONLY valid JSON, no markdown:
 {{
   "sora_prompts": [
