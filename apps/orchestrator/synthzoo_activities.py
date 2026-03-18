@@ -160,7 +160,7 @@ async def generate_synthzoo_clips(run_id: int, channel_id: int, concept: dict) -
         from packages.prompts.synthzoo import refine_sora_prompt
 
         channel_config = await _get_channel_config_raw(channel_id)
-        sora_duration = channel_config.get("sora_duration", 8)
+        clip_durations = concept.get("clip_durations", [channel_config.get("sora_duration", 8)] * len(sora_prompts))
         sora_size = channel_config.get("sora_size", "720x1280")
 
         for i, _ in enumerate(sora_prompts):
@@ -171,7 +171,7 @@ async def generate_synthzoo_clips(run_id: int, channel_id: int, concept: dict) -
             result = await generate_video_async(
                 prompt=refined,
                 output_path=output_path,
-                duration=sora_duration,
+                duration=clip_durations[i] if i < len(clip_durations) else 8,
                 size=sora_size,
                 timeout=1200,
             )

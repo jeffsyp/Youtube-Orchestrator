@@ -143,8 +143,8 @@ async def generate_lad_stories_clips(run_id: int, channel_id: int, concept: dict
         channel_config = await _get_channel_config_raw(channel_id)
         sora_size = channel_config.get("sora_size", "720x1280")
 
-        # Lad Stories uses different durations: 4s hook, 8s story, 8s payoff
-        clip_durations = [4, 8, 8]
+        # Use dynamic durations from concept (set by script writer)
+        clip_durations = concept.get("clip_durations", [8] * len(sora_prompts))
 
         for i, _ in enumerate(sora_prompts):
             refined = refine_sora_prompt(concept, i, len(sora_prompts))

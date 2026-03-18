@@ -163,7 +163,7 @@ async def generate_satisdefying_clips(run_id: int, channel_id: int, concept: dic
             result = await generate_video_async(
                 prompt=refined,
                 output_path=output_path,
-                duration=sora_duration,
+                duration=clip_durations[i] if i < len(clip_durations) else 8,
                 size=sora_size,
                 timeout=1200,
             )
