@@ -57,8 +57,16 @@ def build_detail_prompt(concept: dict, channel_name: str, channel_niche: str,
 
 You've been given a concept that was selected as the best idea. Your job is to write detailed Sora 2 video generation prompts for this video.
 
-For MOST channels: generate exactly 1 prompt — a single continuous 20-second clip. ONE shot, no cuts.
-For CLAYMATION/multi-clip channels: generate 3 prompts — a 4-second hook, 8-second story, and 8-second payoff. Three separate clips that tell a story.
+Decide the NUMBER of clips and DURATION of each clip based on what the concept needs. You choose.
+
+Rules:
+- Each clip can be 4, 8, or 12 seconds (Sora only supports these exact durations)
+- Total video should be 8-30 seconds. Shorter is usually better — people have very short attention spans.
+- Fast action scenes: use short clips (4s each). Slow satisfying moments: can use longer clips (8-12s).
+- 1 clip is fine for simple concepts. 2-3 clips for stories with progression.
+- NEVER pad or slow down the action to fill time. Cut it SHORT rather than make it boring.
+
+You MUST include the duration for each clip in the JSON like: "clip_durations": [4, 8, 4]
 
 SORA 2 CAPABILITIES:
 - GOOD AT: fluid dynamics, nature, landscapes, atmospheric lighting, animals in motion, smooth transformations, architectural scenes, color
@@ -90,13 +98,21 @@ TITLE: {title}
 STORY: {brief}
 CAPTION: {caption}
 
-Generate the Sora prompts. For single-clip channels: 1 prompt (20-second continuous shot). For claymation/multi-clip: 3 prompts (4s hook + 8s story + 8s payoff).
+Generate the Sora prompts. YOU decide how many clips and how long each one is.
+
+PACING RULES:
+- Pack MORE action into LESS time. Every second should have something happening.
+- Fast cuts and quick scenes keep attention. Slow lingering shots lose viewers.
+- If the action can happen in 4 seconds, use 4 seconds. Don't stretch to 8.
+- Satisfying content can be slower but still needs constant visual change.
+- Building/construction should show clear distinct steps, each one completing before the next starts.
 
 Return ONLY valid JSON, no markdown:
 {{
   "sora_prompts": [
     "Detailed prompt with camera specs, lighting, sound, action..."
   ],
+  "clip_durations": [8, 4, 8],
   "caption": "{caption}",
   "description": "YouTube description with hashtags",
   "tags": ["tag1", "tag2", "tag3", "tag4", "Shorts"]

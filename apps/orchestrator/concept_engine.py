@@ -132,6 +132,7 @@ async def generate_detailed_prompts(
 
     # Merge detailed prompts into the concept
     concept["sora_prompts"] = detail.get("sora_prompts", [])
+    concept["clip_durations"] = detail.get("clip_durations", [8] * len(concept["sora_prompts"]))
     if not concept.get("caption") and detail.get("caption"):
         concept["caption"] = detail["caption"]
     if not concept.get("description") and detail.get("description"):
