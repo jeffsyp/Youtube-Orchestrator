@@ -4,33 +4,36 @@ from packages.prompts.idea_detail import build_ideas_prompt_wrapper
 
 
 # System prompt shared between ideas and full concepts
-_SYSTEM = """You generate concepts for AI-generated building/construction YouTube Shorts. The channel is called "Fundational."
+_SYSTEM = """You generate concepts for AI-generated satisfying building/construction YouTube Shorts. The channel is called "Fundational."
 
-VISUAL STYLE: Paper craft pop-up book — folded paper textures, cardboard construction, paper cutout characters. Warm craft lighting, handmade diorama feel, visible paper edges and folds. Everything looks like it was made from paper, cardboard, and craft supplies.
+VISUAL STYLE: Colorful isometric cartoon — like a mobile game or animated infographic. Bright flat colors, clean geometric blocks, isometric camera angle looking down at the build. Think Minecraft meets Monument Valley meets LEGO instruction animations.
 
-Every Sora prompt MUST include: "paper craft pop-up book style, folded paper textures, cardboard construction, paper cutout characters, warm craft lighting, handmade diorama feel, visible paper edges and folds"
+Every Sora prompt MUST include: "colorful isometric cartoon style, bright flat colors, clean geometric blocks, isometric camera angle, animated construction, game-like aesthetic, smooth block-by-block assembly"
 
-THE FORMULA — CAUSE AND EFFECT:
-Every video follows one rule: something UNFOLDS or OPENS, and a paper world builds itself from the action. A page turns, a flap lifts, a fold opens — and structures rise, pop up, and assemble themselves like a pop-up book coming to life. The magic is in watching flat paper become a 3D world.
+WHAT THE VIDEOS SHOW:
+Cartoon buildings/structures assembling themselves PIECE BY PIECE in a satisfying way. Blocks slide into place, walls stack up, roofs click on top. Like watching a LEGO set build itself in fast-forward. Each piece appears and slots perfectly into position.
 
-GOOD CONCEPTS (paper unfolds → world builds itself):
-- A flat paper landscape folds up into a 3D village with houses popping up one by one
-- Cardboard pieces slot together into a bridge as if pulled by invisible strings
-- Paper flowers bloom from a pop-up book page, spreading across the whole scene
-- A paper envelope opens and an entire paper city unfolds out of it
-- Origami animals unfold from a single sheet and start walking around a paper world
+THE SATISFACTION IS IN THE ASSEMBLY:
+- Blocks/bricks stacking one by one, each clicking into place
+- Walls rising layer by layer with satisfying precision
+- A roof piece floating down and landing perfectly on top
+- Windows and doors popping into their slots
+- The camera slowly reveals more of the structure as it builds
 
-BAD CONCEPTS (not paper-craft, or no cause and effect):
-- Realistic construction with tools — wrong style entirely
-- Human workers building things — no humans needed
-- Anything that needs precise physical building steps — the paper folds ITSELF
-- Static paper art that does not move or unfold — must have the pop-up transformation
-- Photorealistic buildings or architecture — everything must look like paper/cardboard
+GOOD CONCEPTS (piece-by-piece cartoon assembly):
+- A tiny cartoon house builds itself brick by brick, roof clicks on at the end
+- An isometric castle assembles from floating blocks that slide into place
+- A cartoon bridge extends across a gap, each segment locking in with a click
+- A treehouse grows around a tree as planks and platforms slot together
+- A whole cartoon city block assembles from the ground up, building by building
 
-THE BUILDING METAPHOR IS PAPER FOLDING AND POP-UP BOOKS:
-- Things fold, crease, slot, pop up, and unfold — these are motions AI can actually render
-- No hammering, drilling, or tool-based construction
-- The satisfaction comes from watching flat become 3D in one smooth motion"""
+BAD CONCEPTS:
+- Nature growing (vines, trees, flowers) — that's nature, not building
+- Abstract transformations with no visible pieces — must see individual parts assembling
+- Realistic construction — must be cartoon/game style
+- Anything without visible block-by-block assembly — the satisfaction IS the pieces fitting together
+
+NEVER include emojis in titles, captions, or descriptions."""
 
 
 def build_fundational_ideas_prompt(
@@ -100,9 +103,9 @@ def refine_sora_prompt(concept: dict, clip_index: int, total_clips: int) -> str:
     raw_prompt = concept["sora_prompts"][clip_index]
 
     style_prefix = (
-        "Vertical 9:16 aspect ratio, paper craft pop-up book style, folded paper textures, "
-        "cardboard construction, paper cutout characters, warm craft lighting, "
-        "handmade diorama feel, visible paper edges and folds, "
+        "Vertical 9:16 aspect ratio, colorful isometric cartoon style, bright flat colors, "
+        "clean geometric blocks, isometric camera angle, animated construction, "
+        "game-like aesthetic, smooth block-by-block assembly, "
         "no text, no watermarks, no UI elements. "
     )
 
@@ -113,11 +116,11 @@ def refine_sora_prompt(concept: dict, clip_index: int, total_clips: int) -> str:
 
     if total_clips > 1:
         if clip_index == 0:
-            style_suffix = " Opening shot — flat paper begins to fold and rise. The first pop-up structure starts to appear. Show the trigger moment."
+            style_suffix = " Opening shot — first blocks/pieces start appearing and slotting into place. The build begins immediately."
         elif clip_index == total_clips - 1:
-            style_suffix = continuity + " FINAL REVEAL — the completed paper craft world in all its glory. Pull back to show the full pop-up diorama. Warm craft lighting, everything made of paper and cardboard."
+            style_suffix = continuity + " FINAL REVEAL — the completed cartoon structure in all its glory. Pull back to show the full build. Last piece clicks into place."
         else:
-            style_suffix = continuity + f" Build step {clip_index + 1} — more paper structures pop up and unfold. The world grows. Same paper craft style, same warm lighting."
+            style_suffix = continuity + f" Build step {clip_index + 1} — more blocks and pieces slide into place. The structure grows piece by piece. Same isometric angle, same colors."
     else:
         style_suffix = ""
 
