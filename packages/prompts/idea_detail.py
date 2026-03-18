@@ -62,9 +62,15 @@ Decide the NUMBER of clips and DURATION of each clip based on what the concept n
 Rules:
 - Each clip can be 4, 8, or 12 seconds (Sora only supports these exact durations)
 - Total video should be 8-30 seconds. Shorter is usually better — people have very short attention spans.
-- Fast action scenes: use short clips (4s each). Slow satisfying moments: can use longer clips (8-12s).
-- 1 clip is fine for simple concepts. 2-3 clips for stories with progression.
 - NEVER pad or slow down the action to fill time. Cut it SHORT rather than make it boring.
+
+CRITICAL CUTTING RULE:
+- If the video stays in ONE location/setting → it MUST be ONE continuous clip. No cuts.
+- Multi-clip ONLY works when each clip is a COMPLETELY DIFFERENT scene/location.
+- Good: Clip 1 = dog in street, Clip 2 = dog at police station. (Different scenes, cut works)
+- Bad: Clip 1 = washing top of wall, Clip 2 = washing bottom of same wall. (Same scene, looks broken)
+- Satisfying/cleaning/building content → ALWAYS one continuous clip.
+- Stories with scene changes (Lad falling off cliff → Lad at auction) → multi-clip OK.
 
 You MUST include the duration for each clip in the JSON like: "clip_durations": [4, 8, 4]
 
