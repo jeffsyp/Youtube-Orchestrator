@@ -103,15 +103,10 @@ def render_synthzoo_short(
         log.info("no music tracks found, using Sora audio only")
         os.rename(trimmed_path, music_path)
 
-    # Step 5: Burn in caption (lower third, large bold text, full duration)
+    # Step 5: Skip subtitle burn — captions are pointless for visual content
+    # and the re-encoding degrades quality. Caption text goes in YouTube description instead.
     final_path = os.path.join(output_dir, output_filename)
-    if caption_text:
-        final_duration = _get_duration(music_path)
-        ass_path = _generate_caption_ass(caption_text, final_duration, output_dir)
-        _burn_subtitles(music_path, ass_path, final_path)
-        os.remove(music_path)
-    else:
-        os.rename(music_path, final_path)
+    os.rename(music_path, final_path)
 
     final_duration = _get_duration(final_path)
     file_size = os.path.getsize(final_path)
