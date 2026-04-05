@@ -185,7 +185,7 @@ async def generate_drafts_for_channel(channel_id: int, count: int = 5, form_type
 
         from packages.clients.claude import generate
 
-        from packages.prompts.concept_drafts import NO_NARRATION_CHANNELS, KIDS_CHANNELS
+        from packages.prompts.concept_drafts import NO_NARRATION_CHANNELS, KIDS_CHANNELS, MID_LENGTH_CHANNELS
 
         if channel_id in KIDS_CHANNELS:
             draft_ids = await _generate_kids_drafts(
@@ -196,6 +196,11 @@ async def generate_drafts_for_channel(channel_id: int, count: int = 5, form_type
             draft_ids = await _generate_no_narration_drafts(
                 engine, channel_id, channel_name, niche,
                 past_titles, trending, count,
+            )
+        elif channel_id in MID_LENGTH_CHANNELS:
+            draft_ids = await _generate_midform_drafts(
+                engine, channel_id, channel_name, niche, voice_id,
+                past_titles, trending, count, "long",
             )
         elif form_type == "long":
             draft_ids = await _generate_longform_drafts(
@@ -428,6 +433,92 @@ async def _generate_longform_drafts(
         draft_id = await _insert_draft(engine, channel_id, title, concept, brief, form_type)
         if draft_id:
             draft_ids.append(draft_id)
+
+    return draft_ids
+
+
+async def _generate_midform_drafts(
+    engine, channel_id, channel_name, niche, voice_id,
+    past_titles, trending, count, form_type,
+) -> list[int]:
+    """Generate mid-length (3-5 min) concept drafts — single-flow, no chapters."""
+    from packages.prompts.concept_drafts import (
+        build_midform_pitches_prompt,
+        build_midform_script_prompt,
+    )
+    from packages.clients.claude import generate
+
+    # Phase 1: Generate mid-form pitches
+    system, user = build_midform_pitches_prompt(
+        channel_name=channel_name,
+        niche=niche,
+        past_titles=past_titles,
+        count=count,
+        trending=trending,
+    )
+
+    logger.info("phase 1: generating mid-form pitches", channel=channel_name, count=count)
+
+    resp = generate(prompt=user, system=system, model="claude-sonnet-4-6", max_tokens=6000)
+    resp = resp.strip()
+    if resp.startswith("```"):
+        resp = re.sub(r"^```(?:json)?\s*", "", resp)
+        resp = re.sub(r"\s*```$", "", resp)
+
+    pitches = json.loads(resp)
+    if not isinstance(pitches, list):
+        pitches = [pitches]
+
+    logger.info("phase 1 complete", channel=channel_name, pitches=len(pitches))
+
+    # Filter duplicates
+    async with AsyncSession(engine) as s:
+        pending = await s.execute(text(
+            "SELECT count(*) FROM concept_drafts WHERE channel_id = :cid AND status = 'pending' AND form_type = :ft"
+        ), {"cid": channel_id, "ft": form_type})
+        current_pending = pending.scalar()
+        remaining = max(0, DRAFTS_PER_CHANNEL - current_pending)
+
+    valid_pitches = await _filter_duplicate_pitches(engine, channel_id, pitches, remaining)
+
+    draft_ids = []
+    for pitch in valid_pitches:
+        title = pitch.get("title", "Untitled")
+        brief = pitch.get("brief", "")
+        flow = pitch.get("flow", "")
+        key_facts = pitch.get("key_facts", "")
+
+        logger.info("phase 2: writing mid-form script", title=title)
+
+        # Phase 2: Write full narration in one shot (no chapters)
+        sys2, usr2 = build_midform_script_prompt(
+            channel_name=channel_name,
+            niche=niche,
+            voice_id=voice_id,
+            channel_id=channel_id,
+            title=title,
+            brief=brief,
+            flow=flow,
+            key_facts=key_facts,
+        )
+
+        resp2 = generate(prompt=usr2, system=sys2, model="claude-sonnet-4-6", max_tokens=8000)
+        resp2 = resp2.strip()
+        if resp2.startswith("```"):
+            resp2 = re.sub(r"^```(?:json)?\s*", "", resp2)
+            resp2 = re.sub(r"\s*```$", "", resp2)
+
+        try:
+            concept = json.loads(resp2)
+        except json.JSONDecodeError:
+            logger.warning("mid-form script JSON parse failed", title=title)
+            continue
+
+        draft_id = await _insert_draft(engine, channel_id, title, concept, brief, form_type)
+        if draft_id:
+            draft_ids.append(draft_id)
+
+        await asyncio.sleep(2)
 
     return draft_ids
 
