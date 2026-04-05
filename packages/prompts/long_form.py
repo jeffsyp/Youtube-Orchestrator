@@ -340,10 +340,9 @@ VISUAL TYPES:
    - "video_prompt": MOTION ONLY — how the image animates. GOOD: "camera slowly zooms in", "particles float upward", "character turns head". Keep it simple — one motion.
    If the narration describes a scene, a concept, an analogy, a person, a place, an action — use "grok". Video keeps viewers engaged. Still images lose attention.
 2. "diagram" — Informational graphic rendered by gpt-image-1.5 (great at text, diagrams, charts). STILL IMAGE.
-   - "prompt": Describe the diagram/chart/infographic. Include exact text, labels, numbers to display.
+   - "prompt": MUST start with "{art_style}" then describe the diagram/chart. Include exact text, labels, numbers to display.
    - Use for: flowcharts, process diagrams, comparisons, key stats/numbers, term definitions, before/after, step-by-step breakdowns.
-   - Do NOT start with art_style — diagrams have their own clean style.
-   - Prompt should specify: dark background, clean modern infographic style, glowing accents, 16:9 landscape layout.
+   - The diagram MUST match the same art style as the rest of the video. If the video is hand-drawn whiteboard style, the diagram should look hand-drawn on a whiteboard too. If the video is cartoon style, the diagram should be cartoon style. No switching to a different aesthetic.
    - Use ONLY when the viewer needs to READ something — a number, a comparison, a definition. If the narration states a fact that lands harder as text on screen, use diagram. Everything else is "grok".
 3. "image" — Still image. RARELY USE. Only for extremely detailed scenes where the viewer needs time to study the image (e.g. a complex map, a detailed cross-section). Almost never the right choice — prefer "grok" for engagement.
 
@@ -392,7 +391,7 @@ OUTPUT — return a JSON object:
   "visuals": [
     {{"line_index": 0, "type": "grok", "prompt": "{art_style} close-up of torn tent fabric, slash marks from inside, blizzard visible through gash", "video_prompt": "slow push-in, snow swirling through tear"}},
     {{"line_index": 1, "type": "grok", "prompt": "{art_style} nine pairs of bare footprints in deep snow leading toward dark treeline, moonlit", "video_prompt": "camera slowly pans across footprints"}},
-    {{"line_index": 2, "type": "diagram", "prompt": "Dark background, clean modern infographic. Title: 'GPT-4 vs GPT-3.5'. Two columns comparing: Parameters (1.8T vs 175B), Training data (13T tokens vs 300B tokens), Cost ($100M+ vs $12M). Glowing cyan accents, 16:9 landscape."}},
+    {{"line_index": 2, "type": "diagram", "prompt": "{art_style} A hand-drawn comparison chart titled 'GPT-4 vs GPT-3.5'. Two columns with arrows: Parameters (1.8T vs 175B), Training data (13T tokens vs 300B tokens), Cost ($100M+ vs $12M). Sketched boxes and underlines for emphasis."}},
     ...
   ],
   "style_summary": "Brief description of the visual style used in this batch for consistency in the next batch"
