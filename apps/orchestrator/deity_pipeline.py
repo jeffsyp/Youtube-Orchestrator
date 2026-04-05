@@ -47,6 +47,7 @@ CHANNEL_CATEGORY = {
     36: "Entertainment",       # Very Clean Very Good
     37: "Comedy",              # Thats A Meme
     38: "Entertainment",       # Blanket Fort Cartoons
+    39: "Science & Technology", # Techognize — AI/tech education
 }
 
 # Channel-specific art styles for visual planning
@@ -63,6 +64,7 @@ CHANNEL_ART_STYLE = {
     27: "Cute cartoon style with soft rounded shapes and warm pastel colors, like a childrens storybook about friendly creatures.",  # Munchlax Lore
     28: "Dark dramatic cinematic style, high contrast, deep shadows with rim lighting, intense atmosphere.",  # Villanous Origins
     38: "Soft rounded kids cartoon style, warm pastel colors, gentle lighting, rounded shapes with no sharp edges, like Bluey or Peppa Pig animation.",  # Blanket Fort
+    39: "Hand-drawn whiteboard sketch style, black marker on white background, simple doodles and stick figures, arrows and labels, like a draw-my-life video. Clean lines, minimal detail, the drawing should explain the concept not decorate it.",  # Techognize
 }
 
 
@@ -1368,6 +1370,7 @@ One visual per line. Make each visual perfectly match what's being said."""
 
     # 3. Generate visuals
     await _update_step("generating visuals")
+    art_style = CHANNEL_ART_STYLE.get(channel_id, _DEFAULT_STYLE)
     from packages.clients.grok import generate_image as grok_gen_image
     from packages.clients.grok import generate_image_dalle as dalle_gen_image
     from packages.clients.grok import generate_video_async as grok_generate
@@ -1381,8 +1384,9 @@ One visual per line. Make each visual perfectly match what's being said."""
     character_refs = {}  # character_name -> {"path": str, "b64": str} reference image
     character_descriptions = {}  # character_name -> text description for prompt consistency
 
-    # Separate image and grok visuals
+    # Separate image, diagram, and grok visuals
     image_indices = [i for i, v in enumerate(visuals) if v["type"] == "image"]
+    diagram_indices = [i for i, v in enumerate(visuals) if v["type"] == "diagram"]
     grok_indices = [i for i, v in enumerate(visuals) if v["type"] == "grok"]
 
     # Generate reference portraits for each unique character
@@ -1604,6 +1608,44 @@ PROMPT: (only if NO) a corrected image prompt with detailed visual description o
             for f in futures:
                 i, path = f.result()
                 visual_paths[i] = {"type": "image", "path": path}
+
+    # Generate diagram visuals with gpt-image-1.5 (handles text/charts well)
+    if diagram_indices:
+        from concurrent.futures import ThreadPoolExecutor as _DiagramTPE
+
+        def _gen_diagram(i):
+            p = os.path.join(images_dir, f"line_{i}.png")
+            if os.path.exists(p):
+                return i, p
+            prompt = visuals[i].get("prompt") or visuals[i].get("image_prompt", "")
+            for attempt in range(3):
+                try:
+                    dalle_gen_image(
+                        prompt=prompt,
+                        output_path=p,
+                        size="1536x1024",  # landscape
+                        quality="high",
+                    )
+                    break
+                except Exception as e:
+                    err = str(e)
+                    if "429" in err or "Too Many Requests" in err:
+                        import time as _t
+                        _t.sleep(15 * (attempt + 1))
+                    elif attempt < 2:
+                        import time as _t
+                        _t.sleep(5 * (attempt + 1))
+                        logger.warning("diagram retry", line=i, attempt=attempt, error=err[:100])
+                    else:
+                        raise
+            return i, p
+
+        with _DiagramTPE(max_workers=2) as ex:
+            futures = [ex.submit(_gen_diagram, i) for i in diagram_indices]
+            for f in futures:
+                i, path = f.result()
+                visual_paths[i] = {"type": "image", "path": path}
+        logger.info("diagrams generated", count=len(diagram_indices))
 
     # Generate grok video clips
     if grok_indices:
