@@ -13,7 +13,7 @@ logger = structlog.get_logger()
 ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
 
 # Good default voices for YouTube narration
-DEFAULT_VOICE = "Liam"  # Energetic, Social Media Creator
+DEFAULT_VOICE = "George"  # Warm, Captivating Storyteller
 
 
 def _get_client() -> ElevenLabs:
@@ -37,6 +37,7 @@ def generate_speech(
     voice: str = DEFAULT_VOICE,
     model: str = "eleven_multilingual_v2",
     output_path: str | None = None,
+    speed: float | None = None,
 ) -> bytes:
     """Generate speech audio from text.
 
@@ -68,11 +69,11 @@ def generate_speech(
     all_audio = b""
     for i, chunk in enumerate(chunks):
         log.info("generating chunk", chunk=i + 1, total=len(chunks), chars=len(chunk))
-        response = client.text_to_speech.convert(
-            text=chunk,
-            voice_id=voice_id,
-            model_id=model,
-        )
+        convert_kwargs = dict(text=chunk, voice_id=voice_id, model_id=model)
+        if speed is not None:
+            from elevenlabs.types import VoiceSettings
+            convert_kwargs["voice_settings"] = VoiceSettings(speed=speed)
+        response = client.text_to_speech.convert(**convert_kwargs)
         all_audio += b"".join(response)
 
     log.info("speech generated", audio_size=len(all_audio))

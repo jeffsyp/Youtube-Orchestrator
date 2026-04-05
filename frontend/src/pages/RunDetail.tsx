@@ -1,5 +1,6 @@
+import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { useRunDetail, usePublishRun, useDeleteRun, useRunMetrics } from '../hooks/useApi';
+import { useRunDetail, useRunMetrics, usePublishRun, useRejectRun, useCancelRun } from '../hooks/useApi';
 import StatusBadge from '../components/StatusBadge';
 import VideoPlayer from '../components/VideoPlayer';
 import ReviewScores from '../components/ReviewScores';
@@ -8,10 +9,12 @@ export default function RunDetail() {
   const { id } = useParams<{ id: string }>();
   const runId = Number(id);
   const { data: run, isLoading, error } = useRunDetail(runId);
-  const publishMutation = usePublishRun();
-  const deleteMutation = useDeleteRun();
   const hasYoutubeUrl = !!run?.youtube_url;
   const { data: metrics } = useRunMetrics(runId, hasYoutubeUrl);
+  const publishMutation = usePublishRun();
+  const rejectMutation = useRejectRun();
+  const cancelMutation = useCancelRun();
+  const [privacy, setPrivacy] = useState<string>('private');
 
   if (isLoading) {
     return (
@@ -27,8 +30,43 @@ export default function RunDetail() {
     return <p className="text-red-400">Failed to load run details.</p>;
   }
 
-  const canPublish = run.status === 'completed';
-  const canDelete = run.status !== 'running';
+  // Extract review data from assets
+  const reviewAsset = run.assets?.find((a) => a.asset_type === 'video_review');
+  let reviewData: Record<string, unknown> | null = null;
+  if (reviewAsset?.content) {
+    try {
+      const parsed = JSON.parse(reviewAsset.content);
+      if (parsed.reviewed) {
+        reviewData = {
+          scores: {
+            scroll_test: parsed.scroll_test_score,
+            rewatch: parsed.rewatch_score,
+            promise: parsed.promise_score,
+            visual_quality: parsed.quality_score,
+            entertainment: parsed.entertainment_score,
+            overall: parsed.overall_score,
+          },
+          summary: parsed.summary,
+          top_issue: parsed.top_issue,
+          suggestions: parsed.suggestions,
+        };
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  // Extract production QA from assets
+  const prodQaAsset = run.assets?.find((a) => a.asset_type === 'production_qa');
+  let prodQa: Record<string, unknown> | null = null;
+  if (prodQaAsset?.content) {
+    try {
+      const parsed = JSON.parse(prodQaAsset.content);
+      if (parsed.reviewed) prodQa = parsed;
+    } catch {
+      // ignore
+    }
+  }
 
   return (
     <div className="space-y-8">
@@ -40,12 +78,10 @@ export default function RunDetail() {
         <div className="flex items-center justify-between mt-2">
           <div>
             <h1 className="text-2xl font-semibold text-white">
-              Run <span className="font-mono">#{run.id}</span>
+              {run.title || `Run #${run.id}`}
             </h1>
             <div className="flex items-center gap-3 mt-1">
-              <span className="text-gray-400 text-sm">{run.channel_name}</span>
-              <span className="text-gray-600">|</span>
-              <span className="text-gray-400 text-xs font-mono">{run.content_type}</span>
+              <span className="text-gray-400 text-xs font-mono">#{run.id}</span>
               <StatusBadge status={run.status} />
               {run.youtube_privacy && (
                 <span className={`px-2 py-0.5 rounded text-xs font-mono ${
@@ -60,7 +96,45 @@ export default function RunDetail() {
               )}
             </div>
           </div>
-          <div className="flex gap-3">
+          <div className="flex items-center gap-3">
+            {/* Cancel button for running runs */}
+            {run.status === 'running' && (
+              <button
+                onClick={() => cancelMutation.mutate(runId)}
+                className="px-4 py-2 rounded-lg bg-red-600/20 hover:bg-red-600/40 border border-red-500/30 text-red-400 text-sm font-medium transition-colors"
+              >
+                Cancel
+              </button>
+            )}
+            {/* Upload button for pending_review runs */}
+            {run.status === 'pending_review' && (
+              <>
+                <select
+                  value={privacy}
+                  onChange={(e) => setPrivacy(e.target.value)}
+                  className="px-3 py-2 rounded-lg bg-[#1a1a1a] border border-[#2a2a2a] text-gray-200 text-sm"
+                >
+                  <option value="private">Private</option>
+                  <option value="unlisted">Unlisted</option>
+                  <option value="public">Public</option>
+                </select>
+                <button
+                  onClick={() => publishMutation.mutate({ id: runId, privacy })}
+                  disabled={publishMutation.isPending}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-green-600 hover:bg-green-500 disabled:bg-green-800 disabled:cursor-wait text-white text-sm font-medium transition-colors"
+                >
+                  {publishMutation.isPending ? 'Uploading...' : 'Upload to YouTube'}
+                </button>
+                <button
+                  onClick={() => { if (confirm('Reject this video? Output files will be deleted.')) rejectMutation.mutate(runId); }}
+                  disabled={rejectMutation.isPending}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-red-600/20 hover:bg-red-600/40 border border-red-500/30 text-red-400 text-sm font-medium transition-colors"
+                >
+                  {rejectMutation.isPending ? 'Rejecting...' : 'Reject'}
+                </button>
+              </>
+            )}
+            {/* YouTube link for uploaded runs */}
             {run.youtube_url && (
               <a
                 href={run.youtube_url}
@@ -74,31 +148,26 @@ export default function RunDetail() {
                 Watch on YouTube
               </a>
             )}
-            {canPublish && (
-              <button
-                onClick={() => publishMutation.mutate(runId)}
-                disabled={publishMutation.isPending}
-                className="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-500 text-white text-sm font-medium transition-colors disabled:opacity-50 cursor-pointer"
-              >
-                {publishMutation.isPending ? 'Publishing...' : 'Publish'}
-              </button>
-            )}
-            {canDelete && (
-              <button
-                onClick={() => {
-                  if (confirm('Are you sure you want to delete this run?')) {
-                    deleteMutation.mutate(runId);
-                  }
-                }}
-                disabled={deleteMutation.isPending}
-                className="px-4 py-2 rounded-lg bg-red-600/20 hover:bg-red-600/30 text-red-400 text-sm font-medium transition-colors disabled:opacity-50 cursor-pointer border border-red-600/30"
-              >
-                {deleteMutation.isPending ? 'Deleting...' : 'Delete'}
-              </button>
-            )}
           </div>
         </div>
       </div>
+
+      {/* Upload/Reject feedback */}
+      {publishMutation.isSuccess && (
+        <div className="p-4 rounded-lg bg-green-500/10 border border-green-500/30">
+          <p className="text-green-400 text-sm font-medium">Uploaded successfully! Refresh to see YouTube link.</p>
+        </div>
+      )}
+      {publishMutation.isError && (
+        <div className="p-4 rounded-lg bg-red-500/10 border border-red-500/30">
+          <p className="text-red-400 text-sm font-medium">Upload failed: {(publishMutation.error as Error)?.message}</p>
+        </div>
+      )}
+      {rejectMutation.isSuccess && (
+        <div className="p-4 rounded-lg bg-orange-500/10 border border-orange-500/30">
+          <p className="text-orange-400 text-sm font-medium">Video rejected and files deleted.</p>
+        </div>
+      )}
 
       {/* Error message */}
       {run.error && (
@@ -174,39 +243,92 @@ export default function RunDetail() {
           <h3 className="text-sm font-medium text-gray-400 uppercase tracking-wider mb-4">
             Review Scores
           </h3>
-          <ReviewScores review={run.review} />
+          <ReviewScores review={reviewData} />
         </div>
       </div>
 
-      {/* Ideas */}
-      {run.ideas && run.ideas.length > 0 && (
+      {/* Production QA */}
+      {prodQa && (
         <section>
           <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wider mb-3">
-            Ideas
+            Production QA
           </h2>
-          <div className="space-y-3">
-            {run.ideas.map((idea) => (
-              <div
-                key={idea.id}
-                className="p-4 rounded-lg bg-[#1a1a1a] border border-[#2a2a2a]"
-              >
-                <div className="flex items-start justify-between">
-                  <h4 className="text-white font-medium">{idea.title}</h4>
-                  {idea.score != null && (
-                    <span className="text-purple-400 font-mono text-sm">
-                      {idea.score}/10
-                    </span>
-                  )}
+          <div className="p-5 rounded-lg bg-[#1a1a1a] border border-[#2a2a2a] space-y-4">
+            {/* Verdict */}
+            <div className="flex items-center gap-3">
+              <span className={`px-3 py-1 rounded-full text-sm font-medium ${
+                prodQa.verdict === 'pass'
+                  ? 'bg-green-500/15 text-green-400'
+                  : 'bg-orange-500/15 text-orange-400'
+              }`}>
+                {prodQa.verdict === 'pass' ? 'Pass' : 'Needs Fixes'}
+              </span>
+              {prodQa.biggest_issue && (
+                <span className="text-gray-300 text-sm">{prodQa.biggest_issue as string}</span>
+              )}
+            </div>
+
+            {/* Issue categories */}
+            <ProductionIssueList label="Flow Issues" items={prodQa.flow_issues as string[]} color="text-yellow-400" />
+            <ProductionIssueList label="Story Issues" items={prodQa.story_issues as string[]} color="text-blue-400" />
+            <ProductionIssueList label="Character Issues" items={prodQa.character_issues as string[]} color="text-purple-400" />
+
+            {/* Script vs Video comparison */}
+            {(prodQa.script_vs_video as Array<Record<string, unknown>>)?.length > 0 && (
+              <div>
+                <p className="text-sm font-medium text-orange-400 mb-2">Script vs Video</p>
+                <div className="space-y-3">
+                  {(prodQa.script_vs_video as Array<Record<string, unknown>>).map((item, i) => (
+                    <div key={i} className="p-3 rounded bg-[#0f0f0f] space-y-1.5">
+                      <p className="text-xs font-mono text-gray-500">Clip {item.clip as number}</p>
+                      <div className="flex gap-2">
+                        <span className="text-red-400 text-xs shrink-0">Script:</span>
+                        <p className="text-gray-400 text-xs">{item.script_said as string}</p>
+                      </div>
+                      <div className="flex gap-2">
+                        <span className="text-yellow-400 text-xs shrink-0">Video:</span>
+                        <p className="text-gray-400 text-xs">{item.video_showed as string}</p>
+                      </div>
+                      <div className="flex gap-2">
+                        <span className="text-green-400 text-xs shrink-0">Fix:</span>
+                        <p className="text-green-300 text-xs">{item.rewritten_prompt as string}</p>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-                <p className="text-gray-400 text-sm mt-1">{idea.hook}</p>
-                {idea.angle && (
-                  <p className="text-gray-500 text-xs mt-2">Angle: {idea.angle}</p>
-                )}
               </div>
-            ))}
+            )}
+
+            {/* Fix suggestions */}
+            {(prodQa.fix_suggestions as string[])?.length > 0 && (
+              <div>
+                <p className="text-sm font-medium text-gray-400 mb-2">Suggested Fixes</p>
+                <ol className="list-decimal list-inside space-y-1">
+                  {(prodQa.fix_suggestions as string[]).map((s, i) => (
+                    <li key={i} className="text-sm text-gray-300">{s}</li>
+                  ))}
+                </ol>
+              </div>
+            )}
           </div>
         </section>
       )}
+    </div>
+  );
+}
+
+function ProductionIssueList({ label, items, color }: { label: string; items?: string[]; color: string }) {
+  if (!items || items.length === 0) return null;
+  return (
+    <div>
+      <p className={`text-sm font-medium ${color} mb-1`}>{label}</p>
+      <ul className="space-y-0.5 ml-3">
+        {items.map((item, i) => (
+          <li key={i} className="text-sm text-gray-300 before:content-['•'] before:mr-2 before:text-gray-600">
+            {item}
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

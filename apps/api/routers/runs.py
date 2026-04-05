@@ -9,12 +9,10 @@ from sqlalchemy import text
 from packages.clients.db import async_session
 from apps.api.schemas import (
     AssetDetail,
-    IdeaDetail,
-    PackageDetail,
     RunDetail,
     RunSummary,
-    ScriptDetail,
 )
+from apps.api.routers.status import _is_stalled
 
 router = APIRouter(prefix="/api", tags=["runs"])
 
@@ -43,6 +41,17 @@ def _parse_path(asset_json: str | None, key: str = "path") -> str | None:
         return None
 
 
+def _parse_title(metadata_json: str | None) -> str | None:
+    """Extract title from publish_metadata asset."""
+    if not metadata_json:
+        return None
+    try:
+        info = json.loads(metadata_json)
+        return info.get("title") if isinstance(info, dict) else None
+    except (json.JSONDecodeError, TypeError):
+        return None
+
+
 @router.get("/runs", response_model=list[RunSummary])
 async def list_runs(
     channel_id: Optional[int] = Query(None),
@@ -67,12 +76,14 @@ async def list_runs(
             text(f"""SELECT cr.id, cr.channel_id, c.name, cr.content_type, cr.status, cr.current_step,
                     cr.started_at, cr.completed_at, cr.error,
                     (SELECT content FROM assets WHERE run_id = cr.id AND asset_type = 'video_review' ORDER BY id DESC LIMIT 1) as review,
-                    (SELECT content FROM assets WHERE run_id = cr.id AND asset_type = 'rendered_video' ORDER BY id DESC LIMIT 1) as video_asset,
+                    (SELECT content FROM assets WHERE run_id = cr.id AND (asset_type = 'rendered_video' OR asset_type LIKE 'rendered_%') ORDER BY id DESC LIMIT 1) as video_asset,
                     (SELECT content FROM assets WHERE run_id = cr.id AND asset_type = 'thumbnail' ORDER BY id DESC LIMIT 1) as thumb_asset,
                     CASE WHEN cr.status = 'running'
                          THEN EXTRACT(EPOCH FROM (NOW() - cr.started_at))::int
                          ELSE NULL END as elapsed_seconds,
-                    (SELECT content FROM assets WHERE run_id = cr.id AND asset_type = 'publish_result' ORDER BY id DESC LIMIT 1) as publish_asset
+                    (SELECT content FROM assets WHERE run_id = cr.id AND asset_type = 'publish_result' ORDER BY id DESC LIMIT 1) as publish_asset,
+                    (SELECT content FROM assets WHERE run_id = cr.id AND asset_type = 'publish_metadata' ORDER BY id DESC LIMIT 1) as metadata_asset,
+                    (SELECT content FROM assets WHERE run_id = cr.id AND asset_type = 'production_qa' ORDER BY id DESC LIMIT 1) as prod_qa_asset
                     FROM content_runs cr JOIN channels c ON c.id = cr.channel_id
                     {where}
                     ORDER BY cr.id DESC LIMIT :limit"""),
@@ -87,6 +98,8 @@ async def list_runs(
         thumbnail_path = _parse_path(row[11])
         youtube_url = _parse_path(row[13], key="url")
         youtube_privacy = _parse_path(row[13], key="privacy")
+        title = _parse_title(row[14])
+        prod_qa_verdict = _parse_path(row[15], key="verdict")
 
         runs.append(
             RunSummary(
@@ -99,11 +112,14 @@ async def list_runs(
                 started_at=row[6],
                 completed_at=row[7],
                 error=row[8],
+                title=title,
                 review_score=review_score,
                 review_recommendation=review_rec,
+                production_qa_verdict=prod_qa_verdict,
                 video_path=video_path,
                 thumbnail_path=thumbnail_path,
                 elapsed_seconds=row[12],
+                stalled=_is_stalled(row[4], row[5], row[12]),
                 youtube_url=youtube_url,
                 youtube_privacy=youtube_privacy,
             )
@@ -113,19 +129,20 @@ async def list_runs(
 
 @router.get("/runs/{run_id}", response_model=RunDetail)
 async def get_run(run_id: int):
-    """Get full detail for a single run, including ideas, scripts, assets, and packages."""
+    """Get full detail for a single run."""
     async with async_session() as session:
         # Main run
         result = await session.execute(
             text("""SELECT cr.id, cr.channel_id, c.name, cr.content_type, cr.status, cr.current_step,
                     cr.started_at, cr.completed_at, cr.error,
                     (SELECT content FROM assets WHERE run_id = cr.id AND asset_type = 'video_review' ORDER BY id DESC LIMIT 1) as review,
-                    (SELECT content FROM assets WHERE run_id = cr.id AND asset_type = 'rendered_video' ORDER BY id DESC LIMIT 1) as video_asset,
+                    (SELECT content FROM assets WHERE run_id = cr.id AND (asset_type = 'rendered_video' OR asset_type LIKE 'rendered_%') ORDER BY id DESC LIMIT 1) as video_asset,
                     (SELECT content FROM assets WHERE run_id = cr.id AND asset_type = 'thumbnail' ORDER BY id DESC LIMIT 1) as thumb_asset,
                     CASE WHEN cr.status = 'running'
                          THEN EXTRACT(EPOCH FROM (NOW() - cr.started_at))::int
                          ELSE NULL END as elapsed_seconds,
-                    (SELECT content FROM assets WHERE run_id = cr.id AND asset_type = 'publish_result' ORDER BY id DESC LIMIT 1) as publish_asset
+                    (SELECT content FROM assets WHERE run_id = cr.id AND asset_type = 'publish_result' ORDER BY id DESC LIMIT 1) as publish_asset,
+                    (SELECT content FROM assets WHERE run_id = cr.id AND asset_type = 'publish_metadata' ORDER BY id DESC LIMIT 1) as metadata_asset
                     FROM content_runs cr JOIN channels c ON c.id = cr.channel_id
                     WHERE cr.id = :id"""),
             {"id": run_id},
@@ -135,20 +152,6 @@ async def get_run(run_id: int):
         if not row:
             raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
 
-        # Ideas
-        ideas_result = await session.execute(
-            text("SELECT id, title, hook, angle, score, selected FROM ideas WHERE run_id = :id ORDER BY score DESC"),
-            {"id": run_id},
-        )
-        ideas_rows = ideas_result.fetchall()
-
-        # Scripts
-        scripts_result = await session.execute(
-            text("SELECT id, stage, idea_title, word_count, content, critique_notes FROM scripts WHERE run_id = :id ORDER BY id"),
-            {"id": run_id},
-        )
-        scripts_rows = scripts_result.fetchall()
-
         # Assets
         assets_result = await session.execute(
             text("SELECT id, asset_type, content FROM assets WHERE run_id = :id ORDER BY id"),
@@ -156,43 +159,17 @@ async def get_run(run_id: int):
         )
         assets_rows = assets_result.fetchall()
 
-        # Packages
-        packages_result = await session.execute(
-            text("SELECT id, title, description, tags, category, status FROM packages WHERE run_id = :id ORDER BY id"),
-            {"id": run_id},
-        )
-        packages_rows = packages_result.fetchall()
-
     review_score, review_rec = _parse_review(row[9])
     video_path = _parse_path(row[10])
     thumbnail_path = _parse_path(row[11])
     youtube_url = _parse_path(row[13], key="url")
     youtube_privacy = _parse_path(row[13], key="privacy")
-
-    ideas = [
-        IdeaDetail(id=r[0], title=r[1], hook=r[2], angle=r[3], score=r[4], selected=r[5])
-        for r in ideas_rows
-    ]
-
-    scripts = [
-        ScriptDetail(id=r[0], stage=r[1], idea_title=r[2], word_count=r[3], content=r[4], critique_notes=r[5])
-        for r in scripts_rows
-    ]
+    title = _parse_title(row[14])
 
     assets = [
         AssetDetail(id=r[0], asset_type=r[1], content=r[2])
         for r in assets_rows
     ]
-
-    packages = []
-    for r in packages_rows:
-        try:
-            tags = json.loads(r[3]) if r[3] else []
-        except (json.JSONDecodeError, TypeError):
-            tags = []
-        packages.append(
-            PackageDetail(id=r[0], title=r[1], description=r[2], tags=tags, category=r[4], status=r[5])
-        )
 
     return RunDetail(
         id=row[0],
@@ -204,15 +181,39 @@ async def get_run(run_id: int):
         started_at=row[6],
         completed_at=row[7],
         error=row[8],
+        title=title,
         review_score=review_score,
         review_recommendation=review_rec,
         video_path=video_path,
         thumbnail_path=thumbnail_path,
         elapsed_seconds=row[12],
+        stalled=_is_stalled(row[4], row[5], row[12]),
         youtube_url=youtube_url,
         youtube_privacy=youtube_privacy,
-        ideas=ideas,
-        scripts=scripts,
         assets=assets,
-        packages=packages,
     )
+
+
+@router.delete("/runs/cleanup")
+async def cleanup_old_runs(
+    keep: int = Query(5, ge=1, le=50, description="Number of recent runs per status to keep"),
+):
+    """Delete old failed/rejected runs, keeping only the most recent `keep` per status."""
+    async with async_session() as session:
+        result = await session.execute(
+            text("""DELETE FROM content_runs
+                    WHERE id IN (
+                        SELECT id FROM (
+                            SELECT id, ROW_NUMBER() OVER (PARTITION BY status ORDER BY id DESC) as rn
+                            FROM content_runs
+                            WHERE status IN ('failed', 'rejected')
+                        ) ranked
+                        WHERE rn > :keep
+                    )
+                    RETURNING id"""),
+            {"keep": keep},
+        )
+        deleted_ids = [row[0] for row in result.fetchall()]
+        await session.commit()
+
+    return {"deleted_count": len(deleted_ids), "deleted_run_ids": deleted_ids}

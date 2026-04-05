@@ -87,8 +87,8 @@ Produce your analysis as JSON (no markdown):
     "Second observation about what makes this play special",
     "Third observation (optional) about context or difficulty"
   ],
-  "caption": "Viral hook caption for the Short — should provoke engagement/debate (under 80 chars)",
-  "description": "YouTube description with hashtags — 2-3 sentences max",
+  "caption": "Viral hook caption for the Short — should provoke engagement/debate (under 80 chars, no emojis)",
+  "description": "YouTube description with hashtags — 2-3 sentences max, no emojis",
   "tags": ["sport", "play type", "player/team if visible", "Shorts", "Whistle Room"]
 }}"""
 
@@ -103,7 +103,7 @@ def build_caption_prompt(analysis: dict, title: str) -> tuple[str, str]:
     system = """You write viral YouTube Shorts captions for sports content. Short, punchy, debate-provoking.
 
 Good captions:
-- "Should this be a 10? 👇"
+- "Should this be a 10?"
 - "Name a better play. I'll wait."
 - "This shouldn't be physically possible"
 - "8.7/10 and I'm being generous"
@@ -119,6 +119,8 @@ Bad captions (too generic):
 Title: {title}
 Score: {analysis.get('score', 0)}/10 ({analysis.get('tier', 'SOLID')})
 Callouts: {', '.join(analysis.get('callouts', []))}
+
+Do not use emojis in captions.
 
 Return ONLY valid JSON:
 ["caption option 1", "caption option 2", "caption option 3"]"""

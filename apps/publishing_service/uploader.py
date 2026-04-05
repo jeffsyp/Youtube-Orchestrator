@@ -79,6 +79,7 @@ def upload_video(
     thumbnail_path: str | None = None,
     youtube_token_file: str | None = None,
     made_for_kids: bool = False,
+    publish_at: str | None = None,
 ) -> dict:
     """Upload a video file to YouTube.
 
@@ -124,8 +125,20 @@ def upload_video(
         "Howto & Style": "26",
         "Pets & Animals": "15",
         "Sports": "17",
+        "Gaming": "20",
+        "Comedy": "23",
+        "Film & Animation": "1",
     }
     category_id = category_map.get(category, "28")
+
+    status_body = {
+        "privacyStatus": privacy_status,
+        "selfDeclaredMadeForKids": made_for_kids,
+    }
+    # YouTube native scheduling — upload as private, auto-publish at specified time
+    if publish_at:
+        status_body["privacyStatus"] = "private"
+        status_body["publishAt"] = publish_at  # ISO 8601 format
 
     body = {
         "snippet": {
@@ -134,10 +147,7 @@ def upload_video(
             "tags": tags[:30],  # YouTube max 30 tags
             "categoryId": category_id,
         },
-        "status": {
-            "privacyStatus": privacy_status,
-            "selfDeclaredMadeForKids": made_for_kids,
-        },
+        "status": status_body,
     }
 
     log.info("uploading video to youtube")
@@ -190,11 +200,25 @@ def _upload_thumbnail(youtube, video_id: str, thumbnail_path: str):
     """Upload a custom thumbnail to a YouTube video."""
     from googleapiclient.http import MediaFileUpload
 
-    media = MediaFileUpload(thumbnail_path, mimetype="image/png")
+    mimetype = "image/jpeg" if thumbnail_path.endswith((".jpg", ".jpeg")) else "image/png"
+    media = MediaFileUpload(thumbnail_path, mimetype=mimetype)
     youtube.thumbnails().set(
         videoId=video_id,
         media_body=media,
     ).execute()
+
+
+def update_video_privacy(video_id: str, privacy: str, youtube_token_file: str | None = None):
+    """Update a YouTube video's privacy status (private, unlisted, public)."""
+    youtube = _get_youtube_client(youtube_token_file)
+    youtube.videos().update(
+        part="status",
+        body={
+            "id": video_id,
+            "status": {"privacyStatus": privacy},
+        },
+    ).execute()
+    logger.info("video privacy updated", video_id=video_id, privacy=privacy)
 
 
 def _upload_captions(youtube, video_id: str, srt_path: str):

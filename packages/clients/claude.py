@@ -13,7 +13,7 @@ logger = structlog.get_logger()
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 
 # Use sonnet for main tasks, haiku for cheaper tasks (scoring, extraction)
-MODEL_MAIN = "claude-opus-4-6"
+MODEL_MAIN = "claude-sonnet-4-6"
 MODEL_CHEAP = "claude-haiku-4-5-20251001"
 
 

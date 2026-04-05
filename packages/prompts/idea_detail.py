@@ -26,6 +26,25 @@ EVERY concept must answer these 3 questions in the "brief":
 Keep concepts SIMPLE and CONCRETE — describe what the viewer literally sees. Avoid abstract or overly complex scenarios that AI video can't execute convincingly.
 {past_text}
 
+SCORING — BE EXTREMELY CRITICAL:
+You are the gatekeeper before we spend expensive Sora credits. A score of 8+ means this concept would genuinely stop someone scrolling and make them watch to the end. Most concepts should score 5-7. Only truly exceptional concepts deserve 8+.
+
+Ask yourself honestly for each concept:
+- Would I actually stop scrolling to watch this? Would I share it with a friend? If not, score below 7.
+- A weak hook, subtle transformation, or boring subject = automatic score below 7.
+- Is this concept SPECIFIC and CONCRETE enough that Sora will nail it? Vague or abstract = score below 7.
+- Has this been done to death on YouTube Shorts already? If yes, score below 7 unless there's a genuinely fresh twist.
+- Does this have a CLEAR, DRAMATIC transformation or payoff that will satisfy the viewer? If the payoff is mild, score below 7.
+
+SCORE GUIDE:
+- 9-10: Truly exceptional — would go viral, never been done before, incredible hook + payoff
+- 8-8.9: Very strong — scroll-stopping hook, dramatic transformation, worth spending Sora credits
+- 6-7.9: Decent idea but not strong enough to justify Sora costs — needs a better hook or more dramatic payoff
+- 4-5.9: Mediocre — been done before, weak hook, or too abstract for AI video
+- 1-3.9: Bad — boring, unclear, or impossible for Sora to execute well
+
+Do NOT inflate scores. If you give everything 8+, you are wasting money. Be the harsh filter.
+
 Return ONLY valid JSON array, no markdown:
 [
   {{
@@ -34,7 +53,7 @@ Return ONLY valid JSON array, no markdown:
     "caption": "Short caption for the video",
     "description": "YouTube description with hashtags",
     "tags": ["tag1", "tag2", "tag3", "tag4", "Shorts"],
-    "score": 8.5
+    "score": 7.2
   }}
 ]
 
@@ -128,6 +147,8 @@ Return ONLY valid JSON, no markdown:
   "caption": "{caption}",
   "description": "YouTube description with hashtags",
   "tags": ["tag1", "tag2", "tag3", "tag4", "Shorts"]
-}}"""
+}}
+
+NEVER include emojis in titles, captions, descriptions, or any text content."""
 
     return system, user

@@ -1,219 +1,245 @@
-import { Link, useParams } from 'react-router-dom';
-import { useChannel, useRuns, useChannelMetrics } from '../hooks/useApi';
+import { useParams, Link } from 'react-router-dom';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { api } from '../api/client';
+import { useRuns, useSchedule, useContentBank, useGenerateNow } from '../hooks/useApi';
 import StatusBadge from '../components/StatusBadge';
+import { useState } from 'react';
 
 export default function ChannelDetail() {
   const { id } = useParams<{ id: string }>();
   const channelId = Number(id);
-  const { data: channel, isLoading: loadingChannel } = useChannel(channelId);
-  const { data: runs, isLoading: loadingRuns } = useRuns({ channel_id: channelId });
-  const { data: ytMetrics } = useChannelMetrics(channelId, channelId > 0);
+  const qc = useQueryClient();
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [conceptJson, setConceptJson] = useState('');
 
-  if (loadingChannel) {
-    return (
-      <div className="animate-pulse space-y-6">
-        <div className="h-8 w-48 bg-[#1a1a1a] rounded" />
-        <div className="h-4 w-64 bg-[#1a1a1a] rounded" />
-        <div className="h-64 bg-[#1a1a1a] rounded-lg" />
-      </div>
-    );
-  }
+  const { data: schedule } = useSchedule(channelId);
+  const { data: queue } = useContentBank({ channel_id: channelId, status: 'all' });
+  const { data: runs } = useRuns({ channel_id: channelId, limit: 20 });
+  const generateNow = useGenerateNow();
 
-  if (!channel) {
-    return <p className="text-red-400">Channel not found.</p>;
-  }
+  const pauseMutation = useMutation({
+    mutationFn: () => api.pauseChannel(channelId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['schedules'] }),
+  });
 
-  // Count public vs private from runs data
-  const publishedRuns = runs?.filter((r) => r.youtube_url) ?? [];
-  const publicCount = publishedRuns.filter((r) => r.youtube_privacy === 'public').length;
-  const privateCount = publishedRuns.filter((r) => r.youtube_privacy === 'private').length;
-  const unlistedCount = publishedRuns.filter((r) => r.youtube_privacy === 'unlisted').length;
+  const resumeMutation = useMutation({
+    mutationFn: () => api.resumeChannel(channelId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['schedules'] }),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (bankId: number) => api.deleteContentBankItem(bankId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['content-bank'] }),
+  });
+
+  const addMutation = useMutation({
+    mutationFn: (item: { channel_id: number; title: string; concept_json: unknown }) =>
+      api.addToContentBank(item),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['content-bank'] });
+      setShowAddForm(false);
+      setConceptJson('');
+    },
+  });
+
+  const channelName = schedule?.channel_name || `Channel ${channelId}`;
 
   return (
     <div className="space-y-8">
-      {/* Header */}
       <div>
-        <Link to="/channels" className="text-gray-500 text-sm hover:text-gray-300 no-underline">
-          &larr; Channels
+        <Link to="/" className="text-gray-500 text-sm hover:text-gray-300 no-underline">
+          &larr; Dashboard
         </Link>
-        <h1 className="text-2xl font-semibold text-white mt-2">{channel.name}</h1>
-        <div className="flex items-center gap-3 mt-2">
-          <span className="text-gray-400 text-sm">{channel.niche}</span>
-          <span className="text-gray-600">|</span>
-          <span className="px-2 py-0.5 rounded text-xs font-mono bg-purple-500/15 text-purple-400">
-            {channel.pipeline}
-          </span>
+        <div className="flex items-center justify-between mt-2">
+          <div>
+            <h1 className="text-2xl font-semibold text-white">{channelName}</h1>
+            <p className="text-gray-500 text-sm mt-1">
+              {schedule?.videos_per_day || 0} videos/day &middot; Queue: {schedule?.queue_depth || 0} &middot; Today: {schedule?.today_count || 0}
+            </p>
+          </div>
+          <div className="flex gap-2">
+            {schedule?.paused ? (
+              <button
+                onClick={() => resumeMutation.mutate()}
+                className="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-500 text-white text-sm font-medium cursor-pointer"
+              >
+                Resume
+              </button>
+            ) : (
+              <button
+                onClick={() => pauseMutation.mutate()}
+                className="px-4 py-2 rounded-lg bg-yellow-600 hover:bg-yellow-500 text-white text-sm font-medium cursor-pointer"
+              >
+                Pause
+              </button>
+            )}
+          </div>
         </div>
-        {channel.description && (
-          <p className="text-gray-400 text-sm mt-3 max-w-2xl">
-            {channel.description}
-          </p>
-        )}
       </div>
 
-      {/* YouTube Metrics */}
-      {ytMetrics && ytMetrics.video_count > 0 && (
-        <section>
-          <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wider mb-3">
-            YouTube Performance
-          </h2>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <MetricCard
-              label="Total Views"
-              value={formatNumber(ytMetrics.total_views)}
-              color="text-blue-400"
-            />
-            <MetricCard
-              label="Total Likes"
-              value={formatNumber(ytMetrics.total_likes)}
-              color="text-green-400"
-            />
-            <MetricCard
-              label="Videos Tracked"
-              value={String(ytMetrics.video_count)}
-              color="text-purple-400"
-            />
-            <MetricCard
-              label="Avg Views/Video"
-              value={formatNumber(Math.round(ytMetrics.avg_views_per_video))}
-              color="text-cyan-400"
-            />
+      {/* Schedule Config */}
+      {schedule && (
+        <section className="p-5 rounded-lg bg-[#1a1a1a] border border-[#2a2a2a]">
+          <h3 className="text-sm font-medium text-gray-400 uppercase tracking-wider mb-3">Schedule</h3>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+            <div>
+              <p className="text-gray-500">Videos/Day</p>
+              <p className="text-white font-mono">{schedule.videos_per_day}</p>
+            </div>
+            <div>
+              <p className="text-gray-500">Auto Upload</p>
+              <p className={schedule.auto_upload ? 'text-green-400' : 'text-gray-400'}>{schedule.auto_upload ? 'Yes' : 'No'}</p>
+            </div>
+            <div>
+              <p className="text-gray-500">Privacy</p>
+              <p className="text-white font-mono">{schedule.upload_privacy}</p>
+            </div>
+            <div>
+              <p className="text-gray-500">Status</p>
+              <p className={schedule.paused ? 'text-yellow-400' : 'text-green-400'}>{schedule.paused ? 'Paused' : 'Active'}</p>
+            </div>
           </div>
+          {schedule.time_windows?.length > 0 && (
+            <div className="mt-3">
+              <p className="text-gray-500 text-sm">Time Windows</p>
+              <div className="flex gap-2 mt-1">
+                {schedule.time_windows.map((w, i) => (
+                  <span key={i} className="px-2 py-1 rounded bg-[#2a2a2a] text-gray-300 text-xs font-mono">
+                    {w.start} - {w.end}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
         </section>
       )}
 
-      {/* Pipeline Stats */}
+      {/* Content Queue */}
       <section>
-        <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wider mb-3">
-          Pipeline Stats
-        </h2>
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-          <StatCard label="Total" value={channel.stats.total} color="text-gray-300" />
-          {publicCount > 0 ? (
-            <StatCard label="Public" value={publicCount} color="text-green-400" />
-          ) : (
-            <StatCard label="Published" value={channel.stats.published} color="text-green-400" />
-          )}
-          {privateCount > 0 && (
-            <StatCard label="Private" value={privateCount} color="text-yellow-400" />
-          )}
-          {unlistedCount > 0 && (
-            <StatCard label="Unlisted" value={unlistedCount} color="text-blue-400" />
-          )}
-          <StatCard label="Completed" value={channel.stats.completed} color="text-blue-400" />
-          <StatCard label="Failed" value={channel.stats.failed} color="text-red-400" />
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wider">Content Queue</h2>
+          <button
+            onClick={() => setShowAddForm(!showAddForm)}
+            className="px-3 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-500 text-white text-xs font-medium cursor-pointer"
+          >
+            + Add Concept
+          </button>
         </div>
+
+        {showAddForm && (
+          <div className="mb-4 p-4 rounded-lg bg-[#1a1a1a] border border-[#2a2a2a] space-y-3">
+            <textarea
+              value={conceptJson}
+              onChange={(e) => setConceptJson(e.target.value)}
+              placeholder="Paste concept JSON here..."
+              className="w-full h-40 p-3 rounded bg-[#0f0f0f] border border-[#2a2a2a] text-gray-200 text-sm font-mono resize-y"
+            />
+            <div className="flex gap-2">
+              <button
+                onClick={() => {
+                  try {
+                    const parsed = JSON.parse(conceptJson);
+                    addMutation.mutate({
+                      channel_id: channelId,
+                      title: parsed.title || 'Untitled',
+                      concept_json: parsed,
+                    });
+                  } catch { /* ignore parse error */ }
+                }}
+                className="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-500 text-white text-sm font-medium cursor-pointer"
+              >
+                Add to Queue
+              </button>
+              <button
+                onClick={() => { setShowAddForm(false); setConceptJson(''); }}
+                className="px-4 py-2 rounded-lg bg-[#2a2a2a] text-gray-400 text-sm cursor-pointer"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+
+        {(!queue || queue.length === 0) ? (
+          <p className="text-gray-500 text-sm py-4 text-center">Queue is empty.</p>
+        ) : (
+          <div className="space-y-2">
+            {queue.map((item) => (
+              <div key={item.id} className="flex items-center justify-between p-3 rounded-lg bg-[#1a1a1a] border border-[#2a2a2a]">
+                <div className="flex items-center gap-3 min-w-0 flex-1">
+                  <span className="text-gray-600 text-xs font-mono shrink-0">P{item.priority}</span>
+                  <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase ${
+                    item.status === 'queued' ? 'bg-blue-500/15 text-blue-400' :
+                    item.status === 'generating' ? 'bg-yellow-500/15 text-yellow-400' :
+                    item.status === 'generated' ? 'bg-green-500/15 text-green-400' :
+                    item.status === 'uploaded' ? 'bg-purple-500/15 text-purple-400' :
+                    item.status === 'failed' ? 'bg-red-500/15 text-red-400' :
+                    'bg-gray-500/15 text-gray-400'
+                  }`}>{item.status}</span>
+                  <span className="text-gray-200 text-sm truncate">{item.title}</span>
+                  {item.error && <span className="text-red-400 text-xs truncate max-w-[200px]">{item.error}</span>}
+                </div>
+                <div className="flex gap-1.5 shrink-0">
+                  {item.status === 'queued' && (
+                    <button
+                      onClick={() => generateNow.mutate(item.id)}
+                      className="px-2 py-1 rounded text-xs text-green-400 hover:bg-green-500/10 cursor-pointer"
+                    >
+                      Generate Now
+                    </button>
+                  )}
+                  {item.run_id && (
+                    <Link
+                      to={`/runs/${item.run_id}`}
+                      className="px-2 py-1 rounded text-xs text-blue-400 hover:bg-blue-500/10 no-underline"
+                    >
+                      View Run
+                    </Link>
+                  )}
+                  <button
+                    onClick={() => deleteMutation.mutate(item.id)}
+                    className="px-2 py-1 rounded text-xs text-red-400 hover:bg-red-500/10 cursor-pointer"
+                  >
+                    Remove
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </section>
 
-      {/* Runs */}
+      {/* Recent Runs */}
       <section>
-        <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wider mb-3">
-          Runs
-        </h2>
-        {loadingRuns ? (
-          <div className="animate-pulse h-48 bg-[#1a1a1a] rounded-lg" />
-        ) : !runs || runs.length === 0 ? (
-          <p className="text-gray-500 text-sm py-8 text-center">No runs yet.</p>
+        <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wider mb-3">Recent Runs</h2>
+        {(!runs || runs.length === 0) ? (
+          <p className="text-gray-500 text-sm py-4 text-center">No runs yet.</p>
         ) : (
-          <div className="rounded-lg border border-[#2a2a2a] overflow-hidden">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-[#1a1a1a] text-gray-400 text-xs uppercase tracking-wider">
-                  <th className="text-left px-4 py-3 font-medium">ID</th>
-                  <th className="text-left px-4 py-3 font-medium">Type</th>
-                  <th className="text-left px-4 py-3 font-medium">Status</th>
-                  <th className="text-left px-4 py-3 font-medium">Score</th>
-                  <th className="text-left px-4 py-3 font-medium">Link</th>
-                  <th className="text-left px-4 py-3 font-medium">Started</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[#2a2a2a]">
-                {runs.map((run) => (
-                  <tr
-                    key={run.id}
-                    className="hover:bg-[#1a1a1a] transition-colors cursor-pointer"
-                    onClick={() => (window.location.href = `/runs/${run.id}`)}
-                  >
-                    <td className="px-4 py-3 font-mono text-gray-400">#{run.id}</td>
-                    <td className="px-4 py-3 text-gray-400 text-xs font-mono">
-                      {run.content_type}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <StatusBadge status={run.status} />
-                        {run.youtube_privacy && (
-                          <span className={`px-1.5 py-0.5 rounded text-[10px] font-mono ${
-                            run.youtube_privacy === 'public'
-                              ? 'bg-green-500/15 text-green-400'
-                              : run.youtube_privacy === 'unlisted'
-                              ? 'bg-blue-500/15 text-blue-400'
-                              : 'bg-yellow-500/15 text-yellow-400'
-                          }`}>
-                            {run.youtube_privacy}
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 font-mono text-gray-300">
-                      {run.review_score != null ? `${run.review_score}/10` : '--'}
-                    </td>
-                    <td className="px-4 py-3">
-                      {run.youtube_url ? (
-                        <a
-                          href={run.youtube_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          onClick={(e) => e.stopPropagation()}
-                          className="inline-flex items-center text-red-400 hover:text-red-300 transition-colors"
-                          title="Watch on YouTube"
-                        >
-                          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
-                            <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
-                          </svg>
-                        </a>
-                      ) : (
-                        <span className="text-gray-600">--</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-gray-400 text-xs">
-                      {new Date(run.started_at).toLocaleDateString('en-US', {
-                        month: 'short',
-                        day: 'numeric',
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="space-y-2">
+            {runs.map((run) => (
+              <Link
+                key={run.id}
+                to={`/runs/${run.id}`}
+                className="flex items-center justify-between p-3 rounded-lg bg-[#1a1a1a] border border-[#2a2a2a] hover:border-[#3a3a3a] transition-colors no-underline"
+              >
+                <div className="flex items-center gap-3">
+                  <span className="text-gray-600 text-xs font-mono">#{run.id}</span>
+                  <StatusBadge status={run.status} />
+                  <span className="text-gray-200 text-sm">{run.title || '--'}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  {run.youtube_url && (
+                    <span className="text-red-400 text-xs">YT</span>
+                  )}
+                  <span className="text-gray-500 text-xs">
+                    {run.started_at ? new Date(run.started_at).toLocaleDateString() : ''}
+                  </span>
+                </div>
+              </Link>
+            ))}
           </div>
         )}
       </section>
     </div>
   );
-}
-
-function StatCard({ label, value, color }: { label: string; value: number; color: string }) {
-  return (
-    <div className="p-4 rounded-lg bg-[#1a1a1a] border border-[#2a2a2a] text-center">
-      <p className={`font-semibold text-2xl font-mono ${color}`}>{value}</p>
-      <p className="text-gray-500 text-xs mt-1">{label}</p>
-    </div>
-  );
-}
-
-function MetricCard({ label, value, color }: { label: string; value: string; color: string }) {
-  return (
-    <div className="p-4 rounded-lg bg-[#1a1a1a] border border-[#2a2a2a] text-center">
-      <p className={`font-semibold text-2xl font-mono ${color}`}>{value}</p>
-      <p className="text-gray-500 text-xs mt-1">{label}</p>
-    </div>
-  );
-}
-
-function formatNumber(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
-  return String(n);
 }

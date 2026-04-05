@@ -21,7 +21,10 @@ SCOPES = [
 ]
 
 
-def run_auth_flow():
+def run_auth_flow(token_file: str | None = None, port: int = 8090):
+    global TOKEN_FILE
+    if token_file:
+        TOKEN_FILE = token_file
     if not os.path.exists(CLIENT_SECRETS_FILE):
         print(f"Error: {CLIENT_SECRETS_FILE} not found.")
         print("Download OAuth2 credentials from Google Cloud Console:")
@@ -33,7 +36,7 @@ def run_auth_flow():
     from google_auth_oauthlib.flow import InstalledAppFlow
 
     flow = InstalledAppFlow.from_client_secrets_file(CLIENT_SECRETS_FILE, SCOPES)
-    credentials = flow.run_local_server(port=8090)
+    credentials = flow.run_local_server(port=port)
 
     token_data = {
         "token": credentials.token,
@@ -52,4 +55,9 @@ def run_auth_flow():
 
 
 if __name__ == "__main__":
-    run_auth_flow()
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--token-file", default=None, help="Output token file path")
+    parser.add_argument("--port", type=int, default=8090, help="Local server port")
+    args = parser.parse_args()
+    run_auth_flow(token_file=args.token_file, port=args.port)

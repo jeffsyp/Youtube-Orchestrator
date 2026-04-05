@@ -2,7 +2,7 @@
 
 
 def build_trend_research_prompt(channel_name: str, channel_niche: str, past_titles: list[str],
-                                 past_reviews: list[dict]) -> tuple[str, str]:
+                                 past_reviews: list[dict], channel_rules: str = "") -> tuple[str, str]:
     """Build a prompt that analyzes past performance and generates fresh concept directions.
 
     Args:
@@ -63,7 +63,9 @@ Each batch of concepts should explore at least 2-3 DIFFERENT themes or styles.
 
 SORA 2 CAPABILITIES (design around these):
 GOOD AT: fluid dynamics, nature scenes, landscapes, atmospheric lighting, color, animals in motion, large-scale environments, smooth transformations, architectural scenes
-BAD AT: precise hand/tool interactions, text rendering, exact physics (cutting, splitting), detailed facial expressions, mechanical actions"""
+BAD AT: precise hand/tool interactions, text rendering, exact physics (cutting, splitting), detailed facial expressions, mechanical actions
+
+{f"CHANNEL-SPECIFIC RULES (MUST FOLLOW):{chr(10)}{channel_rules}" if channel_rules else ""}"""
 
     user = f"""Generate 5 fresh, evolved concept directions for {channel_name}.
 {review_summary}
@@ -71,6 +73,23 @@ BAD AT: precise hand/tool interactions, text rendering, exact physics (cutting, 
 
 Based on past performance, LEAN INTO what scored well and AVOID what scored poorly.
 Explore at least 3 different themes/styles — don't just repeat the top formula.
+
+SCORING — BE EXTREMELY CRITICAL:
+You are the gatekeeper before we spend expensive Sora credits. A score of 8+ means this concept would genuinely stop someone scrolling. Most concepts should score 5-7. Only truly exceptional concepts deserve 8+.
+
+Ask yourself for each concept:
+- Would I actually stop scrolling to watch this? Would I share it? If not, score below 7.
+- A weak hook, subtle transformation, or boring subject = automatic score below 7.
+- Has this been done to death already? Unoriginal = score below 7 unless there's a genuinely fresh twist.
+- Is this CONCRETE enough that Sora will nail it? Vague or abstract = score below 7.
+
+SCORE GUIDE:
+- 9-10: Truly exceptional — viral potential, never been done, incredible hook + payoff
+- 8-8.9: Very strong — scroll-stopping, dramatic, worth the Sora cost
+- 6-7.9: Decent but not strong enough to justify expensive AI generation
+- 1-5.9: Weak — skip it
+
+Do NOT inflate scores. If every concept gets 8+, you are wasting money. Be the harsh filter.
 
 Return ONLY valid JSON, no markdown:
 {{
@@ -84,10 +103,12 @@ Return ONLY valid JSON, no markdown:
       "caption": "Short caption",
       "description": "YouTube description with hashtags",
       "tags": ["tag1", "tag2", "tag3", "tag4", "Shorts"],
-      "score": 8.5
+      "score": 7.2
     }}
   ]
-}}"""
+}}
+
+NEVER include emojis in titles, captions, or descriptions."""
     return system, user
 
 

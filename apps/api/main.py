@@ -4,6 +4,8 @@ Run with:
     uvicorn apps.api.main:app --port 8000
 """
 
+import asyncio
+import logging
 import os
 
 from dotenv import load_dotenv
@@ -13,12 +15,14 @@ from fastapi.staticfiles import StaticFiles
 
 load_dotenv()
 
-from apps.api.routers import actions, channels, metrics, runs, status, videos
+from apps.api.routers import actions, channels, concept_drafts, concepts, content_bank, metrics, runs, scheduling, status, videos
+
+logger = logging.getLogger("orchestrator.remediation")
 
 app = FastAPI(
     title="YouTube Orchestrator API",
-    version="0.1.0",
-    description="Dashboard API for YouTube content pipeline management",
+    version="2.0.0",
+    description="Unified pipeline dashboard API",
 )
 
 # CORS — allow the Vite dev server
@@ -31,6 +35,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["Content-Range", "Accept-Ranges", "Content-Length"],
 )
 
 # Include routers
@@ -39,6 +44,10 @@ app.include_router(channels.router)
 app.include_router(runs.router)
 app.include_router(videos.router)
 app.include_router(actions.router)
+app.include_router(concepts.router)
+app.include_router(concept_drafts.router)
+app.include_router(content_bank.router)
+app.include_router(scheduling.router)
 app.include_router(metrics.router)
 
 # Mount output/ directory for static file serving (images, etc.)
@@ -46,6 +55,72 @@ output_dir = os.path.join(os.path.dirname(__file__), "..", "..", "output")
 output_dir = os.path.abspath(output_dir)
 if os.path.isdir(output_dir):
     app.mount("/output", StaticFiles(directory=output_dir), name="output")
+
+
+# ---------------------------------------------------------------------------
+# Background auto-remediation task
+# ---------------------------------------------------------------------------
+
+async def _remediate_stalled_runs():
+    """Periodically find and fix stuck pipeline runs."""
+    from packages.clients.db import async_session
+    from sqlalchemy import text
+
+    while True:
+        await asyncio.sleep(60)
+        try:
+            # --- Case 1: Sticky queue (step=NULL, >3 min) ---
+            async with async_session() as session:
+                result = await session.execute(
+                    text(
+                        "SELECT id, channel_id, content_type "
+                        "FROM content_runs "
+                        "WHERE status = 'running' "
+                        "  AND current_step IS NULL "
+                        "  AND started_at < NOW() - INTERVAL '3 minutes'"
+                    )
+                )
+                stuck_null = result.fetchall()
+
+            for row in stuck_null:
+                run_id, channel_id, content_type = row[0], row[1], row[2]
+                workflow_id = f"unified-pipeline-run-{run_id}"
+
+                # Terminate the stuck workflow
+                try:
+                    client = await actions._get_temporal_client()
+                    handle = client.get_workflow_handle(workflow_id)
+                    await handle.terminate(reason="Auto-remediated: sticky queue")
+                except Exception as e:
+                    logger.warning("Could not terminate workflow %s: %s", workflow_id, e)
+
+                # Mark as failed
+                async with async_session() as session:
+                    await session.execute(
+                        text(
+                            "UPDATE content_runs "
+                            "SET status = 'failed', error = :err "
+                            "WHERE id = :id"
+                        ),
+                        {"id": run_id, "err": "Auto-remediated: sticky queue"},
+                    )
+                    await session.commit()
+
+                logger.info(
+                    "Remediated sticky-queue run %d (channel=%d, workflow=%s)",
+                    run_id, channel_id, workflow_id,
+                )
+
+            # Cases 2 & 3 (dead worker / Sora timeout) REMOVED
+            # Direct pipeline handles its own timeouts and errors
+
+        except Exception:
+            logger.exception("Error in auto-remediation loop")
+
+
+@app.on_event("startup")
+async def start_remediation_task():
+    asyncio.create_task(_remediate_stalled_runs())
 
 
 @app.get("/api/health")

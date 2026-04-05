@@ -70,5 +70,7 @@ Return EXACTLY this JSON format (no markdown, no extra text):
     "selected": false
   }},
   ...
-]"""
+]
+
+Do not use emojis in titles, hooks, or any text content."""
     return system, user

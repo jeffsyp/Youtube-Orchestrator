@@ -61,10 +61,10 @@ export function useChannelMetrics(channelId: number, enabled: boolean = true) {
   });
 }
 
-export function useStartBatchRuns() {
+export function usePublishRun() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: api.startBatchRuns,
+    mutationFn: (args: { id: number; privacy?: string }) => api.publishRun(args),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['status'] });
       qc.invalidateQueries({ queryKey: ['runs'] });
@@ -72,10 +72,21 @@ export function useStartBatchRuns() {
   });
 }
 
-export function usePublishRun() {
+export function useRejectRun() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: api.publishRun,
+    mutationFn: api.rejectRun,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['status'] });
+      qc.invalidateQueries({ queryKey: ['runs'] });
+    },
+  });
+}
+
+export function useCancelRun() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: api.cancelRun,
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['status'] });
       qc.invalidateQueries({ queryKey: ['runs'] });
@@ -94,13 +105,95 @@ export function useDeleteRun() {
   });
 }
 
-export function useRejectRun() {
+export function useConceptDrafts(params?: { status?: string; channel_id?: number; form_type?: string }) {
+  return useQuery({
+    queryKey: ['concept-drafts', params],
+    queryFn: () => api.getConceptDrafts(params),
+    refetchInterval: 10000,
+  });
+}
+
+export function useConceptDraftsSummary() {
+  return useQuery({
+    queryKey: ['concept-drafts-summary'],
+    queryFn: api.getConceptDraftsSummary,
+    refetchInterval: 10000,
+  });
+}
+
+export function useApproveConceptDraft() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: api.rejectRun,
+    mutationFn: api.approveConceptDraft,
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['status'] });
-      qc.invalidateQueries({ queryKey: ['runs'] });
+      qc.invalidateQueries({ queryKey: ['concept-drafts'] });
+      qc.invalidateQueries({ queryKey: ['concept-drafts-summary'] });
+      qc.invalidateQueries({ queryKey: ['content-bank'] });
+    },
+  });
+}
+
+export function useRejectConceptDraft() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: api.rejectConceptDraft,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['concept-drafts'] });
+      qc.invalidateQueries({ queryKey: ['concept-drafts-summary'] });
+    },
+  });
+}
+
+export function useContentBank(params?: { channel_id?: number; status?: string }) {
+  return useQuery({
+    queryKey: ['content-bank', params],
+    queryFn: () => api.getContentBank(params),
+    refetchInterval: 10000,
+  });
+}
+
+export function useSchedules() {
+  return useQuery({
+    queryKey: ['schedules'],
+    queryFn: api.getSchedules,
+    refetchInterval: 10000,
+  });
+}
+
+export function useSchedule(channelId: number) {
+  return useQuery({
+    queryKey: ['schedules', channelId],
+    queryFn: () => api.getSchedule(channelId),
+    enabled: channelId > 0,
+  });
+}
+
+export function useGenerateNow() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: api.generateNow,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['content-bank'] });
+    },
+  });
+}
+
+export function usePauseChannel() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: api.pauseChannel,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['schedules'] });
+    },
+  });
+}
+
+export function useResumeChannel() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: api.resumeChannel,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['schedules'] });
     },
   });
 }

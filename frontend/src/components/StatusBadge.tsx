@@ -4,6 +4,7 @@ const statusConfig: Record<string, { bg: string; text: string; label?: string }>
   failed: { bg: 'bg-red-500/20', text: 'text-red-400' },
   running: { bg: 'bg-yellow-500/20', text: 'text-yellow-400' },
   pending: { bg: 'bg-gray-500/20', text: 'text-gray-400' },
+  pending_review: { bg: 'bg-orange-500/20', text: 'text-orange-400', label: 'pending review' },
   rejected: { bg: 'bg-red-500/20', text: 'text-red-400' },
 };
 
@@ -27,7 +28,9 @@ export default function StatusBadge({ status }: { status: string }) {
                   ? '#ef4444'
                   : status === 'running'
                     ? '#eab308'
-                    : '#6b7280',
+                    : status === 'pending_review'
+                      ? '#f97316'
+                      : '#6b7280',
         }}
       />
       {config.label || status}

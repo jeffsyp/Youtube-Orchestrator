@@ -1,4 +1,7 @@
-"""YouTube metrics endpoints — fetch real-time stats from YouTube Data API v3."""
+"""YouTube metrics endpoints — disabled to conserve API quota.
+
+Metrics can be checked directly on YouTube Studio.
+"""
 
 import json
 
@@ -38,39 +41,8 @@ def _get_channel_youtube_token(config_json: str | None) -> str | None:
 
 
 def _fetch_video_stats(video_id: str, youtube_token_file: str | None = None) -> dict:
-    """Fetch video statistics from YouTube Data API v3."""
-    from apps.publishing_service.uploader import is_upload_configured, _get_youtube_client
-
-    if not is_upload_configured(youtube_token_file=youtube_token_file):
-        return {}
-
-    try:
-        youtube = _get_youtube_client(youtube_token_file=youtube_token_file)
-        response = youtube.videos().list(
-            part="statistics,snippet,status",
-            id=video_id,
-        ).execute()
-
-        items = response.get("items", [])
-        if not items:
-            return {}
-
-        item = items[0]
-        stats = item.get("statistics", {})
-        snippet = item.get("snippet", {})
-        status = item.get("status", {})
-
-        return {
-            "title": snippet.get("title"),
-            "views": int(stats.get("viewCount", 0)),
-            "likes": int(stats.get("likeCount", 0)),
-            "comments": int(stats.get("commentCount", 0)),
-            "privacy": status.get("privacyStatus"),
-            "published_at": snippet.get("publishedAt"),
-        }
-    except Exception as e:
-        logger.warning("failed to fetch youtube stats", video_id=video_id, error=str(e))
-        return {}
+    """Disabled — check YouTube Studio directly. Returns empty to conserve API quota."""
+    return {}
 
 
 @router.get("/metrics/{run_id}", response_model=VideoMetrics)

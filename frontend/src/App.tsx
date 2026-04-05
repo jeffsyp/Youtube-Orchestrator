@@ -2,11 +2,10 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
-import Channels from './pages/Channels';
+import Activity from './pages/Activity';
+import Concepts from './pages/Concepts';
 import ChannelDetail from './pages/ChannelDetail';
 import RunDetailPage from './pages/RunDetail';
-import NewRun from './pages/NewRun';
-import ReviewQueue from './pages/ReviewQueue';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -25,11 +24,10 @@ export default function App() {
         <Routes>
           <Route element={<Layout />}>
             <Route path="/" element={<Dashboard />} />
-            <Route path="/channels" element={<Channels />} />
+            <Route path="/activity" element={<Activity />} />
             <Route path="/channels/:id" element={<ChannelDetail />} />
+            <Route path="/concepts" element={<Concepts />} />
             <Route path="/runs/:id" element={<RunDetailPage />} />
-            <Route path="/new" element={<NewRun />} />
-            <Route path="/review" element={<ReviewQueue />} />
           </Route>
         </Routes>
       </BrowserRouter>

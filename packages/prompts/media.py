@@ -108,5 +108,7 @@ Return ONLY valid JSON, no markdown:
   "tags": ["tag1", "tag2", ...],
   "category": "...",
   "thumbnail_text": "..."
-}}"""
+}}
+
+Do not use emojis in the title, description, thumbnail text, or any text content."""
     return system, user

@@ -44,6 +44,8 @@ Return ONLY valid JSON array, no markdown:
 [
   {{"start_seconds": 5, "duration": 3, "text": "#1 Directed Energy", "style": "section_title"}},
   {{"start_seconds": 45, "duration": 3, "text": "$3.2 Billion Budget", "style": "key_fact"}}
-]"""
+]
+
+Do not use emojis in any text overlay content."""
 
     return system, user

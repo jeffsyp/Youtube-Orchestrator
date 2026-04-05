@@ -62,6 +62,7 @@ CRITICAL RULES:
 - Mark scene breaks with [CUT] — aim for a cut every 5-8 seconds of narration.
 - NEVER use episode numbers, series names, or recurring format branding.
 - Channel name is "Signal Intel" — never reference it in the script.
+- Do not use emojis in titles, descriptions, or any text content.
 """
 
     user = f"""Write a YouTube Shorts script about this topic:
@@ -137,7 +138,9 @@ Return ONLY a JSON array, no markdown:
   {{"type": "footage", "duration": 3, "search_query": "person typing phone close up", "keyword": "secretly draining"}},
   {{"type": "text_punch", "duration": 2, "text": "97% get this wrong", "search_query": "confused person thinking"}},
   {{"type": "footage", "duration": 3, "search_query": "phone battery low", "keyword": "40% faster"}}
-]"""
+]
+
+NEVER include emojis in any text overlays, hook cards, or text punch content."""
     return system, user
 
 
@@ -175,5 +178,7 @@ Return ONLY valid JSON, no markdown:
     "format": "three_tips|wrong_way|wait_what|did_you_know|before_after|ranking",
     "score": 8.5
   }}
-]"""
+]
+
+Do not use emojis in any text content."""
     return system, user
