@@ -298,6 +298,202 @@ Write it like a warm, funny storybook. Simple words. Silly moments. Sound effect
     return system, user
 
 
+# Mid-length channel IDs — 3-5 min single-flow narrated videos (landscape)
+MID_LENGTH_CHANNELS = {39}  # Techognize
+
+
+def build_midform_pitches_prompt(
+    channel_name: str,
+    niche: str,
+    past_titles: list[str],
+    count: int = 3,
+    trending: str = "",
+) -> tuple[str, str]:
+    """Phase 1: Generate mid-length (3-5 min) concept pitches — single-flow, no chapters."""
+    past_block = ""
+    if past_titles:
+        titles_list = "\n".join(f"- {t}" for t in past_titles[-100:])
+        past_block = f"""
+ALREADY MADE OR REJECTED (do NOT repeat these or anything too similar):
+{titles_list}
+"""
+
+    trending_block = ""
+    if trending:
+        trending_block = f"""
+{trending}
+
+Study these titles. They went viral. Ask yourself WHY — what made someone click and watch 3-5 minutes. Use that psychology. Do NOT copy titles.
+"""
+
+    system = f"""You pitch mid-length YouTube video concepts for "{channel_name}" — a channel about {niche}.
+
+YOUR GOAL: A 3-5 minute video that TEACHES something clearly. The viewer clicks because of curiosity, stays because every sentence adds understanding, and leaves feeling smarter.
+
+THE VIDEO IS 3-5 MINUTES. Not 10. Not 15. A tight, focused explainer. One topic, one clear throughline, no filler. Think of it as explaining something fascinating to a friend in a single conversation — you wouldn't ramble for 15 minutes. You'd give them the tight version that makes them go "wait, really?"
+
+You are ONLY pitching ideas — NOT writing scripts. For each concept:
+1. Title (compelling, search-friendly, curiosity-driven)
+2. One-sentence pitch — what will the viewer understand after watching this?
+3. The flow — how the explanation builds from "wait what?" to "oh that makes sense" in 3-4 sentences
+4. Key facts — the ESSENTIAL real details (names, dates, technical specifics). Only what the explanation actually needs.
+5. Why it works — what makes this topic click-worthy AND watchable for 3-5 minutes
+
+WHAT MAKES A GREAT MID-LENGTH EXPLAINER:
+- Topics people SEARCH for — "how does X work", "what is X", "why does X happen"
+- A curiosity gap in the title that the video resolves
+- Builds understanding step by step — each beat makes the next one make sense
+- Has at least one "wait, really?" moment that reframes what the viewer thought they knew
+- Accessible to anyone — no prerequisites, no jargon without explanation
+- Current/relevant — especially for tech/AI, things people are hearing about but don't fully understand
+
+WHAT TO AVOID:
+- Topics that need 20 minutes to explain properly — if it needs diagrams and formulas, it's too complex
+- Topics that can be fully explained in 30 seconds — not enough depth for 3-5 minutes
+- Generic overviews ("The History of AI") — too broad, be specific
+- Topics only experts would search for
+
+TITLE RULES — THIS IS THE MOST IMPORTANT PART:
+The title decides if anyone watches. It must pass two tests:
+1. SEARCH TEST — would a real person type something like this into YouTube? Think "how does X work", "what is X", "why does X happen". Use plain language, not clever wordplay.
+2. CLICK TEST — if this appeared in their feed, would they STOP and click? There must be a curiosity gap or a promise of understanding something they've wondered about.
+
+WINNING TITLE FORMATS:
+- "How [Thing] Actually Works" — simple, searchable, implies you'll finally GET it
+- "What Happens When [Specific Action]" — curiosity gap, they have to click
+- "Why [Surprising Thing] Is [Counterintuitive Claim]" — challenges assumptions
+- "[Thing] Explained in [X] Minutes" — clear value proposition
+- "What Is [New Thing Everyone's Hearing About]" — rides search spikes
+
+BAD TITLES:
+- "WiFi Explained" — boring, no hook, sounds like a school lecture
+- "The Fascinating Electromagnetic Story of WiFi" — too clever, nobody searches this
+- "You Won't Believe How WiFi Works" — clickbait, no substance signaled
+- "WiFi: A Deep Dive" — generic, forgettable
+
+Keep titles under 60 characters. Use words a normal person would use, not technical jargon.
+
+THUMBNAIL RULES:
+- ONE dominant visual element — a device, a concept visualized, a before/after
+- High contrast, readable at phone size
+- 2-4 words of text that amplify the title (not repeat it)
+- Clean, modern, techy aesthetic
+
+OUTPUT — return a JSON array of {count} pitches:
+[
+  {{
+    "title": "Search-Friendly Curiosity Title",
+    "brief": "One sentence — what will the viewer learn and why should they care",
+    "thumbnail": {{
+      "visual": "Description of the dominant visual element",
+      "text": "2-4 words overlaid on the thumbnail",
+      "emotion": "The feeling the thumbnail should evoke (curiosity, surprise, clarity, etc.)"
+    }},
+    "key_facts": "The ESSENTIAL real details the script writer needs. Technical specifics, real names, real numbers, how things actually work step by step.",
+    "flow": "How the explanation builds: Start with [the question/hook] → Explain [core concept] → Reveal [the surprising part] → Land on [the takeaway]",
+    "hook_type": "how_it_works|what_is|why_does|myth_bust|comparison|prediction"
+  }}
+]
+
+Return ONLY valid JSON, no markdown."""
+
+    user = f"""Pitch {count} mid-length video concepts for "{channel_name}" ({niche}).
+
+{trending_block}
+{past_block}
+
+Each video should be 3-5 minutes. Pick topics people are actively searching for and curious about. The explainer should build understanding step by step — not just state facts, but make the viewer GET IT."""
+
+    return system, user
+
+
+def build_midform_script_prompt(
+    channel_name: str,
+    niche: str,
+    voice_id: str,
+    channel_id: int,
+    title: str,
+    brief: str,
+    flow: str,
+    key_facts: str = "",
+) -> tuple[str, str]:
+    """Phase 2: Write narration for a 3-5 min single-flow explainer video.
+
+    No chapters — one continuous script. Visuals planned separately after.
+    """
+
+    system = f"""You are a scriptwriter for "{channel_name}" — a YouTube channel about {niche}.
+
+You've been given an approved concept. Your job is to write ONLY the narration — every word that will be spoken aloud. A separate visual director will plan the visuals AFTER hearing the narration with exact timestamps.
+
+THIS IS A 3-5 MINUTE VIDEO. HARD LIMIT. That means:
+- ~450-700 words MAXIMUM (people speak at ~150 words per minute). Count your words. If you wrote 800+ words, you went over — go back and cut ruthlessly.
+- ~30-45 narration lines (each line = one visual on screen, one sentence or two)
+- One continuous flow — no chapters, no sections, no "part 1 / part 2"
+- Landscape 16:9 format
+- 5 minutes = 750 words. That is the CEILING. Aim for 500-650.
+
+YOUR GOAL: Make the viewer UNDERSTAND something they didn't before. Every line builds on the last. By the end, they should feel smarter.
+
+STRUCTURE (invisible to the viewer — it should feel like one smooth flow):
+- Lines 1-3: HOOK — pose the question or mystery. Make them curious immediately. Talk TO the viewer.
+- Lines 4-15: BUILD — lay the foundation. Explain the basics clearly. Use analogies.
+- Lines 15-35: CORE — the meat. This is where real understanding happens. Build step by step.
+- Lines 35-45: PAYOFF — the "aha" moment. Connect everything. The surprising insight.
+- Lines 45-50: LAND — one final thought that sticks. No "thanks for watching." End with impact.
+
+WRITING RULES:
+- Each narration line = one visual on screen. One or two sentences per line. More lines = more visual cuts = more engaging.
+- Talk TO the viewer: "You know when you...", "Here's the thing most people miss...", "Think of it like this..."
+- Use analogies to explain technical concepts: "It's like a librarian who memorized every book but never understood any of them"
+- Build understanding in layers — don't dump everything at once. Each line should make the NEXT line make sense.
+- Mix short punchy lines with longer explanatory ones. Rhythm keeps attention.
+- Include at least 2-3 "wait really?" moments — surprising facts that reframe understanding
+- Use real names, real numbers, real specifics. "GPT-4 has 1.8 trillion parameters" not "it has a lot of parameters"
+- Write like someone explaining to a smart friend, NOT like a textbook or Wikipedia
+- Conversational transitions: "And here's where it gets interesting...", "But here's the thing...", "Now you might be thinking..."
+- Use "..." for natural pauses
+- Do NOT drag out words ("coool", "actuallllly") — AI voice can't do this
+- Do NOT use ALL CAPS for emphasis — AI voice reads them the same
+- No formal filler: no "well", "you see", "interestingly", "it should be noted"
+- No emojis
+
+THINK ABOUT THE VISUALS while writing — write narration that CREATES visual moments:
+- "imagine millions of numbers flowing through layers of math" — gives the visual director something to work with
+- Describe things the viewer can SEE, not just abstract concepts
+- When explaining a process, narrate it step by step so each step can be a visual
+
+OUTPUT — return a JSON object:
+{{
+  "title": "{title}",
+  "narration": [
+    "First line — the hook that grabs attention",
+    "Second line — pull them deeper",
+    "...30-50 lines total...",
+    "Final line — the thought that sticks"
+  ],
+  "caption": "YouTube description — a compelling sentence about what the viewer will learn. Include 5-8 hashtags mixing broad (#tech #explained) with specific (#ai #chatgpt etc). Example: 'Ever wondered what actually happens when you talk to ChatGPT? The answer is wilder than you think. #ai #chatgpt #tech #explained #howthingswork #technology'",
+  "tags": ["specific_tag", "broader_tag", "niche_tag", "tech", "explained"],
+  "voice_id": "{voice_id}",
+  "channel_id": {channel_id},
+  "format_version": 2,
+  "long_form": true
+}}
+
+Return ONLY valid JSON, no markdown."""
+
+    user = f"""Write the narration for this approved concept:
+
+TITLE: {title}
+PITCH: {brief}
+KEY FACTS: {key_facts}
+FLOW: {flow}
+
+Write ~30-50 lines of narration that builds understanding step by step. Each line = one visual moment. Make it conversational, clear, and fascinating. Use the KEY FACTS for real specifics. The viewer should feel smarter by the end."""
+
+    return system, user
+
+
 # No-narration channel IDs
 MEME_CHANNELS = {37}  # Thats A Meme
 SATISFYING_CHANNELS = {36}  # Very Clean Very Good
