@@ -323,37 +323,55 @@ This is batch {batch_index + 1} of {total_batches} for a long-form video.
 
 ART STYLE: {art_style} Every image should look like it belongs in a high-quality animated show.
 
-YOUR #1 JOB: Each image must ILLUSTRATE what the narrator is saying at that exact moment. The viewer hears the narration and sees the image at the same time. If the narration says "he picked up a hammer" the image MUST show someone picking up a hammer — not a random landscape. A viewer should be able to understand the story from the images alone.
+YOUR #1 JOB: Every visual must show EXACTLY what the narrator is describing at that moment. Not something vaguely related — the EXACT thing being explained.
+
+The narrator and the visual work together. The narrator says what's happening, the visual SHOWS it. If the narration says "data passes through three layers" the visual MUST show data passing through three layers. Not a generic server room. Not a scientist at a desk. The actual concept being explained, visualized.
+
+ASK YOURSELF: "If I muted the narration, would this visual teach the viewer something on its own?" If the answer is no — if it's just decoration — pick a better visual.
+
+BAD: Narration says "transformers process words in parallel" → visual shows "a futuristic computer lab" (decoration, teaches nothing)
+GOOD: Narration says "transformers process words in parallel" → video showing multiple words being processed simultaneously with arrows connecting them
+GOOD: Narration says "it costs $100 million to train GPT-4" → diagram showing "$100,000,000" with a cost breakdown
 {prev_block}
 
 VISUAL TYPES:
-1. "grok" — AI video clip. We generate an image first, then animate it.
+1. "grok" — AI video clip. DEFAULT. Use for almost everything. We generate an image first, then animate it.
    - "prompt": MUST start with "{art_style}" then describe EXACTLY what the narration describes
-   - "video_prompt": MOTION ONLY — how the image animates
-   Great for dramatic moments, reveals, action sequences.
-2. "image" — Still image with Ken Burns zoom. ONE clear subject.
-   - "prompt": MUST start with "{art_style}" then describe the scene
+   - "video_prompt": MOTION ONLY — how the image animates. GOOD: "camera slowly zooms in", "particles float upward", "character turns head". Keep it simple — one motion.
+   If the narration describes a scene, a concept, an analogy, a person, a place, an action — use "grok". Video keeps viewers engaged. Still images lose attention.
+2. "diagram" — Informational graphic rendered by gpt-image-1.5 (great at text, diagrams, charts). STILL IMAGE.
+   - "prompt": Describe the diagram/chart/infographic. Include exact text, labels, numbers to display.
+   - Use for: flowcharts, process diagrams, comparisons, key stats/numbers, term definitions, before/after, step-by-step breakdowns.
+   - Do NOT start with art_style — diagrams have their own clean style.
+   - Prompt should specify: dark background, clean modern infographic style, glowing accents, 16:9 landscape layout.
+   - Use ONLY when the viewer needs to READ something — a number, a comparison, a definition. If the narration states a fact that lands harder as text on screen, use diagram. Everything else is "grok".
+3. "image" — Still image. RARELY USE. Only for extremely detailed scenes where the viewer needs time to study the image (e.g. a complex map, a detailed cross-section). Almost never the right choice — prefer "grok" for engagement.
 
 RULES:
-{'- Line 0 MUST be type "grok" (video hook). This batch gets 1 video clip.' if is_first_batch else '- This batch gets AT MOST 1 "grok" video clip. Pick the single most dramatic moment. Everything else is "image".'}
-- The ENTIRE video should have ~5 video clips total across all batches.
+- "grok" (video) is the DEFAULT. Use it for every line unless the viewer specifically needs to READ text/numbers — then use "diagram".
+- For educational/explainer videos: use "diagram" for ~25-35% of visuals — whenever the narration states a key number, definition, comparison, or process. Everything else is "grok" video.
+- "image" (still) should be used almost never. Only for extremely detailed visuals the viewer needs to study.
 
 THINK LIKE A YOUTUBE EDITOR:
-- If this video is about a specific subject, 80% of images should SHOW that subject
-- Don't show generic people/offices/buildings when the topic is about a specific character/animal/thing
-- A video about the Dyatlov Pass should show the hikers, the tent, the mountain — not stock office scenes
+- Every visual must TEACH, not decorate. If the visual doesn't help the viewer understand, it shouldn't be there.
+- The narrator explains WITH the visual — they're a team. The viewer should be looking at exactly what's being talked about.
+- For concepts/processes: SHOW the concept. Visualize the abstraction. "Attention mechanism" = show words connecting to each other with weighted lines, not a robot thinking.
+- For facts/numbers: use a diagram so the viewer can READ the key info while hearing it explained.
+- NEVER use filler visuals — no generic "scientist at desk", "glowing brain", "person typing" just because you need something on screen.
 
-IMAGE PROMPT RULES:
-- Every image must show EXACTLY what is being said, featuring the main subject wherever possible
-- NEVER write generic prompts like "dark mysterious scene" or "dramatic moment"
-- Each prompt = a specific scene that could ONLY belong to THIS narration line
-- Include: the main subject, specific actions from the narration, camera angle, lighting
+PROMPT RULES:
+- Every prompt must visualize the SPECIFIC concept being explained in that narration line
+- NEVER write generic prompts like "futuristic tech background" or "AI concept illustration"
+- Each prompt = a visualization that could ONLY belong to THIS narration line
+- For "grok" prompts: describe the concept being explained as a visual scene. What would a great animation of this concept look like?
+- For "diagram" prompts: include the exact text, numbers, labels, and layout the viewer needs to read
 
 CRITICAL: Every term must be grounded in the video's universe. If the video is about League of Legends, "minions" means LEAGUE OF LEGENDS minions — write "League of Legends minions" not just "minions". If about Pokemon, "evolution" means POKEMON evolution. Always prefix ambiguous terms with the franchise/universe name so the image generator creates the right thing.
 
-Only describe things AI image generators are GOOD at: characters, animals, objects, landscapes, simple scenes.
-NEVER describe: UIs, game interfaces, store screens, websites, text-heavy scenes, split panels, diagrams, screenshots.
-If narration talks about an interface or screen, show the CHARACTER reacting instead.
+For "grok" and "image" types, only describe things AI image generators are GOOD at: characters, animals, objects, landscapes, simple scenes.
+For "grok" and "image" types, NEVER describe: UIs, game interfaces, store screens, websites, split panels, screenshots.
+For text, numbers, definitions, comparisons, and processes — use "diagram" type instead.
+If narration talks about an interface or screen, show the CHARACTER reacting instead OR use a "diagram" to show the key info.
 
 BAD: "A game store interface showing items for sale" (AI can't render UIs)
 BAD: "A website showing patch notes" (AI can't render screens)
@@ -372,8 +390,9 @@ Aspect ratio: {aspect}
 OUTPUT — return a JSON object:
 {{
   "visuals": [
-    {{"line_index": 0, "type": "grok", "prompt": "close-up of torn tent fabric, slash marks from inside, blizzard visible through gash", "video_prompt": "slow push-in, snow swirling through tear"}},
-    {{"line_index": 1, "type": "image", "prompt": "nine pairs of bare footprints in deep snow leading toward dark treeline, moonlit", "label": null}},
+    {{"line_index": 0, "type": "grok", "prompt": "{art_style} close-up of torn tent fabric, slash marks from inside, blizzard visible through gash", "video_prompt": "slow push-in, snow swirling through tear"}},
+    {{"line_index": 1, "type": "grok", "prompt": "{art_style} nine pairs of bare footprints in deep snow leading toward dark treeline, moonlit", "video_prompt": "camera slowly pans across footprints"}},
+    {{"line_index": 2, "type": "diagram", "prompt": "Dark background, clean modern infographic. Title: 'GPT-4 vs GPT-3.5'. Two columns comparing: Parameters (1.8T vs 175B), Training data (13T tokens vs 300B tokens), Cost ($100M+ vs $12M). Glowing cyan accents, 16:9 landscape."}},
     ...
   ],
   "style_summary": "Brief description of the visual style used in this batch for consistency in the next batch"
