@@ -1,13 +1,21 @@
+# Secrets & credentials
 .env
+.env.*
 client_secrets.json
 youtube_token.json
+youtube_token_*.json
+
+# Python
 .venv/
 __pycache__/
 *.pyc
 *.egg-info/
 dist/
 .pytest_cache/
+
+# Output
 output/
 *.mp4
+
+# IDE / tools
 .claude/
-youtube_token_*.json
