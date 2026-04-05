@@ -1769,6 +1769,11 @@ PROMPT: (only if NO) a corrected image prompt with detailed visual description o
         seg_path = os.path.join(segments_dir, f"seg_{i}.mp4")
         dur = audio["duration"]
         vp = visual_paths.get(i)
+        # Landscape: scale down + pad. Portrait: scale up + crop to fill (no black bars).
+        if is_long_form:
+            scale_filter = f"scale={WIDTH}:{HEIGHT}:force_original_aspect_ratio=decrease,pad={WIDTH}:{HEIGHT}:(ow-iw)/2:(oh-ih)/2"
+        else:
+            scale_filter = f"scale={WIDTH}:{HEIGHT}:force_original_aspect_ratio=increase,crop={WIDTH}:{HEIGHT}"
 
         if not vp:
             logger.warning("no visual for line", line=i)
@@ -1798,7 +1803,7 @@ PROMPT: (only if NO) a corrected image prompt with detailed visual description o
                     "ffmpeg", "-y",
                     "-stream_loop", "-1", "-i", video_only if os.path.exists(video_only) else clip_input,
                     "-i", audio["path"],
-                    "-vf", f"scale={WIDTH}:{HEIGHT}:force_original_aspect_ratio=decrease,pad={WIDTH}:{HEIGHT}:(ow-iw)/2:(oh-ih)/2",
+                    "-vf", scale_filter,
                     "-map", "0:v", "-map", "1:a",
                     "-t", str(dur),
                     "-r", "30", "-pix_fmt", "yuv420p",
@@ -1813,7 +1818,7 @@ PROMPT: (only if NO) a corrected image prompt with detailed visual description o
                     "ffmpeg", "-y",
                     "-stream_loop", "-1", "-i", clip_input,
                     "-i", audio["path"],
-                    "-vf", f"scale={WIDTH}:{HEIGHT}:force_original_aspect_ratio=decrease,pad={WIDTH}:{HEIGHT}:(ow-iw)/2:(oh-ih)/2",
+                    "-vf", scale_filter,
                     "-map", "0:v", "-map", "1:a",
                     "-t", str(dur),
                     "-r", "30", "-pix_fmt", "yuv420p",
@@ -1823,12 +1828,12 @@ PROMPT: (only if NO) a corrected image prompt with detailed visual description o
                     seg_path,
                 ]
         else:
-            # Static image — scale to output resolution, no zoom/shake
+            # Static image — scale to output resolution
             cmd = [
                 "ffmpeg", "-y",
                 "-loop", "1", "-i", vp["path"],
                 "-i", audio["path"],
-                "-vf", f"scale={WIDTH}:{HEIGHT}:force_original_aspect_ratio=decrease,pad={WIDTH}:{HEIGHT}:(ow-iw)/2:(oh-ih)/2",
+                "-vf", scale_filter,
                 "-r", "30", "-pix_fmt", "yuv420p",
                 "-c:v", "libx264", "-preset", "fast", "-crf", "14", "-pix_fmt", "yuv420p",
                 "-c:a", "aac", "-ar", "44100", "-b:a", "192k",
