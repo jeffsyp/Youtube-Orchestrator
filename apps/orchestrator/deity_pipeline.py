@@ -683,7 +683,7 @@ No markdown, just the JSON array."""
                     "-vf", f"scale={WIDTH}:{HEIGHT}:force_original_aspect_ratio=decrease,pad={WIDTH}:{HEIGHT}:(ow-iw)/2:(oh-ih)/2",
                     "-map", video_map, "-map", "1:a",
                     "-r", "30", "-pix_fmt", "yuv420p",
-                    "-c:v", "libx264", "-preset", "fast", "-crf", "14",
+                    "-c:v", "libx264", "-preset", "fast", "-crf", "14", "-pix_fmt", "yuv420p",
                     "-c:a", "aac", "-ar", "44100", "-b:a", "192k",
                     "-shortest", "-movflags", "+faststart",
                     seg_path,
@@ -707,7 +707,7 @@ No markdown, just the JSON array."""
                         subprocess.run([
                             "ffmpeg", "-y", "-loop", "1", "-i", img_p,
                             "-vf", f"scale={WIDTH}:{HEIGHT}:force_original_aspect_ratio=decrease,pad={WIDTH}:{HEIGHT}:(ow-iw)/2:(oh-ih)/2",
-                            "-c:v", "libx264", "-preset", "fast", "-crf", "14",
+                            "-c:v", "libx264", "-preset", "fast", "-crf", "14", "-pix_fmt", "yuv420p",
                             "-t", str(sub_dur), "-an",
                             sub_path,
                         ], capture_output=True, text=True, timeout=60)
@@ -721,7 +721,7 @@ No markdown, just the JSON array."""
                     multi_video = os.path.join(segments_dir, f"multi_{i}.mp4")
                     subprocess.run([
                         "ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", concat_file,
-                        "-c:v", "libx264", "-preset", "fast", "-crf", "14",
+                        "-c:v", "libx264", "-preset", "fast", "-crf", "14", "-pix_fmt", "yuv420p",
                         multi_video,
                     ], capture_output=True, text=True, timeout=60)
 
@@ -766,7 +766,7 @@ No markdown, just the JSON array."""
                     "-loop", "1", "-i", visual["path"],
                     "-i", audio["path"],
                     "-vf", f"scale={WIDTH}:{HEIGHT}:force_original_aspect_ratio=decrease,pad={WIDTH}:{HEIGHT}:(ow-iw)/2:(oh-ih)/2",
-                    "-c:v", "libx264", "-preset", "fast", "-crf", "14",
+                    "-c:v", "libx264", "-preset", "fast", "-crf", "14", "-pix_fmt", "yuv420p",
                     "-c:a", "aac", "-ar", "44100", "-b:a", "192k",
                     "-shortest", "-movflags", "+faststart",
                     seg_path,
@@ -778,7 +778,7 @@ No markdown, just the JSON array."""
                         "-loop", "1", "-i", visual["path"],
                         "-i", audio["path"],
                         "-vf", f"scale={WIDTH}:{HEIGHT}:force_original_aspect_ratio=decrease,pad={WIDTH}:{HEIGHT}:(ow-iw)/2:(oh-ih)/2",
-                        "-c:v", "libx264", "-preset", "fast", "-crf", "14",
+                        "-c:v", "libx264", "-preset", "fast", "-crf", "14", "-pix_fmt", "yuv420p",
                         "-c:a", "aac", "-ar", "44100", "-b:a", "192k",
                         "-shortest", "-movflags", "+faststart",
                         seg_path,
@@ -801,7 +801,7 @@ No markdown, just the JSON array."""
         sub_timeout = 600 if is_long_form else 300
         subprocess.run(
             ["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", concat_list,
-             "-c:v", "libx264", "-preset", "fast", "-crf", "14",
+             "-c:v", "libx264", "-preset", "fast", "-crf", "14", "-pix_fmt", "yuv420p",
              "-c:a", "aac", "-ar", "44100", "-b:a", "192k", "-movflags", "+faststart",
              concat_path],
             capture_output=True, text=True, timeout=sub_timeout,
@@ -872,7 +872,7 @@ No markdown, just the JSON array."""
             cmd = [
                 "ffmpeg", "-y", "-i", concat_path,
                 "-vf", f"ass={ass_escaped}",
-                "-c:v", "libx264", "-preset", "fast", "-crf", "14",
+                "-c:v", "libx264", "-preset", "fast", "-crf", "14", "-pix_fmt", "yuv420p",
                 "-c:a", "copy", "-movflags", "+faststart",
                 final_path,
             ]
@@ -1115,7 +1115,7 @@ async def _run_no_narration(run_id: int, concept: dict, output_dir: str, _update
             "-t", str(duration),
             "-vf", f"scale={WIDTH}:{HEIGHT}:force_original_aspect_ratio=decrease,pad={WIDTH}:{HEIGHT}:(ow-iw)/2:(oh-ih)/2",
             "-r", "30", "-pix_fmt", "yuv420p",
-            "-c:v", "libx264", "-preset", "fast", "-crf", "14",
+            "-c:v", "libx264", "-preset", "fast", "-crf", "14", "-pix_fmt", "yuv420p",
             "-c:a", "aac", "-ar", "44100", "-b:a", "192k",
             "-movflags", "+faststart",
             seg_path,
@@ -1138,7 +1138,7 @@ async def _run_no_narration(run_id: int, concept: dict, output_dir: str, _update
 
     subprocess.run([
         "ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", concat_list,
-        "-c:v", "libx264", "-preset", "fast", "-crf", "14",
+        "-c:v", "libx264", "-preset", "fast", "-crf", "14", "-pix_fmt", "yuv420p",
         "-c:a", "aac", "-ar", "44100", "-b:a", "192k", "-movflags", "+faststart",
         concat_path,
     ], capture_output=True, timeout=300)
@@ -1802,7 +1802,7 @@ PROMPT: (only if NO) a corrected image prompt with detailed visual description o
                     "-map", "0:v", "-map", "1:a",
                     "-t", str(dur),
                     "-r", "30", "-pix_fmt", "yuv420p",
-                    "-c:v", "libx264", "-preset", "fast", "-crf", "14",
+                    "-c:v", "libx264", "-preset", "fast", "-crf", "14", "-pix_fmt", "yuv420p",
                     "-c:a", "aac", "-ar", "44100", "-b:a", "192k",
                     "-movflags", "+faststart",
                     seg_path,
@@ -1817,7 +1817,7 @@ PROMPT: (only if NO) a corrected image prompt with detailed visual description o
                     "-map", "0:v", "-map", "1:a",
                     "-t", str(dur),
                     "-r", "30", "-pix_fmt", "yuv420p",
-                    "-c:v", "libx264", "-preset", "fast", "-crf", "14",
+                    "-c:v", "libx264", "-preset", "fast", "-crf", "14", "-pix_fmt", "yuv420p",
                     "-c:a", "aac", "-ar", "44100", "-b:a", "192k",
                     "-movflags", "+faststart",
                     seg_path,
@@ -1830,7 +1830,7 @@ PROMPT: (only if NO) a corrected image prompt with detailed visual description o
                 "-i", audio["path"],
                 "-vf", f"scale={WIDTH}:{HEIGHT}:force_original_aspect_ratio=decrease,pad={WIDTH}:{HEIGHT}:(ow-iw)/2:(oh-ih)/2",
                 "-r", "30", "-pix_fmt", "yuv420p",
-                "-c:v", "libx264", "-preset", "fast", "-crf", "14",
+                "-c:v", "libx264", "-preset", "fast", "-crf", "14", "-pix_fmt", "yuv420p",
                 "-c:a", "aac", "-ar", "44100", "-b:a", "192k",
                 "-shortest", "-movflags", "+faststart",
                 seg_path,
@@ -1902,7 +1902,7 @@ PROMPT: (only if NO) a corrected image prompt with detailed visual description o
                     f.write(f"file '{os.path.abspath(seg)}'\n")
             subprocess.run(
                 ["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", concat_list_path,
-                 "-c:v", "libx264", "-preset", "fast", "-crf", "14",
+                 "-c:v", "libx264", "-preset", "fast", "-crf", "14", "-pix_fmt", "yuv420p",
                  "-c:a", "aac", "-ar", "44100", "-b:a", "192k", "-movflags", "+faststart",
                  concat_path],
                 capture_output=True, text=True, timeout=sub_timeout,
@@ -2006,7 +2006,7 @@ PROMPT: (only if NO) a corrected image prompt with detailed visual description o
         cmd = [
             "ffmpeg", "-y", "-i", concat_path,
             "-vf", f"ass={ass_escaped}",
-            "-c:v", "libx264", "-preset", "fast", "-crf", "14",
+            "-c:v", "libx264", "-preset", "fast", "-crf", "14", "-pix_fmt", "yuv420p",
             "-c:a", "copy", "-movflags", "+faststart",
             final_path,
         ]
