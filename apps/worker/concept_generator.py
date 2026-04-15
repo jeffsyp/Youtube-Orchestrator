@@ -10,7 +10,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(override=True)
 logger = structlog.get_logger()
 
 REPLENISH_INTERVAL = 120  # check every 2 minutes
@@ -139,6 +139,91 @@ def _research_niche(niche: str, max_results: int = 15, form_type: str = "short")
         return ""
 
 
+async def _get_youtube_trending(niche: str, channel_name: str) -> str:
+    """Use Claude to generate search queries, then YouTube autocomplete to find what people are searching.
+
+    Free, no auth, no quota — runs on every concept generation.
+    Returns a text block of trending searches to feed into concept generation.
+    """
+    import urllib.request
+    import urllib.parse
+
+    try:
+        from packages.clients.claude import generate
+
+        # Step 1: Ask Claude to brainstorm search queries people in this niche would type
+        loop = asyncio.get_event_loop()
+        seed_response = await loop.run_in_executor(None, lambda: generate(
+            system=f"You generate YouTube search queries for the niche: {niche}",
+            prompt=f"""List 12 YouTube search queries that fans of "{channel_name}" ({niche}) would actually type into YouTube search.
+
+Mix these types:
+- Direct topic searches ("pokemon vs", "what if earth")
+- Question searches ("why does", "how does")
+- Trending format searches ("tier list", "who would win")
+- Specific character/topic searches relevant to the niche
+
+Return ONLY a JSON array of strings, no markdown:
+["query one", "query two", ...]""",
+            max_tokens=500,
+            model="claude-haiku-4-5-20251001",
+        ))
+
+        # Parse seed queries
+        try:
+            seeds = json.loads(seed_response.strip())
+            if not isinstance(seeds, list):
+                seeds = []
+        except json.JSONDecodeError:
+            import re
+            match = re.search(r'\[.*\]', seed_response, re.DOTALL)
+            if match:
+                seeds = json.loads(match.group())
+            else:
+                seeds = []
+
+        if not seeds:
+            return ""
+
+        # Step 2: Hit YouTube autocomplete for each seed query
+        all_suggestions = []
+        for query in seeds[:12]:
+            try:
+                url = f"https://suggestqueries.google.com/complete/search?client=youtube&ds=yt&q={urllib.parse.quote(query)}"
+                raw = urllib.request.urlopen(url, timeout=5).read().decode("utf-8")
+                data = json.loads(raw.split("(", 1)[1].rsplit(")", 1)[0])
+                for suggestion in data[1][:3]:
+                    s = suggestion[0]
+                    if s and s != query:
+                        all_suggestions.append(s)
+            except Exception:
+                continue
+
+        if not all_suggestions:
+            return ""
+
+        # Deduplicate
+        seen = set()
+        unique = []
+        for s in all_suggestions:
+            key = s.lower().strip()
+            if key not in seen:
+                seen.add(key)
+                unique.append(s)
+
+        lines = ["TRENDING YOUTUBE SEARCHES (people are actively searching for these — use them as inspiration):"]
+        for s in unique[:20]:
+            lines.append(f"- \"{s}\"")
+
+        result = "\n".join(lines)
+        logger.info("youtube trending complete", channel=channel_name, suggestions=len(unique))
+        return result
+
+    except Exception as e:
+        logger.warning("youtube trending failed (non-fatal)", error=str(e)[:100])
+        return ""
+
+
 def _get_engine():
     db_url = os.getenv("DATABASE_URL", "postgresql+asyncpg://orchestrator:orchestrator@localhost:5432/orchestrator")
     if "asyncpg" not in db_url:
@@ -183,34 +268,47 @@ async def generate_drafts_for_channel(channel_id: int, count: int = 5, form_type
         # Research trending content in this niche
         trending = _research_niche(niche, form_type=form_type)
 
+        # Add YouTube autocomplete trending (free, always fresh)
+        yt_trending = await _get_youtube_trending(niche, channel_name)
+        if yt_trending:
+            trending = f"{trending}\n\n{yt_trending}" if trending else yt_trending
+
         from packages.clients.claude import generate
 
-        from packages.prompts.concept_drafts import NO_NARRATION_CHANNELS, KIDS_CHANNELS, MID_LENGTH_CHANNELS
+        from packages.prompts.concept_drafts import KIDS_CHANNELS, MID_LENGTH_CHANNELS, EDUCATIONAL_CHANNELS, WEEKLY_RECAP_CHANNELS, RESEARCH_CHANNELS, SATISFYING_CHANNELS
 
-        if channel_id in KIDS_CHANNELS:
+        if channel_id in RESEARCH_CHANNELS:
+            draft_ids = await _generate_research_concepts(
+                engine, channel_id, channel_name, niche, voice_id,
+                past_titles, count, form_type,
+            )
+        elif channel_id in WEEKLY_RECAP_CHANNELS:
+            draft_ids = await _generate_weekly_recap_draft(
+                engine, channel_id, channel_name, niche, voice_id,
+                past_titles, trending=trending,
+            )
+        elif channel_id in KIDS_CHANNELS:
             draft_ids = await _generate_kids_drafts(
                 engine, channel_id, channel_name, niche, voice_id,
                 past_titles, trending, count,
             )
-        elif channel_id in NO_NARRATION_CHANNELS:
+        elif form_type == "long":
+            # Long-form stays narrated
+            if channel_id in EDUCATIONAL_CHANNELS:
+                draft_ids = await _generate_unified_topic_drafts(
+                    engine, channel_id, channel_name, niche, voice_id,
+                    past_titles, trending, count, form_type,
+                )
+            else:
+                draft_ids = await _generate_longform_drafts(
+                    engine, channel_id, channel_name, niche, voice_id,
+                    past_titles, trending, count, form_type,
+                )
+        else:
+            # ALL shorts use visual slapstick no-narration format
             draft_ids = await _generate_no_narration_drafts(
                 engine, channel_id, channel_name, niche,
                 past_titles, trending, count,
-            )
-        elif channel_id in MID_LENGTH_CHANNELS:
-            draft_ids = await _generate_midform_drafts(
-                engine, channel_id, channel_name, niche, voice_id,
-                past_titles, trending, count, "long",
-            )
-        elif form_type == "long":
-            draft_ids = await _generate_longform_drafts(
-                engine, channel_id, channel_name, niche, voice_id,
-                past_titles, trending, count, form_type,
-            )
-        else:
-            draft_ids = await _generate_short_drafts(
-                engine, channel_id, channel_name, niche, voice_id,
-                past_titles, trending, count, form_type,
             )
 
         logger.info("concept drafts generated", channel=channel_name, count=len(draft_ids),
@@ -298,6 +396,525 @@ async def _generate_short_drafts(
         draft_id = await _insert_draft(engine, channel_id, title, concept, brief, form_type)
         if draft_id:
             draft_ids.append(draft_id)
+
+    return draft_ids
+
+
+async def _generate_unified_topic_drafts(
+    engine, channel_id, channel_name, niche, voice_id,
+    past_titles, trending, count, form_type,
+) -> list[int]:
+    """Generate topics then write scripts adapted to the requested format.
+
+    Same topic pool for both shorts and mid-form. The script is what changes.
+    """
+    from packages.prompts.concept_drafts import (
+        build_unified_topic_prompt,
+        build_short_script_from_topic,
+        build_midform_script_from_topic,
+        MID_LENGTH_CHANNELS,
+    )
+    from packages.clients.claude import generate
+
+    # Phase 1: Generate format-agnostic topics
+    system, user = build_unified_topic_prompt(
+        channel_name=channel_name,
+        niche=niche,
+        past_titles=past_titles,
+        count=count,
+        trending=trending,
+    )
+
+    logger.info("phase 1: generating topics", channel=channel_name, count=count)
+
+    resp = generate(prompt=user, system=system, model="claude-sonnet-4-6", max_tokens=4000)
+    resp = resp.strip()
+    if resp.startswith("```"):
+        resp = re.sub(r"^```(?:json)?\s*", "", resp)
+        resp = re.sub(r"\s*```$", "", resp)
+
+    topics = json.loads(resp)
+    if not isinstance(topics, list):
+        topics = [topics]
+
+    logger.info("phase 1 complete", channel=channel_name, topics=len(topics))
+
+    # Filter duplicates
+    async with AsyncSession(engine) as s:
+        pending = await s.execute(text(
+            "SELECT count(*) FROM concept_drafts WHERE channel_id = :cid AND status = 'pending' AND form_type = :ft"
+        ), {"cid": channel_id, "ft": form_type})
+        current_pending = pending.scalar()
+        target = DRAFTS_PER_CHANNEL if form_type == "short" else 2
+        remaining = max(0, target - current_pending)
+
+    valid_topics = await _filter_duplicate_pitches(engine, channel_id, topics, remaining)
+
+    # Phase 2: Write scripts — format depends on form_type
+    draft_ids = []
+    for topic in valid_topics:
+        title = topic.get("title", "Untitled")
+        brief = topic.get("brief", "")
+        key_facts = topic.get("key_facts", "")
+
+        if form_type == "long":
+            # Mid-form script
+            actual_form = "long"
+            logger.info("phase 2: writing mid-form script", title=title)
+            sys2, usr2 = build_midform_script_from_topic(
+                channel_name=channel_name, niche=niche, voice_id=voice_id,
+                channel_id=channel_id, title=title, brief=brief, key_facts=key_facts,
+            )
+        else:
+            # Short script
+            actual_form = "short"
+            logger.info("phase 2: writing short script", title=title)
+            sys2, usr2 = build_short_script_from_topic(
+                channel_name=channel_name, niche=niche, voice_id=voice_id,
+                channel_id=channel_id, title=title, brief=brief, key_facts=key_facts,
+            )
+
+        resp2 = generate(prompt=usr2, system=sys2, model="claude-sonnet-4-6", max_tokens=8000 if actual_form == "long" else 4000)
+        resp2 = resp2.strip()
+        if resp2.startswith("```"):
+            resp2 = re.sub(r"^```(?:json)?\s*", "", resp2)
+            resp2 = re.sub(r"\s*```$", "", resp2)
+
+        try:
+            concept = json.loads(resp2)
+        except json.JSONDecodeError:
+            logger.warning("script JSON parse failed", title=title)
+            continue
+
+        draft_id = await _insert_draft(engine, channel_id, title, concept, brief, actual_form)
+        if draft_id:
+            draft_ids.append(draft_id)
+
+    return draft_ids
+
+
+async def _generate_educational_short_drafts(
+    engine, channel_id, channel_name, niche, voice_id,
+    past_titles, trending, count,
+) -> list[int]:
+    """Generate educational short-form concept drafts — explainers, not stories."""
+    from packages.prompts.concept_drafts import build_educational_shorts_pitches_prompt, build_educational_shorts_script_prompt
+    from packages.clients.claude import generate
+
+    system, user = build_educational_shorts_pitches_prompt(
+        channel_name=channel_name,
+        niche=niche,
+        past_titles=past_titles,
+        count=count,
+        trending=trending,
+    )
+
+    logger.info("phase 1: generating educational short pitches", channel=channel_name, count=count)
+
+    resp = generate(prompt=user, system=system, model="claude-sonnet-4-6", max_tokens=4000)
+    resp = resp.strip()
+    if resp.startswith("```"):
+        resp = re.sub(r"^```(?:json)?\s*", "", resp)
+        resp = re.sub(r"\s*```$", "", resp)
+
+    pitches = json.loads(resp)
+    if not isinstance(pitches, list):
+        pitches = [pitches]
+
+    logger.info("phase 1 complete", channel=channel_name, pitches=len(pitches))
+
+    draft_ids = []
+    async with AsyncSession(engine) as s:
+        pending = await s.execute(text(
+            "SELECT count(*) FROM concept_drafts WHERE channel_id = :cid AND status = 'pending' AND form_type = 'short'"
+        ), {"cid": channel_id})
+        current_pending = pending.scalar()
+        remaining = max(0, DRAFTS_PER_CHANNEL - current_pending)
+
+    valid_pitches = await _filter_duplicate_pitches(engine, channel_id, pitches, remaining)
+
+    for pitch in valid_pitches:
+        title = pitch.get("title", "Untitled")
+        brief = pitch.get("brief", "")
+        structure = pitch.get("structure", "")
+        key_facts = pitch.get("key_facts", "")
+
+        logger.info("phase 2: writing educational script", title=title)
+
+        sys2, usr2 = build_educational_shorts_script_prompt(
+            channel_name=channel_name,
+            niche=niche,
+            voice_id=voice_id,
+            channel_id=channel_id,
+            title=title,
+            brief=brief,
+            structure=structure,
+            key_facts=key_facts,
+        )
+
+        resp2 = generate(prompt=usr2, system=sys2, model="claude-sonnet-4-6", max_tokens=4000)
+        resp2 = resp2.strip()
+        if resp2.startswith("```"):
+            resp2 = re.sub(r"^```(?:json)?\s*", "", resp2)
+            resp2 = re.sub(r"\s*```$", "", resp2)
+
+        try:
+            concept = json.loads(resp2)
+        except json.JSONDecodeError:
+            logger.warning("script JSON parse failed", title=title)
+            continue
+
+        draft_id = await _insert_draft(engine, channel_id, title, concept, brief, "short")
+        if draft_id:
+            draft_ids.append(draft_id)
+
+    return draft_ids
+
+
+def _fetch_weekly_news(news_type: str = "tech") -> tuple[list[dict], str]:
+    """Fetch this week's top news. Returns (stories, formatted_block).
+
+    news_type: "tech" for Hacker News, "world" for Reddit world news.
+    """
+    from datetime import datetime, timedelta
+    import urllib.request
+
+    stories = []
+    cutoff = datetime.now() - timedelta(days=7)
+
+    if news_type == "world":
+        # Reddit world news — no API key needed for top posts
+        subreddits = ["worldnews", "news", "geopolitics"]
+        for sub in subreddits:
+            try:
+                url = f"https://www.reddit.com/r/{sub}/top.json?t=week&limit=15"
+                req = urllib.request.Request(url, headers={"User-Agent": "globe-dump/1.0"})
+                with urllib.request.urlopen(req, timeout=10) as resp:
+                    data = json.loads(resp.read())
+                for post in data.get("data", {}).get("children", []):
+                    p = post["data"]
+                    created = datetime.fromtimestamp(p.get("created_utc", 0))
+                    if created < cutoff:
+                        continue
+                    stories.append({
+                        "title": p.get("title", ""),
+                        "score": p.get("score", 0),
+                        "num_comments": p.get("num_comments", 0),
+                        "source": f"r/{sub}",
+                    })
+            except Exception as e:
+                logger.warning(f"Reddit r/{sub} fetch failed", error=str(e)[:100])
+    else:
+        # Hacker News for tech
+        try:
+            url = "https://hacker-news.firebaseio.com/v0/topstories.json"
+            with urllib.request.urlopen(url, timeout=10) as resp:
+                story_ids = json.loads(resp.read())[:60]
+
+            for sid in story_ids:
+                if len(stories) >= 30:
+                    break
+                try:
+                    item_url = f"https://hacker-news.firebaseio.com/v0/item/{sid}.json"
+                    with urllib.request.urlopen(item_url, timeout=5) as resp:
+                        item = json.loads(resp.read())
+                    if not item or item.get("type") != "story":
+                        continue
+                    created = datetime.fromtimestamp(item.get("time", 0))
+                    if created < cutoff:
+                        continue
+                    stories.append({
+                        "title": item.get("title", ""),
+                        "score": item.get("score", 0),
+                        "num_comments": item.get("descendants", 0),
+                    })
+                except Exception:
+                    continue
+        except Exception as e:
+            logger.error("HN fetch failed", error=str(e)[:200])
+            return [], ""
+
+    # Deduplicate by similar titles
+    seen = set()
+    unique = []
+    for s in stories:
+        key = s["title"].lower()[:50]
+        if key not in seen:
+            seen.add(key)
+            unique.append(s)
+    stories = unique
+
+    stories.sort(key=lambda s: s["score"], reverse=True)
+
+    date_str = datetime.now().strftime("%B %d, %Y")
+    label = "TOP WORLD NEWS" if news_type == "world" else "TOP TECH NEWS"
+    lines = [f"{label} THIS WEEK ({date_str}):\n"]
+    for i, s in enumerate(stories[:30], 1):
+        source = s.get("source", "")
+        prefix = f"[{source}] " if source else ""
+        lines.append(f"{i}. {prefix}{s['title']} (score: {s['score']}, comments: {s.get('num_comments', 0)})")
+    news_block = "\n".join(lines)
+
+    return stories, news_block
+
+
+async def _generate_research_concepts(
+    engine, channel_id, channel_name, niche, voice_id,
+    past_titles, count, form_type,
+) -> list[int]:
+    """Generate concepts using Claude web search to find genuinely obscure stories."""
+    from packages.clients.claude import generate
+    from packages.prompts.concept_drafts import build_concept_pitches_prompt, build_script_prompt
+
+    logger.info("researching obscure stories via web search", channel=channel_name)
+
+    # Use Claude with web search to find genuinely unknown stories
+    try:
+        from anthropic import Anthropic
+        client = Anthropic(timeout=60.0)
+
+        past_block = ""
+        if past_titles:
+            past_block = "\n".join(f"- {t}" for t in past_titles[-50:])
+
+        resp = client.messages.create(
+            model="claude-sonnet-4-6",
+            max_tokens=2000,
+            tools=[{"type": "web_search_20250305", "name": "web_search", "max_uses": 5}],
+            messages=[{
+                "role": "user",
+                "content": f"""Search the web for {count} genuinely obscure, unknown true stories from history that almost nobody has heard of. I need stories for a YouTube Shorts channel called "{channel_name}" — {niche}.
+
+DO NOT suggest famous stories. If most people would recognize the story, it's too well-known. Search for:
+- Obscure declassified government documents
+- Forgotten incidents from local newspapers
+- Unknown people who did extraordinary things
+- Bizarre true events that never made mainstream media
+- Strange historical accidents or coincidences
+
+{f'ALREADY USED (do NOT repeat):' + chr(10) + past_block if past_block else ''}
+
+For each story, return:
+- title: ALL CAPS clickbait title
+- brief: one sentence hook
+- key_facts: the SPECIFIC real details (names, dates, places, what happened)
+
+Return as a JSON array. Return ONLY valid JSON, no markdown.""",
+            }],
+        )
+
+        # Extract text from response
+        resp_text = ""
+        for block in resp.content:
+            if block.type == "text":
+                resp_text = block.text.strip()
+
+        if resp_text.startswith("```"):
+            resp_text = re.sub(r"^```(?:json)?\s*", "", resp_text)
+            resp_text = re.sub(r"\s*```$", "", resp_text)
+
+        pitches = json.loads(resp_text)
+        if not isinstance(pitches, list):
+            pitches = [pitches]
+
+        logger.info("research complete", channel=channel_name, stories=len(pitches))
+
+    except Exception as e:
+        logger.error("research failed, falling back to standard generation", error=str(e)[:200])
+        # Fall back to standard concept generation
+        return await _generate_short_drafts(
+            engine, channel_id, channel_name, niche, voice_id,
+            past_titles, "", count, form_type,
+        )
+
+    # Filter duplicates
+    async with AsyncSession(engine) as s:
+        pending = await s.execute(text(
+            "SELECT count(*) FROM concept_drafts WHERE channel_id = :cid AND status = 'pending' AND form_type = :ft"
+        ), {"cid": channel_id, "ft": form_type})
+        current_pending = pending.scalar()
+        remaining = max(0, DRAFTS_PER_CHANNEL - current_pending)
+
+    valid = await _filter_duplicate_pitches(engine, channel_id, pitches, remaining)
+
+    # Write scripts for each
+    draft_ids = []
+    for pitch in valid:
+        title = pitch.get("title", "Untitled")
+        brief = pitch.get("brief", "")
+        structure = pitch.get("structure", "")
+        key_facts = pitch.get("key_facts", "")
+
+        logger.info("writing script for researched story", title=title)
+        sys2, usr2 = build_script_prompt(
+            channel_name=channel_name, niche=niche, voice_id=voice_id,
+            channel_id=channel_id, title=title, brief=brief,
+            structure=structure, key_facts=key_facts,
+        )
+
+        resp2 = generate(prompt=usr2, system=sys2, model="claude-sonnet-4-6", max_tokens=4000)
+        resp2 = resp2.strip()
+        if resp2.startswith("```"):
+            resp2 = re.sub(r"^```(?:json)?\s*", "", resp2)
+            resp2 = re.sub(r"\s*```$", "", resp2)
+
+        try:
+            concept = json.loads(resp2)
+        except json.JSONDecodeError:
+            continue
+
+        draft_id = await _insert_draft(engine, channel_id, title, concept, brief, form_type)
+        if draft_id:
+            draft_ids.append(draft_id)
+
+    return draft_ids
+
+
+async def _generate_weekly_recap_draft(
+    engine, channel_id, channel_name, niche, voice_id,
+    past_titles, trending="",
+) -> list[int]:
+    """Generate all three news formats from one research fetch:
+    - Shorts: 3-5 individual story highlights
+    - Mid-form (long_form=true but ~3-5 min): deep dive on the biggest story
+    - Long-form: weekly recap covering 5-7 stories
+    """
+    from packages.prompts.concept_drafts import (
+        build_weekly_recap_script_prompt,
+        build_news_short_script_prompt,
+        build_news_deep_dive_prompt,
+    )
+    from packages.clients.claude import generate
+    from datetime import datetime
+
+    # Determine news type based on channel niche
+    news_type = "world" if "world" in niche.lower() or "current event" in niche.lower() or "politics" in niche.lower() else "tech"
+    logger.info("fetching news", channel=channel_name, type=news_type)
+    stories, news_block = _fetch_weekly_news(news_type=news_type)
+    if not stories:
+        return []
+
+    logger.info("news research complete", stories=len(stories))
+    date_str = datetime.now().strftime("%B %d, %Y")
+    draft_ids = []
+
+    # Check what we already have pending
+    async with AsyncSession(engine) as s:
+        short_pending = (await s.execute(text(
+            "SELECT count(*) FROM concept_drafts WHERE channel_id = :cid AND status = 'pending' AND form_type = 'short'"
+        ), {"cid": channel_id})).scalar()
+        long_pending = (await s.execute(text(
+            "SELECT count(*) FROM concept_drafts WHERE channel_id = :cid AND status = 'pending' AND form_type = 'long'"
+        ), {"cid": channel_id})).scalar()
+
+    # Get all existing titles for this channel to avoid duplicates
+    async with AsyncSession(engine) as s:
+        existing = await s.execute(text(
+            "SELECT LOWER(title) FROM concept_drafts WHERE channel_id = :cid UNION ALL SELECT LOWER(title) FROM content_bank WHERE channel_id = :cid"
+        ), {"cid": channel_id})
+        existing_titles = {r[0] for r in existing.fetchall()}
+
+    def _story_already_covered(story_title: str) -> bool:
+        """Check if a story has already been covered by fuzzy matching."""
+        title_lower = story_title.lower()
+        # Check if any significant words overlap with existing titles
+        story_words = {w.lower() for w in title_lower.split() if len(w) > 4}
+        for existing in existing_titles:
+            existing_words = {w.lower() for w in existing.split() if len(w) > 4}
+            overlap = story_words & existing_words
+            if len(overlap) >= 3:  # 3+ shared significant words = duplicate
+                return True
+        return False
+
+    # Re-rank stories: boost ones that match YouTube trending searches
+    if trending:
+        trending_lower = trending.lower()
+        for story in stories:
+            title_words = {w.lower() for w in story["title"].split() if len(w) > 3}
+            # Count how many words from the title appear in trending searches
+            matches = sum(1 for w in title_words if w in trending_lower)
+            story["trending_boost"] = matches
+        # Sort by trending match first, then original score
+        stories.sort(key=lambda s: (s.get("trending_boost", 0), s.get("score", 0)), reverse=True)
+        boosted = [s for s in stories if s.get("trending_boost", 0) > 0]
+        if boosted:
+            logger.info("trending-boosted stories", count=len(boosted),
+                       top=boosted[0]["title"][:60])
+
+    # 1. SHORTS — individual story highlights (top stories, skip already covered)
+    if short_pending < DRAFTS_PER_CHANNEL:
+        shorts_needed = min(DRAFTS_PER_CHANNEL - short_pending, 5)
+        shorts_generated = 0
+        for story in stories:
+            if shorts_generated >= shorts_needed:
+                break
+            if _story_already_covered(story["title"]):
+                logger.info("skipping already covered story", story=story["title"][:60])
+                continue
+            logger.info("generating news short", story=story["title"][:60])
+            sys2, usr2 = build_news_short_script_prompt(
+                channel_name=channel_name, niche=niche, voice_id=voice_id,
+                channel_id=channel_id, story_title=story["title"],
+                story_details=f"Score: {story['score']}, Comments: {story['num_comments']}",
+            )
+            resp = generate(prompt=usr2, system=sys2, model="claude-sonnet-4-6", max_tokens=4000)
+            resp = resp.strip()
+            if resp.startswith("```"):
+                resp = re.sub(r"^```(?:json)?\s*", "", resp)
+                resp = re.sub(r"\s*```$", "", resp)
+            try:
+                concept = json.loads(resp)
+                title = concept.get("title", story["title"])
+                did = await _insert_draft(engine, channel_id, title, concept, story["title"], "short")
+                if did:
+                    draft_ids.append(did)
+                    shorts_generated += 1
+            except json.JSONDecodeError:
+                logger.warning("news short JSON parse failed", story=story["title"][:60])
+
+    # 2. DEEP DIVE (mid-form, stored as "long") — biggest story of the week
+    if long_pending < 2:
+        biggest = stories[0]
+        logger.info("generating deep dive", story=biggest["title"][:60])
+        sys2, usr2 = build_news_deep_dive_prompt(
+            channel_name=channel_name, niche=niche, voice_id=voice_id,
+            channel_id=channel_id, story_title=biggest["title"],
+            story_details=f"Score: {biggest['score']}, Comments: {biggest['num_comments']}",
+            news_block=news_block,
+        )
+        resp = generate(prompt=usr2, system=sys2, model="claude-sonnet-4-6", max_tokens=8000)
+        resp = resp.strip()
+        if resp.startswith("```"):
+            resp = re.sub(r"^```(?:json)?\s*", "", resp)
+            resp = re.sub(r"\s*```$", "", resp)
+        try:
+            concept = json.loads(resp)
+            title = concept.get("title", f"Deep Dive: {biggest['title']}")
+            did = await _insert_draft(engine, channel_id, title, concept, f"Deep dive on {biggest['title']}", "long")
+            if did:
+                draft_ids.append(did)
+        except json.JSONDecodeError:
+            logger.warning("deep dive JSON parse failed")
+
+        # 3. WEEKLY RECAP (long-form)
+        logger.info("generating weekly recap", channel=channel_name)
+        sys3, usr3 = build_weekly_recap_script_prompt(
+            channel_name=channel_name, niche=niche, voice_id=voice_id,
+            channel_id=channel_id, news_block=news_block, duration_minutes=7,
+        )
+        resp = generate(prompt=usr3, system=sys3, model="claude-sonnet-4-6", max_tokens=8000)
+        resp = resp.strip()
+        if resp.startswith("```"):
+            resp = re.sub(r"^```(?:json)?\s*", "", resp)
+            resp = re.sub(r"\s*```$", "", resp)
+        try:
+            concept = json.loads(resp)
+            title = concept.get("title", f"Ctrl Z The Week — {date_str}")
+            did = await _insert_draft(engine, channel_id, title, concept, f"Weekly recap for {date_str}", "long")
+            if did:
+                draft_ids.append(did)
+        except json.JSONDecodeError:
+            logger.warning("weekly recap JSON parse failed")
 
     return draft_ids
 
@@ -395,7 +1012,8 @@ async def _generate_longform_drafts(
                 continue
 
             chapter_lines = chapter_result.get("narration", [])
-            all_narration.extend(chapter_lines)
+            # Cap at 8 lines per chapter to prevent runaway scripts
+            all_narration.extend(chapter_lines[:8])
 
             # Build condensed summary of previous chapters for context
             # Keep last 5 lines verbatim, summarize earlier ones
@@ -759,8 +1377,12 @@ async def run_concept_replenish_loop():
                     await asyncio.sleep(5)
 
             # Replenish long-form concepts (2 per channel)
+            # Skip kids channels — they only produce short-form content
+            from packages.prompts.concept_drafts import KIDS_CHANNELS
             LONGFORM_DRAFTS_PER_CHANNEL = 2
             for ch_id, ch_name, pending in channels_long:
+                if ch_id in KIDS_CHANNELS:
+                    continue
                 deficit = LONGFORM_DRAFTS_PER_CHANNEL - pending
                 if deficit > 0:
                     logger.info("replenishing concepts", channel=ch_name, deficit=deficit, form_type="long")

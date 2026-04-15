@@ -69,8 +69,3 @@ Return JSON (no markdown):
   "summary": "One sentence honest verdict",
   "suggestions": ["How to make the next video better"]
 }}"""
-
-
-# Keep backward compatibility — old channel-specific functions redirect to the universal one
-def build_synthzoo_review_prompt(concept: dict) -> str:
-    return build_review_prompt(concept, "Synth Meow", "AI-generated animal videos")

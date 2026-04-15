@@ -1,0 +1,1 @@
+https://v3b.fal.media/files/b/0a96076d/VWwt7cQJM9d_v6DoUqBB5_pytorch_lora_weights.safetensors

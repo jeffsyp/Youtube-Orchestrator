@@ -152,12 +152,12 @@ def build_longform_chapter_script_prompt(
 
     chapter_guidance = ""
     if is_first:
-        chapter_guidance = """THIS IS THE FIRST CHAPTER (THE HOOK).
-- Open with the most dramatic/intriguing moment
-- The viewer must be hooked in under 10 seconds
-- Plant the first open loop immediately
-- Do NOT introduce yourself or the topic formally — drop them into the action
-- Think cold open on a TV show — start at the peak"""
+        chapter_guidance = """THIS IS THE FIRST CHAPTER.
+- The viewer CLICKED on this video — they already want to watch. You don't need to grab them in 1 second like a short.
+- Start by clearly setting up what the video is about. Give context. Build the world.
+- Plant the first open loop early — hint at what's coming so they stay for the payoff.
+- Establish the stakes: why should they care about this story/topic?
+- Think documentary opening — set the scene, introduce the players, make the viewer feel oriented before you start escalating."""
     elif is_last:
         chapter_guidance = """THIS IS THE FINAL CHAPTER.
 - Deliver the biggest remaining payoff
@@ -204,12 +204,12 @@ OPEN LOOPS TO PLANT/RESOLVE:
 
 {chapter_guidance}
 
-HOW TO THINK ABOUT LENGTH:
+HOW TO THINK ABOUT LENGTH (STRICT LIMITS):
 - Your target is ~{word_target} WORDS for this chapter. That's roughly {chapter_seconds} seconds when spoken aloud.
-- People speak at ~150 words per minute. Count your words. If you wrote 50 words for a 2-minute chapter, you wrote a Short, not a chapter.
-- Each narration line is a sentence or two — roughly 10-25 words. Not a paragraph, but not a single word either.
-- A 2-minute chapter needs ~20 lines of 15 words each. A 30-second hook needs ~5 lines.
-- Tell the story with SUBSTANCE. Real details, real names, real sequences of events. Don't just hint at things — actually tell the story.
+- HARD LIMIT: Maximum 8 narration lines per chapter. If you wrote more than 8, cut until it fits.
+- Each line is 10-20 words. A 2-minute chapter = ~8 lines of 15-20 words each.
+- The TOTAL video across ALL chapters should be 30-40 narration lines. NOT 100+. If 5 chapters × 8 lines = 40 lines max.
+- Tell the story with SUBSTANCE but be CONCISE. Every line must add something new.
 
 EXAMPLE — a 2-minute chapter (~300 words, ~20 lines):
 "In the winter of 1959, ten students from the Ural Polytechnic Institute signed up for a skiing expedition."
@@ -295,7 +295,7 @@ def build_longform_visual_batch_prompt(
     Called 4-6 times per long-form video. Each batch returns visuals
     keyed by line index.
     """
-    from apps.orchestrator.deity_pipeline import CHANNEL_ART_STYLE, _DEFAULT_STYLE
+    from apps.orchestrator.pipeline import CHANNEL_ART_STYLE, _DEFAULT_STYLE
     art_style = CHANNEL_ART_STYLE.get(channel_id, _DEFAULT_STYLE)
     aspect = "16:9 landscape" if is_long_form else "9:16 vertical portrait"
     img_style = "Cinematic style, detailed, dramatic lighting. Landscape 16:9 composition." if is_long_form else "Colorful cartoon style, bold outlines, bright colors. Vertical composition."

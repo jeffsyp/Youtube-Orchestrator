@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useStatus, useSchedules, useCancelRun } from '../hooks/useApi';
 
 export default function Dashboard() {
@@ -37,8 +38,9 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-8">
-      <div>
+      <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold text-white">Content Factory</h1>
+        <WorkerStatus />
       </div>
 
       {/* Today's stats */}
@@ -225,6 +227,56 @@ function StatCard({ label, value, color }: { label: string; value: number; color
     <div className="p-3 rounded-lg bg-[#1a1a1a] border border-[#2a2a2a]">
       <div className={`text-2xl font-bold ${value > 0 ? color : 'text-gray-600'}`}>{value}</div>
       <div className="text-gray-500 text-xs mt-1">{label}</div>
+    </div>
+  );
+}
+
+function WorkerStatus() {
+  const queryClient = useQueryClient();
+  const { data, isLoading } = useQuery<{
+    status: string; pid: number | null; started_at: number | null; uptime_seconds: number;
+  }>({
+    queryKey: ['worker-status'],
+    queryFn: () => fetch('/api/worker/status').then(r => r.json()),
+    refetchInterval: 10000,
+  });
+
+  const formatUptime = (seconds: number) => {
+    if (seconds < 60) return `${seconds}s`;
+    if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    return `${h}h ${m}m`;
+  };
+
+  const handleToggle = async () => {
+    const endpoint = data?.status === 'running' ? '/api/worker/stop' : '/api/worker/start';
+    await fetch(endpoint, { method: 'POST' });
+    setTimeout(() => queryClient.invalidateQueries({ queryKey: ['worker-status'] }), 2000);
+  };
+
+  if (isLoading) return null;
+
+  const running = data?.status === 'running';
+
+  return (
+    <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2">
+        <div className={`w-2 h-2 rounded-full ${running ? 'bg-green-400 animate-pulse' : 'bg-red-400'}`} />
+        <span className="text-xs text-gray-400">
+          Worker {running ? `running ${formatUptime(data?.uptime_seconds || 0)}` : 'stopped'}
+        </span>
+      </div>
+      <button
+        onClick={handleToggle}
+        className={`px-3 py-1 rounded text-xs font-medium border-none cursor-pointer transition-colors ${
+          running
+            ? 'bg-red-500/15 text-red-400 hover:bg-red-500/30'
+            : 'bg-green-500/15 text-green-400 hover:bg-green-500/30'
+        }`}
+      >
+        {running ? 'Stop' : 'Start'}
+      </button>
     </div>
   );
 }

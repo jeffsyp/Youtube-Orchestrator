@@ -8,7 +8,7 @@ import sys
 sys.stdout.reconfigure(line_buffering=True)
 
 from packages.clients.grok import generate_image_dalle
-from apps.orchestrator.deity_pipeline import _write_karaoke_ass
+from apps.orchestrator.pipeline import _write_karaoke_ass
 
 out = "output/run_test"
 seg_dir = f"{out}/segments_fx"

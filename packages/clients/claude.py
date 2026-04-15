@@ -6,7 +6,7 @@ import structlog
 from anthropic import Anthropic
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(override=True)
 
 logger = structlog.get_logger()
 
@@ -20,7 +20,7 @@ MODEL_CHEAP = "claude-haiku-4-5-20251001"
 def _get_client() -> Anthropic:
     if not ANTHROPIC_API_KEY:
         raise RuntimeError("ANTHROPIC_API_KEY not set in environment")
-    return Anthropic(api_key=ANTHROPIC_API_KEY)
+    return Anthropic(api_key=ANTHROPIC_API_KEY, timeout=120.0)  # 2 min timeout
 
 
 def generate(
@@ -60,6 +60,9 @@ def generate(
     response = client.messages.create(**kwargs)
     text = response.content[0].text
 
+    from packages.clients.usage_tracker import track
+    model_name = (model or "").replace("claude-", "").split("-202")[0]  # e.g. "sonnet-4-6" or "haiku-4-5"
+    track(f"claude-{model_name}", success=True)
     log.info(
         "claude response received",
         input_tokens=response.usage.input_tokens,

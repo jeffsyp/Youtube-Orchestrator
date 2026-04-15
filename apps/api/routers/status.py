@@ -17,9 +17,7 @@ from apps.api.schemas import (
 
 # Steps that involve Sora clip generation — these are expected to be slow
 _SORA_STEPS = frozenset({
-    "generate_clips", "generate_sora_clips", "generate_synthzoo_clips",
-    "generate_satisdefying_clips", "generate_fundational_clips",
-    "generate_lad_stories_clips", "generate_yeah_thats_clean_clips",
+    "generate_clips", "generate_sora_clips",
     "retry_failed_clips",
 })
 
@@ -280,3 +278,14 @@ async def get_status():
         system_checks=system_checks,
         today_stats=today_stats,
     )
+
+
+@router.get("/api-usage")
+async def get_api_usage():
+    """Get API usage stats from the usage tracker file."""
+    import json
+    usage_file = os.path.join(os.path.dirname(__file__), "..", "..", "..", "output", "api_usage.json")
+    if os.path.exists(usage_file):
+        with open(usage_file) as f:
+            return json.load(f)
+    return {"session_totals": {}, "per_run": {}, "updated": None}

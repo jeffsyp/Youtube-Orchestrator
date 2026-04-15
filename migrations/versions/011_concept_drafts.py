@@ -24,9 +24,9 @@ def upgrade():
             resolved_at     TIMESTAMPTZ,
             content_bank_id INTEGER REFERENCES content_bank(id),
             rejection_reason TEXT
-        );
-        CREATE INDEX ix_concept_drafts_channel_status ON concept_drafts (channel_id, status);
+        )
     """)
+    op.execute("CREATE INDEX ix_concept_drafts_channel_status ON concept_drafts (channel_id, status)")
 
 
 def downgrade():

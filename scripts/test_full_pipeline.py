@@ -11,7 +11,7 @@ sys.stdout.reconfigure(line_buffering=True)
 from packages.clients.elevenlabs import generate_speech
 from packages.clients.grok import generate_image_dalle, generate_video_async, generate_image as grok_gen_image
 from packages.clients.claude import generate
-from apps.orchestrator.deity_pipeline import _write_karaoke_ass
+from apps.orchestrator.pipeline import _write_karaoke_ass
 
 
 async def main():

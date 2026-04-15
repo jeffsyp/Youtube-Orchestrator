@@ -1,0 +1,180 @@
+"""Skeletorinio channel builder — "What if you brought [item] to [era]" videos.
+
+Toy skeletorinio character with googly eyes in historical scenarios.
+Uses unified pipeline: style anchor → sub-actions → GPT images → Grok animation → chaining.
+"""
+import asyncio
+import json
+import os
+import re
+
+import structlog
+
+from apps.orchestrator.channel_builders.shared import (
+    generate_narration_with_timestamps,
+    generate_and_animate_scenes,
+    build_segments_from_clip_map,
+    build_intro_teasers,
+    concat_silent_video,
+    build_numpy_audio,
+    combine_video_audio,
+    add_subtitles,
+    update_database,
+)
+
+logger = structlog.get_logger()
+
+# Channel-specific constants
+CHANNEL_ID = 18
+VOICE_ID = "TxGEqnHWrfWFTfGW9XjX"  # Josh
+MUSIC_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "..", "assets", "music", "skeletorinio_theme.mp3")
+SKELETON_REF = os.path.join(os.path.dirname(__file__), "..", "..", "..", "assets", "character_cache", "skeletorinio.png")
+TAGS = ["skeletorinio", "what if", "skeletorinio", "history", "shorts", "viral", "comedy"]
+
+ART_STYLE = "Photorealistic world with cinematic golden hour lighting. The main character is a FULL-SIZE adult human-height 3D animated plastic skeletorinio with big googly cartoon eyes, gold chain necklace, and sunglasses pushed up on forehead. He is the same height as the humans around him — NOT a miniature toy. He looks like a stylized 3D cartoon character placed into a real photograph."
+
+IMAGE_RULES = """RULES — FOLLOW THESE EXACTLY:
+- The main character is a FULL-SIZE adult human-height 3D animated plastic skeletorinio with big googly cartoon eyes, gold chain necklace, and sunglasses on forehead. He is the SAME HEIGHT as real humans — NOT a miniature toy.
+- A reference image of the skeletorinio is provided — match this character exactly but at HUMAN SCALE
+- For EVERY scene with the skeletorinio, start the prompt with: "A full-size human-height 3D animated skeletorinio character with gold chain and sunglasses on forehead"
+- The WORLD is PHOTOREALISTIC — real-looking buildings, landscapes, people, objects. Cinematic golden hour lighting.
+- The skeletorinio is the ONLY non-realistic element. Everything else looks like a photograph.
+- Other people (kings, soldiers, workers, merchants) must be described as PHOTOREALISTIC HUMANS, NOT cartoons, NOT skeletorinios
+- Do NOT say "toy" or "miniature" or "figurine" — the skeletorinio is HUMAN-SIZED
+- Every prompt must end with "Photorealistic world. NO text anywhere."
+- Each prompt should describe ONE clear scene matching the narration line"""
+
+SCRIPT_PROMPT = """Write a narration script for a Skeletorinio YouTube video.
+
+CONCEPT: {title}
+BRIEF: {brief}
+
+THE FORMAT:
+- Line 1 MUST be the hook question: "What if you brought [specific modern item] to [specific historical era]?"
+- The story is about bringing that ITEM to that ERA — NOT about the skeletorinio character himself
+- The skeletorinio is just the person doing it — the ITEM is the star
+- Day-by-day escalation: Day 1 through Day 4-5 (NOT more than 5 days — keep it tight)
+- Day 1: You arrive with the item, show it to the first person
+- Day 2-3: Word spreads, things escalate, complications arise
+- Day 4-5: GO ABSOLUTELY INSANE. The ending should be the most entertaining part.
+  - NOT "people get mad" or "the authorities arrive" — that's boring
+  - YES: you become president, you buy an island, you accidentally start a religion, you get launched into space, you rewrite history, you become so powerful you break reality
+  - The ending should make viewers replay the video. Historically accurate endings are BORING — go full absurd comedy.
+- The LAST LINE should be a punchline that lands hard — funny, unexpected, satisfying
+- Second person narration ("You bring...", "You show...")
+- 6-8 narration lines total, ~20-30 seconds. SHORTER IS BETTER — every line must earn its place
+- Each line = one scene = one image
+- Each line UNDER 15 words
+- Punchy, fast-paced, funny
+- Do NOT mention skeletorinio, bones, or the character's appearance — just tell the story
+
+Return ONLY a JSON object:
+{{"narration": ["line 1", "line 2", ...], "title": "SHORT PUNCHY TITLE"}}"""
+
+
+async def build_skeletorinio(run_id: int, concept: dict, output_dir: str, _update_step, db_url: str):
+    """Full Skeletorinio video build using unified pipeline."""
+    title = concept.get("title", "Untitled")
+    narration_lines = concept.get("narration", [])
+
+    narr_dir = os.path.join(output_dir, "narration")
+    segments_dir = os.path.join(output_dir, "segments")
+    for d in [narr_dir, segments_dir]:
+        os.makedirs(d, exist_ok=True)
+
+    # ─── STEP 1: Write script if not provided ───
+    if not narration_lines:
+        await _update_step("writing script")
+        from packages.clients.claude import generate as claude_generate
+        brief = concept.get("brief", title)
+        resp = claude_generate(
+            prompt=SCRIPT_PROMPT.format(title=title, brief=brief),
+            max_tokens=2000,
+        )
+        json_match = re.search(r'\{.*\}', resp, re.DOTALL)
+        if json_match:
+            script_data = json.loads(json_match.group())
+            narration_lines = script_data.get("narration", [])
+            if script_data.get("title"):
+                title = script_data["title"]
+        if not narration_lines:
+            raise ValueError("Failed to generate narration script")
+
+    n_lines = len(narration_lines)
+
+    # ─── STEP 2: Narration ───
+    await _update_step("generating narration")
+    await generate_narration_with_timestamps(
+        narration_lines, narr_dir, output_dir, VOICE_ID, _update_step,
+    )
+
+    # ─── STEP 3: Generate style anchor using skeletorinio reference IN the scene ───
+    from openai import AsyncOpenAI
+    images_dir = os.path.join(output_dir, "images")
+    os.makedirs(images_dir, exist_ok=True)
+    anchor_path = os.path.join(images_dir, "style_anchor.png")
+    if not os.path.exists(anchor_path) and os.path.exists(SKELETON_REF):
+        # Generate the skeletorinio IN the first scene — this becomes the style anchor
+        # so all subsequent scenes share the same era, lighting, and character scale
+        _oai = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"), timeout=120.0)
+        brief = concept.get("brief", title)
+        era = concept.get("era", "")
+        era_part = f"STRICT ERA: {era}. All humans in period-accurate clothing. NO modern clothing, NO modern objects. " if era else "Historical time period — NOT modern day. "
+        _ref = open(SKELETON_REF, "rb")
+        try:
+            _resp = await _oai.images.edit(
+                model="gpt-image-1.5",
+                image=_ref,
+                prompt=f"{era_part}Place this exact skeletorinio character (same size, same gold chain, same sunglasses, same googly eyes) into the scene for this video: {title}. {brief[:200]}. {narration_lines[0] if narration_lines else ''}. The skeletorinio is FULL ADULT HUMAN HEIGHT — same size as real people around him. Photorealistic world with cinematic golden hour lighting. NO text anywhere.",
+                size="1024x1536",
+                quality="medium",
+                input_fidelity="high",
+            )
+            _ref.close()
+            if _resp.data and _resp.data[0].b64_json:
+                import base64 as _b64
+                with open(anchor_path, "wb") as _f:
+                    _f.write(_b64.b64decode(_resp.data[0].b64_json))
+                logger.info("style anchor generated from skeletorinio ref in scene")
+        except Exception as _e:
+            try: _ref.close()
+            except: pass
+            import shutil
+            shutil.copy2(SKELETON_REF, anchor_path)
+            logger.warning("style anchor fallback to bare skeletorinio ref", error=str(_e)[:80])
+
+    # ─── STEP 4: Unified pipeline — uses skeletorinio ref as style anchor for all scenes ───
+    clips_dir, clip_paths, n_clips, line_clip_map = await generate_and_animate_scenes(
+        narration_lines, concept, IMAGE_RULES, ART_STYLE, output_dir, _update_step, run_id=run_id,
+    )
+
+    # ─── STEP 4: Build segments from clip map ───
+    await _update_step("building video")
+    style_anchor = os.path.join(output_dir, "images", "style_anchor.png")
+    seg_durations = build_segments_from_clip_map(
+        n_lines, line_clip_map, clips_dir, narr_dir, segments_dir, style_anchor,
+    )
+
+    # ─── STEP 5: Intro, audio, subtitles ───
+    await _update_step("building intro")
+    actual_teaser_dur = build_intro_teasers(n_lines, narr_dir, clips_dir, segments_dir)
+
+    await _update_step("concatenating")
+    teasers_path = os.path.join(segments_dir, "teasers.mp4")
+    all_video_path, total_dur = concat_silent_video(teasers_path, segments_dir, n_lines, output_dir)
+
+    await _update_step("building audio")
+    audio_path, seg_starts = build_numpy_audio(
+        n_lines, narr_dir, MUSIC_PATH, actual_teaser_dur, seg_durations, total_dur, output_dir,
+    )
+
+    await _update_step("combining")
+    combined = combine_video_audio(all_video_path, audio_path, output_dir)
+
+    await _update_step("adding subtitles")
+    with open(os.path.join(output_dir, "word_timestamps.json")) as f:
+        word_data = json.load(f)
+    add_subtitles(combined, word_data, seg_starts, output_dir)
+
+    await update_database(run_id, CHANNEL_ID, title, output_dir, db_url, TAGS)
+    logger.info("skeletorinio complete", run_id=run_id, title=title, duration=f"{total_dur:.0f}s")

@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 
 interface ActivityItem {
@@ -19,11 +19,18 @@ interface ActivityItem {
 }
 
 export default function Activity() {
+  const queryClient = useQueryClient();
   const { data, isLoading } = useQuery<ActivityItem[]>({
     queryKey: ['activity'],
     queryFn: () => fetch('/api/activity?limit=100').then(r => r.json()),
     refetchInterval: 10000,
   });
+
+  const clearAll = async () => {
+    if (!confirm('Clear all activity? This removes all completed, failed, and rejected items. In-progress items will keep running.')) return;
+    await fetch('/api/content-bank/clear-all', { method: 'POST' });
+    queryClient.invalidateQueries({ queryKey: ['activity'] });
+  };
 
   if (isLoading) return <div className="animate-pulse h-64 bg-[#1a1a1a] rounded-lg" />;
 
@@ -32,13 +39,23 @@ export default function Activity() {
   const ready = items.filter(i => i.status === 'generated');
   const uploaded = items.filter(i => i.status === 'uploaded');
   const rejected = items.filter(i => i.status === 'rejected');
-  const failed = items.filter(i => i.status === 'failed');
+  const failed = items.filter(i => ['failed', 'skipped', 'cancelled'].includes(i.status));
 
   return (
     <div className="space-y-8">
-      <div>
-        <h1 className="text-2xl font-semibold text-white">Activity</h1>
-        <p className="text-gray-500 text-sm mt-1">Last 48 hours</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold text-white">Activity</h1>
+          <p className="text-gray-500 text-sm mt-1">Last 48 hours</p>
+        </div>
+        {items.length > 0 && (
+          <button
+            onClick={clearAll}
+            className="px-4 py-2 rounded-lg bg-[#2a2a2a] border border-[#3a3a3a] text-gray-400 hover:text-red-400 hover:border-red-400/50 transition-colors text-sm"
+          >
+            Clear All
+          </button>
+        )}
       </div>
 
       {generating.length > 0 && (
@@ -92,6 +109,26 @@ function Section({ title, count, color, children }: { title: string; count: numb
 }
 
 function ActivityRow({ item }: { item: ActivityItem }) {
+  const queryClient = useQueryClient();
+
+  const handleCancel = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!confirm(`Cancel "${item.title}"?`)) return;
+    await fetch(`/api/content-bank/${item.id}/cancel`, { method: 'POST' });
+    queryClient.invalidateQueries({ queryKey: ['activity'] });
+  };
+
+  const handleClear = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    await fetch(`/api/content-bank/${item.id}/clear`, { method: 'POST' });
+    queryClient.invalidateQueries({ queryKey: ['activity'] });
+  };
+
+  const handleRetry = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    await fetch(`/api/content-bank/${item.id}/retry`, { method: 'POST' });
+    queryClient.invalidateQueries({ queryKey: ['activity'] });
+  };
   const statusColors: Record<string, string> = {
     uploaded: 'bg-purple-500/15 text-purple-400',
     generated: 'bg-green-500/15 text-green-400',
@@ -100,25 +137,32 @@ function ActivityRow({ item }: { item: ActivityItem }) {
     queued: 'bg-gray-500/15 text-gray-400',
     failed: 'bg-red-500/15 text-red-400',
     rejected: 'bg-red-500/15 text-red-400',
+    skipped: 'bg-orange-500/15 text-orange-400',
+    cancelled: 'bg-gray-500/15 text-gray-400',
   };
 
   return (
-    <div className="flex items-center justify-between p-3 rounded-lg bg-[#1a1a1a] border border-[#2a2a2a]">
-      <div className="flex items-center gap-3 min-w-0 flex-1">
-        <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase shrink-0 ${statusColors[item.status] || 'bg-gray-500/15 text-gray-400'}`}>
-          {item.status}
-        </span>
-        {item.form_type === 'long' && (
-          <span className="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase bg-purple-500/15 text-purple-400 shrink-0">
-            LONG
+    <div className="rounded-lg bg-[#1a1a1a] border border-[#2a2a2a]">
+      <div className="flex items-center justify-between p-3">
+        <div className="flex items-center gap-3 min-w-0 flex-1">
+          <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase shrink-0 ${statusColors[item.status] || 'bg-gray-500/15 text-gray-400'}`}>
+            {item.status}
           </span>
-        )}
-        <span className="text-gray-500 text-xs shrink-0">{item.channel_name}</span>
-        <span className="text-gray-200 text-sm truncate">{item.title}</span>
-      </div>
+          {item.form_type === 'long' && (
+            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase bg-purple-500/15 text-purple-400 shrink-0">
+              LONG
+            </span>
+          )}
+          <span className="text-gray-500 text-xs shrink-0">{item.channel_name}</span>
+          <span className="text-gray-200 text-sm truncate">{item.title}</span>
+        </div>
       <div className="flex items-center gap-2 shrink-0">
-        {item.current_step && ['generating', 'locked'].includes(item.status) && (
-          <span className="text-yellow-400 text-xs font-mono">{item.current_step}</span>
+        {item.current_step && ['generating', 'locked', 'running'].includes(item.status) && (
+          item.current_step === 'images ready for review' ? (
+            <span className="text-green-400 text-xs font-bold">Awaiting image review</span>
+          ) : (
+            <span className="text-yellow-400 text-xs font-mono">{item.current_step}</span>
+          )
         )}
         {item.youtube_url && (
           <a href={item.youtube_url} target="_blank" rel="noopener noreferrer"
@@ -131,6 +175,25 @@ function ActivityRow({ item }: { item: ActivityItem }) {
             #{item.run_id}
           </Link>
         )}
+        {['queued', 'locked', 'generating'].includes(item.status) && (
+          <button onClick={handleCancel}
+            className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-red-500/15 text-red-400 hover:bg-red-500/30 transition-colors cursor-pointer border-none">
+            Cancel
+          </button>
+        )}
+        {['failed', 'rejected'].includes(item.status) && (
+          <button onClick={handleRetry}
+            className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-yellow-500/15 text-yellow-400 hover:bg-yellow-500/30 transition-colors cursor-pointer border-none">
+            Retry
+          </button>
+        )}
+        {['failed', 'rejected', 'skipped', 'cancelled'].includes(item.status) && (
+          <button onClick={handleClear}
+            className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-gray-500/15 text-gray-400 hover:bg-gray-500/30 transition-colors cursor-pointer border-none">
+            Clear
+          </button>
+        )}
+      </div>
       </div>
     </div>
   );

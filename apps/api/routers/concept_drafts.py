@@ -65,7 +65,7 @@ async def list_concept_drafts(status: str = "pending", channel_id: int | None = 
 
 @router.get("/concept-drafts/summary")
 async def concept_drafts_summary():
-    """Count pending drafts per active channel."""
+    """Count pending drafts per active channel + videos posted in last 24h."""
     async with async_session() as s:
         result = await s.execute(text("""
             SELECT c.id, c.name,
@@ -80,9 +80,31 @@ async def concept_drafts_summary():
         """))
         rows = result.fetchall()
 
+        # Get videos completed in last 24h per channel + form type
+        recent = await s.execute(text("""
+            SELECT cr.channel_id,
+                   CASE WHEN cb.form_type = 'long' THEN 'long' ELSE 'short' END as form,
+                   COUNT(*) as cnt
+            FROM content_runs cr
+            JOIN content_bank cb ON cb.run_id = cr.id
+            WHERE cr.status IN ('pending_review', 'published', 'uploaded')
+              AND cr.started_at > NOW() - INTERVAL '24 hours'
+            GROUP BY cr.channel_id, form
+        """))
+        recent_rows = recent.fetchall()
+
+    recent_map = {}
+    for r in recent_rows:
+        cid = r[0]
+        if cid not in recent_map:
+            recent_map[cid] = {"short": 0, "long": 0}
+        recent_map[cid][r[1]] = r[2]
+
     return [
         {"channel_id": r[0], "channel_name": r[1],
-         "pending_count": r[2], "total_approved": r[3], "total_rejected": r[4]}
+         "pending_count": r[2], "total_approved": r[3], "total_rejected": r[4],
+         "posted_24h_short": recent_map.get(r[0], {}).get("short", 0),
+         "posted_24h_long": recent_map.get(r[0], {}).get("long", 0)}
         for r in rows
     ]
 

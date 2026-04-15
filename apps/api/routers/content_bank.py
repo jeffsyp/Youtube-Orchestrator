@@ -45,6 +45,194 @@ async def list_content_bank(channel_id: int | None = None, status: str = "queued
     ]
 
 
+@router.post("/content-bank/{item_id}/cancel")
+async def cancel_content_bank_item(item_id: int):
+    """Cancel a queued, locked, or generating content bank item."""
+    async with async_session() as session:
+        result = await session.execute(
+            text("SELECT id, status, run_id FROM content_bank WHERE id = :id"),
+            {"id": item_id},
+        )
+        item = result.fetchone()
+        if not item:
+            raise HTTPException(status_code=404, detail="Item not found")
+
+        status = item[1]
+        run_id = item[2]
+
+        if status in ("uploaded", "generated"):
+            raise HTTPException(status_code=400, detail=f"Cannot cancel item with status '{status}'")
+
+        # Cancel the content bank item
+        await session.execute(
+            text("UPDATE content_bank SET status = 'cancelled', locked_at = NULL WHERE id = :id"),
+            {"id": item_id},
+        )
+
+        # If there's a running content_run, fail it too
+        if run_id:
+            await session.execute(
+                text("UPDATE content_runs SET status = 'failed', error = 'cancelled by user' WHERE id = :id AND status = 'running'"),
+                {"id": run_id},
+            )
+
+        await session.commit()
+
+    return {"id": item_id, "status": "cancelled"}
+
+
+@router.post("/content-bank/{item_id}/clear")
+async def clear_content_bank_item(item_id: int):
+    """Remove a content bank item and its related files."""
+    import os
+    import shutil
+
+    async with async_session() as session:
+        result = await session.execute(
+            text("SELECT cb.id, cb.status, cb.run_id FROM content_bank cb WHERE cb.id = :id"),
+            {"id": item_id},
+        )
+        item = result.fetchone()
+        if not item:
+            raise HTTPException(status_code=404, detail="Item not found")
+
+        status = item[1]
+        run_id = item[2]
+
+        if status in ("generating", "locked"):
+            raise HTTPException(status_code=400, detail=f"Cannot clear actively generating item. Cancel it first.")
+
+        # Delete related output files if there's a run
+        if run_id:
+            output_dir = os.path.join(os.path.dirname(__file__), "..", "..", "..", "output", f"run_{run_id}")
+            if os.path.isdir(output_dir):
+                shutil.rmtree(output_dir, ignore_errors=True)
+
+            # Clear run reference first, then delete content_bank, then runs/assets
+            await session.execute(
+                text("UPDATE content_bank SET run_id = NULL WHERE id = :id"),
+                {"id": item_id},
+            )
+            await session.execute(
+                text("DELETE FROM assets WHERE run_id = :rid"),
+                {"rid": run_id},
+            )
+
+        # Clear concept_drafts reference
+        await session.execute(
+            text("UPDATE concept_drafts SET content_bank_id = NULL WHERE content_bank_id = :id"),
+            {"id": item_id},
+        )
+
+        # Delete the content_bank item
+        await session.execute(
+            text("DELETE FROM content_bank WHERE id = :id"),
+            {"id": item_id},
+        )
+
+        # Now safe to delete the content_run
+        if run_id:
+            await session.execute(
+                text("DELETE FROM content_runs WHERE id = :rid"),
+                {"rid": run_id},
+            )
+
+        await session.commit()
+
+    return {"id": item_id, "status": "cleared", "files_deleted": bool(run_id)}
+
+
+@router.post("/content-bank/clear-all")
+async def clear_all_activity():
+    """Clear all non-generating activity — for starting fresh."""
+    import os
+    import shutil
+
+    async with async_session() as session:
+        # Get all clearable items — skip only those whose run is actually still running
+        result = await session.execute(
+            text("""SELECT cb.id, cb.run_id FROM content_bank cb
+                    LEFT JOIN content_runs cr ON cr.id = cb.run_id
+                    WHERE cb.status != 'queued'
+                    AND (cr.id IS NULL OR cr.status NOT IN ('running', 'generating'))""")
+        )
+        items = result.fetchall()
+
+        cleared = 0
+        for item_id, run_id in items:
+            if run_id:
+                output_dir = os.path.join(os.path.dirname(__file__), "..", "..", "..", "output", f"run_{run_id}")
+                if os.path.isdir(output_dir):
+                    shutil.rmtree(output_dir, ignore_errors=True)
+                await session.execute(
+                    text("UPDATE content_bank SET run_id = NULL WHERE id = :id"),
+                    {"id": item_id},
+                )
+                await session.execute(
+                    text("DELETE FROM assets WHERE run_id = :rid"),
+                    {"rid": run_id},
+                )
+
+            await session.execute(
+                text("UPDATE concept_drafts SET content_bank_id = NULL WHERE content_bank_id = :id"),
+                {"id": item_id},
+            )
+            await session.execute(
+                text("DELETE FROM content_bank WHERE id = :id"),
+                {"id": item_id},
+            )
+
+            if run_id:
+                await session.execute(
+                    text("DELETE FROM content_runs WHERE id = :rid"),
+                    {"rid": run_id},
+                )
+            cleared += 1
+
+        # Also clean up orphaned content_runs with no content_bank entry
+        orphans = await session.execute(
+            text("""SELECT id FROM content_runs
+                    WHERE status NOT IN ('running', 'generating')
+                    AND id NOT IN (SELECT run_id FROM content_bank WHERE run_id IS NOT NULL)""")
+        )
+        orphan_ids = [r[0] for r in orphans.fetchall()]
+        for rid in orphan_ids:
+            output_dir = os.path.join(os.path.dirname(__file__), "..", "..", "..", "output", f"run_{rid}")
+            if os.path.isdir(output_dir):
+                shutil.rmtree(output_dir, ignore_errors=True)
+            await session.execute(text("DELETE FROM assets WHERE run_id = :rid"), {"rid": rid})
+            await session.execute(text("DELETE FROM content_runs WHERE id = :rid"), {"rid": rid})
+            cleared += 1
+
+        await session.commit()
+
+    return {"cleared": cleared}
+
+
+@router.post("/content-bank/{item_id}/retry")
+async def retry_content_bank_item(item_id: int):
+    """Re-queue a failed content bank item for retry."""
+    async with async_session() as session:
+        result = await session.execute(
+            text("SELECT id, status FROM content_bank WHERE id = :id"),
+            {"id": item_id},
+        )
+        item = result.fetchone()
+        if not item:
+            raise HTTPException(status_code=404, detail="Item not found")
+
+        if item[1] not in ("failed", "rejected"):
+            raise HTTPException(status_code=400, detail=f"Cannot retry item with status '{item[1]}'")
+
+        await session.execute(
+            text("UPDATE content_bank SET status = 'queued', locked_at = NULL, error = NULL, run_id = NULL WHERE id = :id"),
+            {"id": item_id},
+        )
+        await session.commit()
+
+    return {"id": item_id, "status": "queued"}
+
+
 async def _check_duplicate(session, channel_id: int, title: str) -> dict | None:
     """Check if a similar topic already exists for this channel."""
     # Check content_bank (all statuses)

@@ -127,3 +127,96 @@ async def start_remediation_task():
 async def health():
     """Simple health check."""
     return {"status": "ok"}
+
+
+@app.get("/api/worker/status")
+async def worker_status():
+    """Check worker status via heartbeat file."""
+    import json as _json
+    import time as _time
+
+    heartbeat_path = os.path.join(os.path.dirname(__file__), "..", "..", "output", "worker_heartbeat.json")
+    if not os.path.exists(heartbeat_path):
+        return {"status": "stopped", "pid": None, "started_at": None, "uptime_seconds": 0, "last_heartbeat": None}
+
+    try:
+        with open(heartbeat_path) as f:
+            data = _json.load(f)
+
+        last_beat = data.get("last_heartbeat", 0)
+        stale = (_time.time() - last_beat) > 30  # no heartbeat in 30s = dead
+
+        if stale:
+            return {"status": "stopped", "pid": data.get("pid"), "started_at": data.get("started_at"), "uptime_seconds": 0, "last_heartbeat": last_beat}
+
+        return {
+            "status": "running",
+            "pid": data.get("pid"),
+            "started_at": data.get("started_at"),
+            "uptime_seconds": data.get("uptime_seconds", 0),
+            "last_heartbeat": last_beat,
+        }
+    except Exception:
+        return {"status": "unknown", "pid": None, "started_at": None, "uptime_seconds": 0, "last_heartbeat": None}
+
+
+@app.post("/api/worker/start")
+async def worker_start():
+    """Start the worker process."""
+    import subprocess, sys
+
+    # Check if already running
+    try:
+        import json as _json
+        import time as _time
+        heartbeat_path = os.path.join(os.path.dirname(__file__), "..", "..", "output", "worker_heartbeat.json")
+        if os.path.exists(heartbeat_path):
+            with open(heartbeat_path) as f:
+                data = _json.load(f)
+            if (_time.time() - data.get("last_heartbeat", 0)) < 30:
+                return {"status": "already_running", "pid": data.get("pid")}
+    except Exception:
+        pass
+
+    proc = subprocess.Popen(
+        [sys.executable, "-m", "apps.worker.main"],
+        cwd=os.path.join(os.path.dirname(__file__), "..", ".."),
+        start_new_session=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    return {"status": "started", "pid": proc.pid}
+
+
+@app.post("/api/worker/stop")
+async def worker_stop():
+    """Stop the worker process."""
+    import signal as _signal
+
+    heartbeat_path = os.path.join(os.path.dirname(__file__), "..", "..", "output", "worker_heartbeat.json")
+    if not os.path.exists(heartbeat_path):
+        return {"status": "not_running"}
+
+    try:
+        import json as _json
+        with open(heartbeat_path) as f:
+            data = _json.load(f)
+        pid = data.get("pid")
+        if pid:
+            # Kill the worker subprocess and its parent (supervisor)
+            import psutil
+            try:
+                proc = psutil.Process(pid)
+                parent = proc.parent()
+                proc.kill()
+                if parent and parent.name().startswith("python"):
+                    parent.kill()
+            except psutil.NoSuchProcess:
+                pass
+            # Clear heartbeat
+            os.remove(heartbeat_path)
+            return {"status": "stopped", "pid": pid}
+    except Exception as e:
+        return {"status": "error", "detail": str(e)[:200]}
+
+    return {"status": "not_running"}

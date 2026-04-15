@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { useRunDetail, useRunMetrics, usePublishRun, useRejectRun, useCancelRun } from '../hooks/useApi';
 import StatusBadge from '../components/StatusBadge';
 import VideoPlayer from '../components/VideoPlayer';
@@ -117,13 +118,14 @@ export default function RunDetail() {
                   <option value="private">Private</option>
                   <option value="unlisted">Unlisted</option>
                   <option value="public">Public</option>
+                  <option value="scheduled">Scheduled (1-3 hrs)</option>
                 </select>
                 <button
-                  onClick={() => publishMutation.mutate({ id: runId, privacy })}
+                  onClick={() => publishMutation.mutate({ id: runId, privacy: privacy === 'scheduled' ? 'scheduled' : privacy })}
                   disabled={publishMutation.isPending}
                   className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-green-600 hover:bg-green-500 disabled:bg-green-800 disabled:cursor-wait text-white text-sm font-medium transition-colors"
                 >
-                  {publishMutation.isPending ? 'Uploading...' : 'Upload to YouTube'}
+                  {publishMutation.isPending ? 'Uploading...' : privacy === 'scheduled' ? 'Schedule Upload' : 'Upload to YouTube'}
                 </button>
                 <button
                   onClick={() => { if (confirm('Reject this video? Output files will be deleted.')) rejectMutation.mutate(runId); }}
@@ -221,6 +223,7 @@ export default function RunDetail() {
           <dl className="space-y-3">
             <InfoRow label="Status" value={run.status} />
             {run.current_step && <InfoRow label="Current Step" value={run.current_step} mono />}
+            {run.last_change && <InfoRow label="Last Change" value={run.last_change} mono />}
             <InfoRow label="Started" value={formatDate(run.started_at)} />
             {run.completed_at && <InfoRow label="Completed" value={formatDate(run.completed_at)} />}
             {run.elapsed_seconds != null && (
@@ -237,6 +240,12 @@ export default function RunDetail() {
             )}
           </dl>
         </div>
+
+        {/* Image Review */}
+        <ImageReview runId={runId} currentStep={run.current_step} />
+
+        {/* Pipeline Logs */}
+        <RunLogs runId={runId} status={run.status} />
 
         {/* Review Scores */}
         <div className="p-5 rounded-lg bg-[#1a1a1a] border border-[#2a2a2a]">
@@ -371,4 +380,147 @@ function formatDate(iso: string): string {
     minute: '2-digit',
     second: '2-digit',
   });
+}
+
+function RunLogs({ runId, status }: { runId: number; status: string }) {
+  const isActive = ['running', 'generating', 'locked'].includes(status);
+
+  const { data } = useQuery<{ logs: string[]; current_step: string | null }>({
+    queryKey: ['run-logs', runId],
+    queryFn: () => fetch(`/api/runs/${runId}/logs`).then(r => r.json()),
+    refetchInterval: isActive ? 5000 : false,
+  });
+
+  const logs = data?.logs || [];
+  if (logs.length === 0) return null;
+
+  return (
+    <div className="p-5 rounded-lg bg-[#1a1a1a] border border-[#2a2a2a]">
+      <h3 className="text-sm font-medium text-gray-400 uppercase tracking-wider mb-3">
+        Pipeline Logs {isActive && <span className="text-green-400 animate-pulse ml-2">LIVE</span>}
+      </h3>
+      <div className="max-h-60 overflow-y-auto rounded bg-[#111] p-3 space-y-0.5">
+        {logs.map((line, i) => (
+          <div key={i} className="text-[11px] font-mono text-gray-400 leading-5">{line}</div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ImageReview({ runId, currentStep }: { runId: number; currentStep: string | null }) {
+  const [feedback, setFeedback] = useState<Record<string, string>>({});
+  const [denied, setDenied] = useState<Set<string>>(new Set());
+  const [approving, setApproving] = useState(false);
+
+  const { data, refetch } = useQuery<{ images: { name: string; b64: string }[]; total: number }>({
+    queryKey: ['run-images', runId],
+    queryFn: () => fetch(`/api/runs/${runId}/images`).then(r => r.ok ? r.json() : { images: [], total: 0 }),
+    refetchInterval: currentStep === 'images ready for review' ? 3000 : false,
+  });
+
+  const images = data?.images || [];
+  if (images.length === 0) return null;
+
+  const toggleDeny = (name: string) => {
+    const next = new Set(denied);
+    if (next.has(name)) next.delete(name);
+    else next.add(name);
+    setDenied(next);
+  };
+
+  const approveAll = async () => {
+    setApproving(true);
+    await fetch(`/api/runs/${runId}/images/approve-all`, { method: 'POST' });
+    setApproving(false);
+    refetch();
+  };
+
+  const submitReview = async () => {
+    setApproving(true);
+    const deniedList = Array.from(denied).map(name => ({
+      name,
+      feedback: feedback[name] || 'Regenerate this image',
+    }));
+    const approvedList = images.filter(img => !denied.has(img.name)).map(img => img.name);
+    await fetch(`/api/runs/${runId}/images/approve`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ approved: approvedList, denied: deniedList }),
+    });
+    setApproving(false);
+    setDenied(new Set());
+    setFeedback({});
+    refetch();
+  };
+
+  return (
+    <div className="p-5 rounded-lg bg-[#1a1a1a] border border-[#2a2a2a]">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-sm font-medium text-gray-400 uppercase tracking-wider">
+          Scene Images ({images.length})
+        </h3>
+        <div className="flex gap-2">
+          {denied.size > 0 && (
+            <button
+              onClick={submitReview}
+              disabled={approving}
+              className="px-3 py-1 text-xs rounded bg-red-600 hover:bg-red-500 text-white disabled:opacity-50"
+            >
+              {approving ? '...' : `Deny ${denied.size} & Regenerate`}
+            </button>
+          )}
+          <button
+            onClick={approveAll}
+            disabled={approving}
+            className="px-3 py-1 text-xs rounded bg-green-600 hover:bg-green-500 text-white disabled:opacity-50"
+          >
+            {approving ? '...' : 'Approve All'}
+          </button>
+        </div>
+      </div>
+      <div className="grid grid-cols-3 gap-3">
+        {images.map((img) => (
+          <div
+            key={img.name}
+            className={`relative rounded border-2 cursor-pointer transition-all ${
+              denied.has(img.name) ? 'border-red-500 opacity-60' : 'border-transparent hover:border-blue-500'
+            }`}
+            onClick={() => toggleDeny(img.name)}
+          >
+            <img
+              src={`data:image/png;base64,${img.b64}`}
+              alt={img.name}
+              className="w-full rounded"
+            />
+            <div className="absolute bottom-0 left-0 right-0 bg-black/70 px-2 py-1">
+              <span className="text-[10px] text-gray-300 font-mono">{img.name}</span>
+            </div>
+            {denied.has(img.name) && (
+              <div className="absolute inset-0 flex items-center justify-center bg-red-900/30 rounded">
+                <span className="text-red-300 font-bold text-sm">DENIED</span>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+      {denied.size > 0 && (
+        <div className="mt-4 space-y-2">
+          <p className="text-xs text-gray-400">Feedback for denied images:</p>
+          {Array.from(denied).map(name => (
+            <div key={name} className="flex gap-2 items-center">
+              <span className="text-xs text-red-400 font-mono w-32 shrink-0">{name}</span>
+              <input
+                type="text"
+                placeholder="What should change?"
+                value={feedback[name] || ''}
+                onChange={(e) => setFeedback(prev => ({ ...prev, [name]: e.target.value }))}
+                className="flex-1 px-2 py-1 text-xs bg-[#111] border border-[#333] rounded text-gray-200 placeholder-gray-600"
+              />
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }

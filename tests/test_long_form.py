@@ -210,7 +210,7 @@ class TestSubtitlePlayRes:
     """Ensure karaoke subtitles use correct resolution for long vs short form."""
 
     def test_short_form_playres(self):
-        from apps.orchestrator.deity_pipeline import _write_karaoke_ass
+        from apps.orchestrator.pipeline import _write_karaoke_ass
         with tempfile.NamedTemporaryFile(suffix=".ass", delete=False) as f:
             path = f.name
         try:
@@ -223,7 +223,7 @@ class TestSubtitlePlayRes:
             os.unlink(path)
 
     def test_long_form_playres(self):
-        from apps.orchestrator.deity_pipeline import _write_karaoke_ass
+        from apps.orchestrator.pipeline import _write_karaoke_ass
         with tempfile.NamedTemporaryFile(suffix=".ass", delete=False) as f:
             path = f.name
         try:
@@ -236,7 +236,7 @@ class TestSubtitlePlayRes:
             os.unlink(path)
 
     def test_labels_written(self):
-        from apps.orchestrator.deity_pipeline import _write_karaoke_ass
+        from apps.orchestrator.pipeline import _write_karaoke_ass
         with tempfile.NamedTemporaryFile(suffix=".ass", delete=False) as f:
             path = f.name
         try:

@@ -1,10 +1,27 @@
 import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useConceptDrafts, useApproveConceptDraft, useRejectConceptDraft } from '../hooks/useApi';
 import type { ConceptDraft } from '../api/types';
+
+interface ChannelSummary {
+  channel_id: number;
+  channel_name: string;
+  pending_count: number;
+  total_approved: number;
+  total_rejected: number;
+  posted_24h_short: number;
+  posted_24h_long: number;
+}
 
 export default function Concepts() {
   const [formType, setFormType] = useState<'short' | 'long'>('short');
   const { data: drafts, isLoading } = useConceptDrafts({ status: 'pending', form_type: formType });
+  const { data: summaryData } = useQuery<ChannelSummary[]>({
+    queryKey: ['concept-summary'],
+    queryFn: () => fetch('/api/concept-drafts/summary').then(r => r.json()),
+    refetchInterval: 30000,
+  });
+  const summaryMap = new Map((summaryData || []).map(s => [s.channel_id, s]));
   const approveMutation = useApproveConceptDraft();
   const rejectMutation = useRejectConceptDraft();
   const [expanded, setExpanded] = useState<number | null>(null);
@@ -61,11 +78,22 @@ export default function Concepts() {
         </div>
       )}
 
-      {channels.map(([channelId, { name, drafts: channelDrafts }]) => (
+      {channels.map(([channelId, { name, drafts: channelDrafts }]) => {
+        const summary = summaryMap.get(channelId);
+        const shortCount = summary?.posted_24h_short || 0;
+        const longCount = summary?.posted_24h_long || 0;
+        return (
         <section key={channelId}>
           <div className="flex items-center gap-3 mb-3">
             <h2 className="text-sm font-medium text-green-400 uppercase tracking-wider">{name}</h2>
             <span className="text-gray-600 text-xs">{channelDrafts.length}/5</span>
+            <span className="text-gray-600 text-xs">|</span>
+            <span className="text-xs">
+              <span className={shortCount > 0 ? 'text-green-400' : 'text-gray-600'}>{shortCount} short</span>
+              {' / '}
+              <span className={longCount > 0 ? 'text-purple-400' : 'text-gray-600'}>{longCount} long</span>
+              <span className="text-gray-600"> (24h)</span>
+            </span>
           </div>
           <div className="space-y-2">
             {channelDrafts.map((draft) => (
@@ -86,7 +114,8 @@ export default function Concepts() {
             ))}
           </div>
         </section>
-      ))}
+        );
+      })}
     </div>
   );
 }

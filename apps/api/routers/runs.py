@@ -83,7 +83,8 @@ async def list_runs(
                          ELSE NULL END as elapsed_seconds,
                     (SELECT content FROM assets WHERE run_id = cr.id AND asset_type = 'publish_result' ORDER BY id DESC LIMIT 1) as publish_asset,
                     (SELECT content FROM assets WHERE run_id = cr.id AND asset_type = 'publish_metadata' ORDER BY id DESC LIMIT 1) as metadata_asset,
-                    (SELECT content FROM assets WHERE run_id = cr.id AND asset_type = 'production_qa' ORDER BY id DESC LIMIT 1) as prod_qa_asset
+                    (SELECT content FROM assets WHERE run_id = cr.id AND asset_type = 'production_qa' ORDER BY id DESC LIMIT 1) as prod_qa_asset,
+                    cr.log_entries
                     FROM content_runs cr JOIN channels c ON c.id = cr.channel_id
                     {where}
                     ORDER BY cr.id DESC LIMIT :limit"""),
@@ -100,6 +101,17 @@ async def list_runs(
         youtube_privacy = _parse_path(row[13], key="privacy")
         title = _parse_title(row[14])
         prod_qa_verdict = _parse_path(row[15], key="verdict")
+
+        # Extract last change from log entries — prefer [MANUAL] entries, fallback to last line
+        last_change = None
+        log_text = row[16] or ""
+        if log_text:
+            lines = [l.strip() for l in log_text.strip().split("\n") if l.strip()]
+            manual_lines = [l for l in lines if "[MANUAL]" in l]
+            if manual_lines:
+                last_change = manual_lines[-1]
+            elif lines:
+                last_change = lines[-1]
 
         runs.append(
             RunSummary(
@@ -122,6 +134,7 @@ async def list_runs(
                 stalled=_is_stalled(row[4], row[5], row[12]),
                 youtube_url=youtube_url,
                 youtube_privacy=youtube_privacy,
+                last_change=last_change,
             )
         )
     return runs
@@ -192,6 +205,27 @@ async def get_run(run_id: int):
         youtube_privacy=youtube_privacy,
         assets=assets,
     )
+
+
+@router.get("/runs/{run_id}/logs")
+async def get_run_logs(run_id: int):
+    """Get log entries for a run."""
+    async with async_session() as session:
+        result = await session.execute(
+            text("SELECT log_entries, current_step, status FROM content_runs WHERE id = :id"),
+            {"id": run_id},
+        )
+        row = result.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Run not found")
+
+        logs = row[0] or ""
+        return {
+            "run_id": run_id,
+            "current_step": row[1],
+            "status": row[2],
+            "logs": logs.split("\n") if logs and logs != "[]" else [],
+        }
 
 
 @router.delete("/runs/cleanup")

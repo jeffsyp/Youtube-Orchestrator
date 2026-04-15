@@ -6,6 +6,7 @@ import Activity from './pages/Activity';
 import Concepts from './pages/Concepts';
 import ChannelDetail from './pages/ChannelDetail';
 import RunDetailPage from './pages/RunDetail';
+import ImageReview from './pages/ImageReview';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -27,6 +28,7 @@ export default function App() {
             <Route path="/activity" element={<Activity />} />
             <Route path="/channels/:id" element={<ChannelDetail />} />
             <Route path="/concepts" element={<Concepts />} />
+            <Route path="/review" element={<ImageReview />} />
             <Route path="/runs/:id" element={<RunDetailPage />} />
           </Route>
         </Routes>

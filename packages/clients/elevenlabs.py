@@ -6,7 +6,7 @@ import structlog
 from dotenv import load_dotenv
 from elevenlabs import ElevenLabs
 
-load_dotenv()
+load_dotenv(override=True)
 
 logger = structlog.get_logger()
 
@@ -38,6 +38,8 @@ def generate_speech(
     model: str = "eleven_multilingual_v2",
     output_path: str | None = None,
     speed: float | None = None,
+    previous_text: str | None = None,
+    next_text: str | None = None,
 ) -> bytes:
     """Generate speech audio from text.
 
@@ -69,13 +71,39 @@ def generate_speech(
     all_audio = b""
     for i, chunk in enumerate(chunks):
         log.info("generating chunk", chunk=i + 1, total=len(chunks), chars=len(chunk))
-        convert_kwargs = dict(text=chunk, voice_id=voice_id, model_id=model)
+
+        from elevenlabs.types import VoiceSettings
+        voice_settings = VoiceSettings(
+            stability=0.40,           # Expressive but not erratic
+            similarity_boost=0.65,    # Natural without artifacts
+            style=0.20,              # Subtle style enhancement
+            use_speaker_boost=True,   # Clearer, closer-to-mic feel
+        )
         if speed is not None:
-            from elevenlabs.types import VoiceSettings
-            convert_kwargs["voice_settings"] = VoiceSettings(speed=speed)
+            voice_settings.speed = speed
+
+        convert_kwargs = dict(
+            text=chunk,
+            voice_id=voice_id,
+            model_id=model,
+            voice_settings=voice_settings,
+        )
+
+        # Add context from adjacent chunks for natural intonation continuity
+        if i > 0:
+            convert_kwargs["previous_text"] = chunks[i - 1][-200:]
+        elif previous_text:
+            convert_kwargs["previous_text"] = previous_text[-200:]
+        if i < len(chunks) - 1:
+            convert_kwargs["next_text"] = chunks[i + 1][:200]
+        elif next_text:
+            convert_kwargs["next_text"] = next_text[:200]
+
         response = client.text_to_speech.convert(**convert_kwargs)
         all_audio += b"".join(response)
 
+    from packages.clients.usage_tracker import track
+    track("elevenlabs-tts", success=True)
     log.info("speech generated", audio_size=len(all_audio))
 
     if output_path:

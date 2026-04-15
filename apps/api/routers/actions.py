@@ -96,13 +96,15 @@ def _run_pipeline_bg(run_id: int, concept: dict):
     asyncio.run(run_pipeline(run_id, concept))
 
 
-@router.post("/runs/deity")
+@router.post("/runs/generate")
 async def execute_deity(concept: dict):
     """Execute a narrated video short."""
-    from apps.orchestrator.deity_pipeline import run_deity_pipeline
+    from apps.orchestrator.pipeline import run_pipeline
 
     channel_id = concept.get("channel_id", 14)
     row = await _get_channel(channel_id)
+
+    title = concept.get("title", "Untitled")
 
     async with async_session() as session:
         result = await session.execute(
@@ -110,17 +112,23 @@ async def execute_deity(concept: dict):
             {"cid": channel_id},
         )
         run_id = result.scalar_one()
+
+        # Always create content_bank entry so it shows in Activity
+        await session.execute(
+            text("INSERT INTO content_bank (channel_id, title, status, run_id, concept_json) VALUES (:cid, :title, 'generating', :rid, :cj)"),
+            {"cid": channel_id, "title": title, "rid": run_id, "cj": json.dumps(concept)},
+        )
         await session.commit()
 
     import asyncio
     import threading
 
     def _run_bg():
-        asyncio.run(run_deity_pipeline(run_id, concept))
+        asyncio.run(run_pipeline(run_id, concept))
 
     threading.Thread(target=_run_bg, daemon=True).start()
 
-    return {"run_id": run_id, "channel_name": row[1], "title": concept.get("title", "Untitled")}
+    return {"run_id": run_id, "channel_name": row[1], "title": title}
 
 
 @router.post("/runs/{run_id}/publish")
@@ -250,16 +258,31 @@ async def publish_run(run_id: int, privacy: str = "private"):
         )
 
     try:
+        # Handle scheduled uploads — upload as private with publish_at
+        publish_at = None
+        actual_privacy = privacy
+        if privacy == "scheduled":
+            import random
+            from datetime import datetime, timezone, timedelta
+            delay = random.randint(3600, 10800)  # 1-3 hours
+            publish_time = datetime.now(timezone.utc) + timedelta(seconds=delay)
+            # Round to nearest 5 minutes
+            minute = (publish_time.minute // 5) * 5
+            publish_time = publish_time.replace(minute=minute, second=0, microsecond=0)
+            publish_at = publish_time.strftime("%Y-%m-%dT%H:%M:%S.000Z")
+            actual_privacy = "private"
+
         result = upload_video(
             video_path=video_path,
             title=title,
             description=description,
             tags=tags,
             category=category,
-            privacy_status=privacy,
+            privacy_status=actual_privacy,
             youtube_token_file=token_file,
             made_for_kids=made_for_kids,
             thumbnail_path=thumbnail_path,
+            publish_at=publish_at,
         )
     except Exception as e:
         error_msg = str(e)
@@ -402,3 +425,273 @@ async def delete_video(run_id: int):
         raise HTTPException(status_code=500, detail=f"YouTube API error: {str(e)}")
 
     return {"run_id": run_id, "video_id": video_id, "deleted": True}
+
+
+@router.get("/runs/{run_id}/images")
+async def get_run_images(run_id: int):
+    """Get all generated images for a run — for review before animation."""
+    import os, base64
+    images_dir = f"output/run_{run_id}/images"
+    if not os.path.isdir(images_dir):
+        raise HTTPException(status_code=404, detail="No images directory found")
+    
+    images = []
+    seen_hashes = set()
+    for f in sorted(os.listdir(images_dir)):
+        if not f.endswith('.png'):
+            continue
+        if '_lastframe' in f or '_feedback' in f:
+            continue
+        if not (f.startswith('sub_') or f.startswith('scene_') or f == 'style_anchor.png' or f == 'base_scene.png'):
+            continue
+        path = os.path.join(images_dir, f)
+        with open(path, "rb") as img:
+            raw = img.read()
+        # Skip exact duplicates
+        h = hash(raw)
+        if h in seen_hashes:
+            continue
+        seen_hashes.add(h)
+        b64 = base64.b64encode(raw).decode()
+
+        # Try to get narration/prompt context for this image
+        narration_text = ""
+        try:
+            # Load word timestamps to get narration lines
+            ts_path = f"output/run_{run_id}/word_timestamps.json"
+            plan_path = f"output/run_{run_id}/images/plan.json"
+            if os.path.exists(ts_path):
+                import json as _json
+                with open(ts_path) as tf:
+                    words = _json.load(tf)
+                # Group words by line
+                lines = {}
+                for w in words:
+                    line_idx = w.get("line", 0)
+                    lines.setdefault(line_idx, []).append(w["word"])
+                narr_lines = {k: " ".join(v) for k, v in sorted(lines.items())}
+
+                # Map image to narration line — use plan.json if available
+                plan_path = os.path.join(images_dir, "plan.json")
+                plan = None
+                if os.path.exists(plan_path):
+                    try:
+                        with open(plan_path) as pf:
+                            plan = _json.load(pf)
+                    except:
+                        pass
+
+                if f.startswith("sub_"):
+                    idx = int(f.replace("sub_", "").replace(".png", ""))
+                    if plan and idx < len(plan):
+                        line_idx = plan[idx].get("line", 0)
+                        narration_text = narr_lines.get(line_idx, "")
+                    else:
+                        total_subs = len([x for x in os.listdir(images_dir) if x.startswith("sub_") and x.endswith(".png") and "_lastframe" not in x])
+                        if total_subs > 0 and narr_lines:
+                            line_idx = min(idx * len(narr_lines) // max(total_subs, 1), len(narr_lines) - 1)
+                            narration_text = narr_lines.get(line_idx, "")
+                elif f.startswith("scene_"):
+                    idx = int(f.replace("scene_", "").replace(".png", ""))
+                    narration_text = narr_lines.get(idx, "")
+                elif f == "base_scene.png":
+                    narration_text = narr_lines.get(0, "(base scene)")
+                elif f == "style_anchor.png":
+                    narration_text = "(style reference)"
+        except Exception:
+            pass
+
+        images.append({
+            "name": f,
+            "path": path,
+            "b64": b64,
+            "approved": None,
+            "narration": narration_text,
+        })
+    
+    # Try to get expected count from the sub-action plan
+    expected = len(images)
+    plan_path = os.path.join(images_dir, "plan.json")
+    if not os.path.exists(plan_path):
+        # Check if shared pipeline saved the plan
+        for f in os.listdir(images_dir):
+            if f.startswith("sub_") and f.endswith(".png") and "_lastframe" not in f and "_feedback" not in f:
+                pass  # count is already in images
+
+    # Get expected from the run's current step if it has "X/Y" format
+    try:
+        from sqlalchemy import text
+        from packages.clients.db import async_session
+        async with async_session() as session:
+            result = await session.execute(
+                text("SELECT current_step FROM content_runs WHERE id = :id"),
+                {"id": run_id},
+            )
+            row = result.fetchone()
+            if row and row[0]:
+                step = row[0]
+                # Parse "scene 3/14" format
+                import re as _re
+                m = _re.search(r'(\d+)/(\d+)', step)
+                if m:
+                    expected = int(m.group(2))
+    except Exception:
+        pass
+
+    # Count how many new-scene images are expected (exclude lastframes)
+    all_sub_pngs = [f for f in os.listdir(images_dir) if f.startswith("sub_") and f.endswith(".png") and "_lastframe" not in f and "_feedback" not in f]
+
+    return {"run_id": run_id, "images": images, "total": len(images), "expected": max(expected, len(all_sub_pngs))}
+
+
+@router.post("/runs/{run_id}/images/approve")
+async def approve_run_images(run_id: int, approved: list[str] = None, denied: list[dict] = None):
+    """Approve or deny specific images. 
+    
+    approved: list of image filenames to approve
+    denied: list of {"name": "filename", "feedback": "what to fix"} objects
+    
+    If all images are approved (none denied), sets run status to continue.
+    If any denied, regenerates them with feedback and returns for re-review.
+    """
+    import os
+    from sqlalchemy import text
+    from packages.clients.db import async_session
+    
+    images_dir = f"output/run_{run_id}/images"
+    
+    # Handle denials — regenerate with feedback
+    regenerated = []
+    if denied:
+        from packages.clients.grok import generate_image_dalle
+        for item in denied:
+            name = item.get("name", "")
+            feedback = item.get("feedback", "")
+            path = os.path.join(images_dir, name)
+            if os.path.exists(path):
+                os.remove(path)
+                # Regenerate with feedback as additional prompt guidance
+                # For now, store the feedback — the pipeline will use it on retry
+                feedback_path = os.path.join(images_dir, name.replace('.png', '_feedback.txt'))
+                with open(feedback_path, 'w') as f:
+                    f.write(feedback)
+                regenerated.append({"name": name, "feedback": feedback})
+    
+    if regenerated:
+        # Signal pipeline to regenerate via file
+        deny_file = f"output/run_{run_id}/.images_denied"
+        with open(deny_file, 'w') as f:
+            f.write("denied")
+        return {"run_id": run_id, "status": "regenerating", "regenerated": regenerated}
+
+    # All approved — signal pipeline via file
+    approval_file = f"output/run_{run_id}/.images_approved"
+    with open(approval_file, 'w') as f:
+        f.write("approved")
+
+    return {"run_id": run_id, "status": "approved", "message": "All images approved — continuing to animation"}
+
+
+@router.post("/runs/{run_id}/images/approve-all")
+async def approve_all_images(run_id: int):
+    """Approve all images and continue pipeline."""
+    approval_file = f"output/run_{run_id}/.images_approved"
+    import os
+    os.makedirs(f"output/run_{run_id}", exist_ok=True)
+    with open(approval_file, 'w') as f:
+        f.write("approved")
+    return {"run_id": run_id, "status": "approved"}
+
+
+@router.get("/runs/{run_id}/script")
+async def get_run_script(run_id: int):
+    """Get the narration script for a run."""
+    import os, json
+    ts_path = f"output/run_{run_id}/word_timestamps.json"
+    narr_dir = f"output/run_{run_id}/narration"
+    
+    # Try word_timestamps first
+    if os.path.exists(ts_path):
+        with open(ts_path) as f:
+            words = json.load(f)
+        lines = {}
+        for w in words:
+            lines.setdefault(w.get("line", 0), []).append(w["word"])
+        narration = [" ".join(v) for k, v in sorted(lines.items())]
+        return {"run_id": run_id, "narration": narration, "status": "generated"}
+    
+    # Try concept_json from content_bank
+    from sqlalchemy import text
+    from packages.clients.db import async_session
+    async with async_session() as session:
+        result = await session.execute(
+            text("""SELECT cb.concept_json FROM content_runs cr 
+                    JOIN content_bank cb ON cb.id = cr.content_bank_id 
+                    WHERE cr.id = :id"""),
+            {"id": run_id},
+        )
+        row = result.fetchone()
+    
+    if row and row[0]:
+        concept = row[0] if isinstance(row[0], dict) else json.loads(row[0])
+        narration = concept.get("narration", [])
+        if narration:
+            return {"run_id": run_id, "narration": narration, "status": "from_concept"}
+    
+    return {"run_id": run_id, "narration": [], "status": "not_found"}
+
+
+@router.post("/runs/{run_id}/script/approve")
+async def approve_run_script(run_id: int):
+    """Approve the script — continue to image generation."""
+    from sqlalchemy import text
+    from packages.clients.db import async_session
+    async with async_session() as session:
+        await session.execute(
+            text("UPDATE content_runs SET current_step = 'script approved' WHERE id = :id"),
+            {"id": run_id},
+        )
+        await session.commit()
+    return {"run_id": run_id, "status": "approved"}
+
+
+@router.post("/runs/{run_id}/script/edit")
+async def edit_run_script(run_id: int, narration: list[str] = None):
+    """Replace the narration lines and re-approve."""
+    import os, json
+    from sqlalchemy import text
+    from packages.clients.db import async_session
+    
+    if not narration:
+        return {"error": "No narration provided"}
+    
+    # Update the concept_json in content_bank
+    async with async_session() as session:
+        result = await session.execute(
+            text("""SELECT cb.id, cb.concept_json FROM content_runs cr 
+                    JOIN content_bank cb ON cb.id = cr.content_bank_id 
+                    WHERE cr.id = :id"""),
+            {"id": run_id},
+        )
+        row = result.fetchone()
+        if row:
+            concept = row[1] if isinstance(row[1], dict) else json.loads(row[1])
+            concept["narration"] = narration
+            await session.execute(
+                text("UPDATE content_bank SET concept_json = :cj WHERE id = :id"),
+                {"id": row[0], "cj": json.dumps(concept)},
+            )
+            await session.commit()
+    
+    # Clear old narration files so they regenerate
+    narr_dir = f"output/run_{run_id}/narration"
+    if os.path.isdir(narr_dir):
+        for f in os.listdir(narr_dir):
+            os.remove(os.path.join(narr_dir, f))
+    
+    # Also clear word_timestamps
+    ts_path = f"output/run_{run_id}/word_timestamps.json"
+    if os.path.exists(ts_path):
+        os.remove(ts_path)
+    
+    return {"run_id": run_id, "status": "script updated", "lines": len(narration)}

@@ -45,9 +45,8 @@ export const api = {
   getRun: (id: number) => request<import('./types').RunDetail>(`/runs/${id}`),
 
   publishRun: ({ id, privacy }: { id: number; privacy?: string }) =>
-    request<{ status: string }>(`/runs/${id}/publish`, {
+    request<{ status: string }>(`/runs/${id}/publish?privacy=${privacy || 'private'}`, {
       method: 'POST',
-      body: JSON.stringify({ privacy: privacy || 'private' }),
     }),
 
   rejectRun: (id: number) =>

@@ -3,17 +3,19 @@
 import asyncio
 import json
 import os
+import sys
 
 import structlog
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from dotenv import load_dotenv
+from packages.prompts.concept_drafts import KIDS_CHANNELS
 
-load_dotenv()
+load_dotenv(override=True)
 logger = structlog.get_logger()
 
-POLL_INTERVAL = 30  # seconds between polls
-MAX_PARALLEL = 5  # max concurrent generations
+POLL_INTERVAL = 10  # seconds between polls (faster claim cycle)
+MAX_PARALLEL = 2  # max concurrent videos — reduced from 10 to prevent OOM (exit 137)
 WORKER_ID = f"worker-{os.getpid()}"
 
 _active_tasks: set = set()  # track running generation tasks
@@ -154,30 +156,102 @@ async def _generate_item(item: dict):
                         break
                 if not prev_dir:
                     continue
+                # Skip runs with no useful content
+                has_content = any(
+                    os.path.isdir(os.path.join(prev_dir, sub)) and os.listdir(os.path.join(prev_dir, sub))
+                    for sub in ["narration", "images", "clips"]
+                )
+                if not has_content:
+                    continue  # try older run
+
                 # Copy narration, images, and clips from previous run
-                for subdir in ["narration", "images", "clips"]:
+                # Files that must NOT be reused (stale plans cause bad clip coverage / wrong scenes)
+                STALE_FILES = {"plan.json", "visual_plan.json"}
+                copied_something = False
+                for subdir in ["narration", "images", "clips", "segments", "character_refs"]:
                     src = os.path.join(prev_dir, subdir)
                     dst = os.path.join(new_dir, subdir)
                     if os.path.isdir(src) and not os.path.isdir(dst):
                         try:
-                            shutil.copytree(src, dst)
+                            shutil.copytree(src, dst, ignore=lambda d, files: [f for f in files if f in STALE_FILES])
                             logger.info("reused files from previous run", prev_run=prev_id, subdir=subdir)
+                            copied_something = True
                         except Exception as copy_err:
                             logger.warning("failed to reuse files, will regenerate", error=str(copy_err)[:100])
-                break  # only copy from the most recent previous run
+                for fname in ["concept.json"]:
+                    src_file = os.path.join(prev_dir, fname)
+                    dst_file = os.path.join(new_dir, fname)
+                    if os.path.exists(src_file) and not os.path.exists(dst_file):
+                        try:
+                            import shutil as _sh
+                            _sh.copy2(src_file, dst_file)
+                            logger.info("reused file from previous run", prev_run=prev_id, file=fname)
+                        except Exception:
+                            pass
+                if copied_something:
+                    break  # found a good run to copy from
 
         logger.info("starting generation", run_id=run_id, bank_id=bank_id, title=title)
 
         try:
-            from apps.orchestrator.deity_pipeline import run_deity_pipeline
-            # Global timeout: 60 min for shorts, 180 min for long-form
+            # Global timeout: 15 min for shorts, 30 min for long-form
             is_long = (
                 concept.get("long_form", False)
                 or len(concept.get("narration", [])) >= 20
                 or len(concept.get("beats", [])) >= 20
             )
-            pipeline_timeout = 10800 if is_long else 3600
-            await asyncio.wait_for(run_deity_pipeline(run_id, concept), timeout=pipeline_timeout)
+            pipeline_timeout = 7200  # 2 hours — includes time waiting for user image approval
+
+            # Spawn pipeline as a subprocess — can be killed cleanly on timeout
+            concept_json_str = json.dumps(concept)
+            project_root = os.path.join(os.path.dirname(__file__), "..", "..")
+            cmd = [
+                sys.executable, "-m", "apps.worker.pipeline_runner",
+                "--run-id", str(run_id),
+                "--concept", concept_json_str,
+            ]
+
+            process = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                cwd=project_root,
+            )
+
+            try:
+                stdout, stderr = await asyncio.wait_for(
+                    process.communicate(),
+                    timeout=pipeline_timeout,
+                )
+            except asyncio.TimeoutError:
+                process.kill()
+                await process.wait()
+                # Force-update DB since the subprocess was killed
+                async with AsyncSession(engine) as s:
+                    await s.execute(text(
+                        "UPDATE content_runs SET status = 'failed', error = :err WHERE id = :id AND status = 'running'"
+                    ), {"err": f"Pipeline timed out after {pipeline_timeout}s", "id": run_id})
+                    await s.commit()
+                raise RuntimeError(f"Pipeline timed out after {pipeline_timeout}s")
+
+            if process.returncode != 0:
+                error_msg = stderr.decode()[-500:] if stderr else "Unknown error"
+                # Force-update DB in case pipeline didn't
+                async with AsyncSession(engine) as s:
+                    await s.execute(text(
+                        "UPDATE content_runs SET status = 'failed', error = :err WHERE id = :id AND status = 'running'"
+                    ), {"err": error_msg[-300:], "id": run_id})
+                    await s.commit()
+                raise RuntimeError(f"Pipeline failed: {error_msg}")
+
+            # Check if pipeline internally marked itself as failed
+            async with AsyncSession(engine) as s:
+                status_row = await s.execute(text(
+                    "SELECT status FROM content_runs WHERE id = :id"
+                ), {"id": run_id})
+                run_status = status_row.scalar()
+            if run_status == 'failed':
+                raise RuntimeError("Pipeline marked itself as failed")
 
             # Verify the video file actually exists before marking as generated
             video_path = None

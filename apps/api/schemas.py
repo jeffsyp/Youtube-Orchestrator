@@ -49,6 +49,7 @@ class RunSummary(BaseModel):
     stalled: bool = False
     youtube_url: str | None = None
     youtube_privacy: str | None = None
+    last_change: str | None = None
 
 
 class AssetDetail(BaseModel):
