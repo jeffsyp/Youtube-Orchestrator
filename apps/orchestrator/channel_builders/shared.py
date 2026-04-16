@@ -428,7 +428,14 @@ CRITICAL RULES FOR IMAGE PROMPTS:
    - Character EXPRESSIONS (confused, shocked, angry, smirking)
    - NEVER just characters on a blank/white background
    - NEVER comic panel layouts or manga grids — ONE single scene per image
+   - NEVER split-images / before-and-after combos in a single frame (no top-half/bottom-half showing two moments)
    - The image_prompt describes ONLY the FIRST MOMENT of the action — the starting point. The animation and chaining handle everything after that. Do NOT try to show the whole sequence in one image.
+
+6. WHEN A NARRATION LINE DESCRIBES TWO EVENTS, USE TWO SUB-ACTIONS:
+   - If narration says "X, then Y" or "X and then Y" — that's TWO sub-actions for the same line, not one image showing both.
+   - BAD: narration "Goku Instant Transmissions to the exit, then back" → ONE image with split-screen showing both
+   - GOOD: narration "Goku Instant Transmissions to the exit, then back" → sub-action A: Goku flashing in at the exit (light burst, examiners shocked) + sub-action B: Goku flashing back at the start (chained from A's last frame, examinees gasping)
+   - Multiple sub-actions for the same `line` index is fully supported — use it whenever the narration has multiple beats.
 
 5. For fight/action scenes: show the MOMENT OF IMPACT or the STARTING POINT of the action, with both characters visible and the result beginning to happen.
 
