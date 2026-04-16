@@ -7,11 +7,20 @@ import re
 
 import structlog
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession
 from dotenv import load_dotenv
+from packages.clients.db import get_engine
 
 load_dotenv(override=True)
 logger = structlog.get_logger()
+
+
+def _strip_code_block(text: str) -> str:
+    """Strip markdown code block fencing from LLM responses."""
+    text = text.strip()
+    text = re.sub(r"^```(?:json)?\s*", "", text)
+    text = re.sub(r"\s*```\s*$", "", text)
+    return text.strip()
 
 REPLENISH_INTERVAL = 120  # check every 2 minutes
 DRAFTS_PER_CHANNEL = 5
@@ -225,10 +234,7 @@ Return ONLY a JSON array of strings, no markdown:
 
 
 def _get_engine():
-    db_url = os.getenv("DATABASE_URL", "postgresql+asyncpg://orchestrator:orchestrator@localhost:5432/orchestrator")
-    if "asyncpg" not in db_url:
-        db_url = db_url.replace("postgresql://", "postgresql+asyncpg://")
-    return create_async_engine(db_url, pool_size=2, max_overflow=1)
+    return get_engine()
 
 
 async def generate_drafts_for_channel(channel_id: int, count: int = 5, form_type: str = "short") -> list[int]:
@@ -318,8 +324,6 @@ async def generate_drafts_for_channel(channel_id: int, count: int = 5, form_type
     except Exception as e:
         logger.error("concept generation failed", channel_id=channel_id, error=str(e)[:200])
         return []
-    finally:
-        await engine.dispose()
 
 
 async def _generate_short_drafts(
@@ -340,11 +344,7 @@ async def _generate_short_drafts(
 
     logger.info("phase 1: generating short pitches", channel=channel_name, count=count)
 
-    resp = generate(prompt=user, system=system, model="claude-sonnet-4-6", max_tokens=4000)
-    resp = resp.strip()
-    if resp.startswith("```"):
-        resp = re.sub(r"^```(?:json)?\s*", "", resp)
-        resp = re.sub(r"\s*```$", "", resp)
+    resp = _strip_code_block(generate(prompt=user, system=system, model="claude-sonnet-4-6", max_tokens=4000))
 
     pitches = json.loads(resp)
     if not isinstance(pitches, list):
@@ -381,11 +381,7 @@ async def _generate_short_drafts(
             key_facts=key_facts,
         )
 
-        resp2 = generate(prompt=usr2, system=sys2, model="claude-sonnet-4-6", max_tokens=4000)
-        resp2 = resp2.strip()
-        if resp2.startswith("```"):
-            resp2 = re.sub(r"^```(?:json)?\s*", "", resp2)
-            resp2 = re.sub(r"\s*```$", "", resp2)
+        resp2 = _strip_code_block(generate(prompt=usr2, system=sys2, model="claude-sonnet-4-6", max_tokens=4000))
 
         try:
             concept = json.loads(resp2)
@@ -427,11 +423,7 @@ async def _generate_unified_topic_drafts(
 
     logger.info("phase 1: generating topics", channel=channel_name, count=count)
 
-    resp = generate(prompt=user, system=system, model="claude-sonnet-4-6", max_tokens=4000)
-    resp = resp.strip()
-    if resp.startswith("```"):
-        resp = re.sub(r"^```(?:json)?\s*", "", resp)
-        resp = re.sub(r"\s*```$", "", resp)
+    resp = _strip_code_block(generate(prompt=user, system=system, model="claude-sonnet-4-6", max_tokens=4000))
 
     topics = json.loads(resp)
     if not isinstance(topics, list):
@@ -474,11 +466,7 @@ async def _generate_unified_topic_drafts(
                 channel_id=channel_id, title=title, brief=brief, key_facts=key_facts,
             )
 
-        resp2 = generate(prompt=usr2, system=sys2, model="claude-sonnet-4-6", max_tokens=8000 if actual_form == "long" else 4000)
-        resp2 = resp2.strip()
-        if resp2.startswith("```"):
-            resp2 = re.sub(r"^```(?:json)?\s*", "", resp2)
-            resp2 = re.sub(r"\s*```$", "", resp2)
+        resp2 = _strip_code_block(generate(prompt=usr2, system=sys2, model="claude-sonnet-4-6", max_tokens=8000 if actual_form == "long" else 4000))
 
         try:
             concept = json.loads(resp2)
@@ -511,11 +499,7 @@ async def _generate_educational_short_drafts(
 
     logger.info("phase 1: generating educational short pitches", channel=channel_name, count=count)
 
-    resp = generate(prompt=user, system=system, model="claude-sonnet-4-6", max_tokens=4000)
-    resp = resp.strip()
-    if resp.startswith("```"):
-        resp = re.sub(r"^```(?:json)?\s*", "", resp)
-        resp = re.sub(r"\s*```$", "", resp)
+    resp = _strip_code_block(generate(prompt=user, system=system, model="claude-sonnet-4-6", max_tokens=4000))
 
     pitches = json.loads(resp)
     if not isinstance(pitches, list):
@@ -552,11 +536,7 @@ async def _generate_educational_short_drafts(
             key_facts=key_facts,
         )
 
-        resp2 = generate(prompt=usr2, system=sys2, model="claude-sonnet-4-6", max_tokens=4000)
-        resp2 = resp2.strip()
-        if resp2.startswith("```"):
-            resp2 = re.sub(r"^```(?:json)?\s*", "", resp2)
-            resp2 = re.sub(r"\s*```$", "", resp2)
+        resp2 = _strip_code_block(generate(prompt=usr2, system=sys2, model="claude-sonnet-4-6", max_tokens=4000))
 
         try:
             concept = json.loads(resp2)
@@ -709,9 +689,7 @@ Return as a JSON array. Return ONLY valid JSON, no markdown.""",
             if block.type == "text":
                 resp_text = block.text.strip()
 
-        if resp_text.startswith("```"):
-            resp_text = re.sub(r"^```(?:json)?\s*", "", resp_text)
-            resp_text = re.sub(r"\s*```$", "", resp_text)
+        resp_text = _strip_code_block(resp_text)
 
         pitches = json.loads(resp_text)
         if not isinstance(pitches, list):
@@ -752,11 +730,7 @@ Return as a JSON array. Return ONLY valid JSON, no markdown.""",
             structure=structure, key_facts=key_facts,
         )
 
-        resp2 = generate(prompt=usr2, system=sys2, model="claude-sonnet-4-6", max_tokens=4000)
-        resp2 = resp2.strip()
-        if resp2.startswith("```"):
-            resp2 = re.sub(r"^```(?:json)?\s*", "", resp2)
-            resp2 = re.sub(r"\s*```$", "", resp2)
+        resp2 = _strip_code_block(generate(prompt=usr2, system=sys2, model="claude-sonnet-4-6", max_tokens=4000))
 
         try:
             concept = json.loads(resp2)
@@ -857,11 +831,7 @@ async def _generate_weekly_recap_draft(
                 channel_id=channel_id, story_title=story["title"],
                 story_details=f"Score: {story['score']}, Comments: {story['num_comments']}",
             )
-            resp = generate(prompt=usr2, system=sys2, model="claude-sonnet-4-6", max_tokens=4000)
-            resp = resp.strip()
-            if resp.startswith("```"):
-                resp = re.sub(r"^```(?:json)?\s*", "", resp)
-                resp = re.sub(r"\s*```$", "", resp)
+            resp = _strip_code_block(generate(prompt=usr2, system=sys2, model="claude-sonnet-4-6", max_tokens=4000))
             try:
                 concept = json.loads(resp)
                 title = concept.get("title", story["title"])
@@ -882,11 +852,7 @@ async def _generate_weekly_recap_draft(
             story_details=f"Score: {biggest['score']}, Comments: {biggest['num_comments']}",
             news_block=news_block,
         )
-        resp = generate(prompt=usr2, system=sys2, model="claude-sonnet-4-6", max_tokens=8000)
-        resp = resp.strip()
-        if resp.startswith("```"):
-            resp = re.sub(r"^```(?:json)?\s*", "", resp)
-            resp = re.sub(r"\s*```$", "", resp)
+        resp = _strip_code_block(generate(prompt=usr2, system=sys2, model="claude-sonnet-4-6", max_tokens=8000))
         try:
             concept = json.loads(resp)
             title = concept.get("title", f"Deep Dive: {biggest['title']}")
@@ -902,11 +868,7 @@ async def _generate_weekly_recap_draft(
             channel_name=channel_name, niche=niche, voice_id=voice_id,
             channel_id=channel_id, news_block=news_block, duration_minutes=7,
         )
-        resp = generate(prompt=usr3, system=sys3, model="claude-sonnet-4-6", max_tokens=8000)
-        resp = resp.strip()
-        if resp.startswith("```"):
-            resp = re.sub(r"^```(?:json)?\s*", "", resp)
-            resp = re.sub(r"\s*```$", "", resp)
+        resp = _strip_code_block(generate(prompt=usr3, system=sys3, model="claude-sonnet-4-6", max_tokens=8000))
         try:
             concept = json.loads(resp)
             title = concept.get("title", f"Ctrl Z The Week — {date_str}")
@@ -941,11 +903,7 @@ async def _generate_longform_drafts(
 
     logger.info("phase 1: generating long-form pitches", channel=channel_name, count=count)
 
-    resp = generate(prompt=user, system=system, model="claude-sonnet-4-6", max_tokens=8000)
-    resp = resp.strip()
-    if resp.startswith("```"):
-        resp = re.sub(r"^```(?:json)?\s*", "", resp)
-        resp = re.sub(r"\s*```$", "", resp)
+    resp = _strip_code_block(generate(prompt=user, system=system, model="claude-sonnet-4-6", max_tokens=8000))
 
     pitches = json.loads(resp)
     if not isinstance(pitches, list):
@@ -999,11 +957,7 @@ async def _generate_longform_drafts(
                 open_loops=open_loops,
             )
 
-            resp2 = generate(prompt=usr2, system=sys2, model="claude-sonnet-4-6", max_tokens=4000)
-            resp2 = resp2.strip()
-            if resp2.startswith("```"):
-                resp2 = re.sub(r"^```(?:json)?\s*", "", resp2)
-                resp2 = re.sub(r"\s*```$", "", resp2)
+            resp2 = _strip_code_block(generate(prompt=usr2, system=sys2, model="claude-sonnet-4-6", max_tokens=4000))
 
             try:
                 chapter_result = json.loads(resp2)
@@ -1077,11 +1031,7 @@ async def _generate_midform_drafts(
 
     logger.info("phase 1: generating mid-form pitches", channel=channel_name, count=count)
 
-    resp = generate(prompt=user, system=system, model="claude-sonnet-4-6", max_tokens=6000)
-    resp = resp.strip()
-    if resp.startswith("```"):
-        resp = re.sub(r"^```(?:json)?\s*", "", resp)
-        resp = re.sub(r"\s*```$", "", resp)
+    resp = _strip_code_block(generate(prompt=user, system=system, model="claude-sonnet-4-6", max_tokens=6000))
 
     pitches = json.loads(resp)
     if not isinstance(pitches, list):
@@ -1120,11 +1070,7 @@ async def _generate_midform_drafts(
             key_facts=key_facts,
         )
 
-        resp2 = generate(prompt=usr2, system=sys2, model="claude-sonnet-4-6", max_tokens=8000)
-        resp2 = resp2.strip()
-        if resp2.startswith("```"):
-            resp2 = re.sub(r"^```(?:json)?\s*", "", resp2)
-            resp2 = re.sub(r"\s*```$", "", resp2)
+        resp2 = _strip_code_block(generate(prompt=usr2, system=sys2, model="claude-sonnet-4-6", max_tokens=8000))
 
         try:
             concept = json.loads(resp2)
@@ -1159,11 +1105,7 @@ async def _generate_kids_drafts(
 
     logger.info("phase 1: generating kids pitches", channel=channel_name, count=count)
 
-    resp = generate(prompt=user, system=system, model="claude-sonnet-4-6", max_tokens=4000)
-    resp = resp.strip()
-    if resp.startswith("```"):
-        resp = re.sub(r"^```(?:json)?\s*", "", resp)
-        resp = re.sub(r"\s*```$", "", resp)
+    resp = _strip_code_block(generate(prompt=user, system=system, model="claude-sonnet-4-6", max_tokens=4000))
 
     pitches = json.loads(resp)
     if not isinstance(pitches, list):
@@ -1200,11 +1142,7 @@ async def _generate_kids_drafts(
             key_facts=key_facts,
         )
 
-        resp2 = generate(prompt=usr2, system=sys2, model="claude-sonnet-4-6", max_tokens=4000)
-        resp2 = resp2.strip()
-        if resp2.startswith("```"):
-            resp2 = re.sub(r"^```(?:json)?\s*", "", resp2)
-            resp2 = re.sub(r"\s*```$", "", resp2)
+        resp2 = _strip_code_block(generate(prompt=usr2, system=sys2, model="claude-sonnet-4-6", max_tokens=4000))
 
         try:
             concept = json.loads(resp2)
@@ -1241,11 +1179,7 @@ async def _generate_no_narration_drafts(
 
     logger.info("generating no-narration concepts", channel=channel_name, count=count)
 
-    resp = generate(prompt=user, system=system, model="claude-sonnet-4-6", max_tokens=6000)
-    resp = resp.strip()
-    if resp.startswith("```"):
-        resp = re.sub(r"^```(?:json)?\s*", "", resp)
-        resp = re.sub(r"\s*```$", "", resp)
+    resp = _strip_code_block(generate(prompt=user, system=system, model="claude-sonnet-4-6", max_tokens=6000))
 
     concepts = json.loads(resp)
     if not isinstance(concepts, list):
@@ -1366,7 +1300,6 @@ async def run_concept_replenish_loop():
                     ORDER BY COALESCE(d.cnt, 0) ASC
                 """))
                 channels_long = result_long.fetchall()
-            await engine.dispose()
 
             # Replenish short-form concepts
             for ch_id, ch_name, pending in channels:

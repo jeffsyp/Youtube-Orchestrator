@@ -9,20 +9,16 @@ import base64
 import json
 import os
 
+import structlog
 from fastapi import APIRouter, HTTPException, BackgroundTasks
 from sqlalchemy import text
-from temporalio.client import Client
 
 from packages.clients.db import async_session
 from apps.api.schemas import ExecuteConceptResponse
 
+logger = structlog.get_logger()
+
 router = APIRouter(prefix="/api", tags=["concepts"])
-
-
-async def _get_temporal_client() -> Client:
-    host = os.getenv("TEMPORAL_HOST", "localhost:7233")
-    namespace = os.getenv("TEMPORAL_NAMESPACE", "default")
-    return await Client.connect(host, namespace=namespace)
 
 
 @router.get("/concepts")

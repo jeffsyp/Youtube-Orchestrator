@@ -140,6 +140,31 @@ async def list_runs(
     return runs
 
 
+@router.delete("/runs/cleanup")
+async def cleanup_old_runs(
+    keep: int = Query(5, ge=1, le=50, description="Number of recent runs per status to keep"),
+):
+    """Delete old failed/rejected runs, keeping only the most recent `keep` per status."""
+    async with async_session() as session:
+        result = await session.execute(
+            text("""DELETE FROM content_runs
+                    WHERE id IN (
+                        SELECT id FROM (
+                            SELECT id, ROW_NUMBER() OVER (PARTITION BY status ORDER BY id DESC) as rn
+                            FROM content_runs
+                            WHERE status IN ('failed', 'rejected')
+                        ) ranked
+                        WHERE rn > :keep
+                    )
+                    RETURNING id"""),
+            {"keep": keep},
+        )
+        deleted_ids = [row[0] for row in result.fetchall()]
+        await session.commit()
+
+    return {"deleted_count": len(deleted_ids), "deleted_run_ids": deleted_ids}
+
+
 @router.get("/runs/{run_id}", response_model=RunDetail)
 async def get_run(run_id: int):
     """Get full detail for a single run."""
@@ -226,28 +251,3 @@ async def get_run_logs(run_id: int):
             "status": row[2],
             "logs": logs.split("\n") if logs and logs != "[]" else [],
         }
-
-
-@router.delete("/runs/cleanup")
-async def cleanup_old_runs(
-    keep: int = Query(5, ge=1, le=50, description="Number of recent runs per status to keep"),
-):
-    """Delete old failed/rejected runs, keeping only the most recent `keep` per status."""
-    async with async_session() as session:
-        result = await session.execute(
-            text("""DELETE FROM content_runs
-                    WHERE id IN (
-                        SELECT id FROM (
-                            SELECT id, ROW_NUMBER() OVER (PARTITION BY status ORDER BY id DESC) as rn
-                            FROM content_runs
-                            WHERE status IN ('failed', 'rejected')
-                        ) ranked
-                        WHERE rn > :keep
-                    )
-                    RETURNING id"""),
-            {"keep": keep},
-        )
-        deleted_ids = [row[0] for row in result.fetchall()]
-        await session.commit()
-
-    return {"deleted_count": len(deleted_ids), "deleted_run_ids": deleted_ids}

@@ -75,11 +75,13 @@ async def run_tasks(coroutines: list, parallel: bool = True, max_concurrent: int
 
 def load_audio_samples(path: str) -> np.ndarray:
     """Load any audio file as mono float32 numpy array at 44100Hz."""
+    path_hash = hash(path) & 0xFFFFFFFF
+    tmp_raw = f"/tmp/_tmp_pcm_{os.getpid()}_{path_hash}.raw"
     subprocess.run(
-        ["ffmpeg", "-y", "-i", path, "-ar", str(SR), "-ac", "1", "-f", "s16le", f"/tmp/_tmp_pcm_{os.getpid()}_{id(path)}.raw"],
+        ["ffmpeg", "-y", "-i", path, "-ar", str(SR), "-ac", "1", "-f", "s16le", tmp_raw],
         capture_output=True, timeout=30,
     )
-    with open(f"/tmp/_tmp_pcm_{os.getpid()}_{id(path)}.raw", "rb") as f:
+    with open(tmp_raw, "rb") as f:
         return np.frombuffer(f.read(), dtype=np.int16).astype(np.float32)
 
 
@@ -110,8 +112,17 @@ async def generate_narration_with_timestamps(
         with open(word_ts_path) as f:
             existing = json.load(f)
             if len(existing) > 0:
-                all_word_data = existing
-                has_valid_timestamps = True
+                # Validate that every expected mp3 file actually exists on disk.
+                # A partial-failure retry may have timestamps but missing audio.
+                all_mp3s_exist = all(
+                    os.path.exists(os.path.join(narr_dir, f"line_{i:02d}.mp3"))
+                    for i in range(len(narration_lines))
+                )
+                if all_mp3s_exist:
+                    all_word_data = existing
+                    has_valid_timestamps = True
+                else:
+                    logger.warning("timestamp cache exists but some mp3 files are missing — regenerating")
 
     if voice_settings is None:
         voice_settings = {"stability": 0.5, "similarity_boost": 0.8, "speed": 1.05}
@@ -267,486 +278,6 @@ Return ONLY a JSON array of {len(image_prompts)} strings.""",
         logger.warning("visual review returned no JSON, keeping originals")
 
     return image_prompts
-
-
-async def break_into_sub_actions(
-    narration_lines: list[str],
-    image_prompts: list[str],
-    _update_step,
-) -> tuple[list[str], list[str], list[int]]:
-    """Break narration lines with multiple actions into sub-actions.
-
-    Each sub-action gets its own image (starting point) and animation prompt (one action).
-    This ensures Grok only has to animate ONE simple thing per clip.
-
-    Returns:
-        (sub_image_prompts, sub_anim_prompts, line_mapping) where:
-        - sub_image_prompts: image prompt for each sub-action's starting point
-        - sub_anim_prompts: ONE simple animation per sub-action
-        - line_mapping: which original narration line each sub-action belongs to
-    """
-    await _update_step("breaking into sub-actions")
-    from packages.clients.claude import generate as claude_generate
-    import re
-
-    resp = claude_generate(
-        prompt=f"""Break each narration line into sub-actions for animation. Each sub-action must be ONE simple movement that a video AI can animate in 2-5 seconds.
-
-NARRATION + IMAGE PROMPTS:
-{chr(10).join(f'Line {i}: "{line}" | Image: "{prompt}"' for i, (line, prompt) in enumerate(zip(narration_lines, image_prompts)))}
-
-RULES:
-- If a narration line has ONE action, keep it as one sub-action
-- If a narration line has MULTIPLE actions (e.g. "He opens the door, walks in, comes back out"), break it into separate sub-actions
-- Each sub-action needs:
-  - "image": the STARTING POINT image prompt (what the frame looks like BEFORE the action)
-  - "animation": ONE simple action (e.g. "opens the door and walks through", "walks back out looking confused")
-  - "line": which original narration line this belongs to (0-indexed)
-  - "duration": how many seconds (2-5)
-- The image shows the BEFORE state, the animation creates the DURING state
-- Keep it simple — one verb per animation prompt
-
-Return ONLY a JSON array of objects: [{{"image": "...", "animation": "...", "line": 0, "duration": 3}}, ...]""",
-        max_tokens=4000,
-    )
-
-    match = re.search(r'\[.*\]', resp, re.DOTALL)
-    if match:
-        sub_actions = json.loads(match.group())
-        sub_image_prompts = [sa["image"] for sa in sub_actions]
-        sub_anim_prompts = [sa["animation"] for sa in sub_actions]
-        line_mapping = [sa["line"] for sa in sub_actions]
-        durations = [sa.get("duration", 4) for sa in sub_actions]
-        logger.info("sub-actions created", total=len(sub_actions), from_lines=len(narration_lines))
-        return sub_image_prompts, sub_anim_prompts, line_mapping, durations
-    else:
-        # Fallback: one sub-action per line
-        logger.warning("sub-action breakdown failed, using 1:1 mapping")
-        return (
-            image_prompts,
-            ["Subtle movement matching the scene." for _ in image_prompts],
-            list(range(len(image_prompts))),
-            [4 for _ in image_prompts],
-        )
-
-
-async def animate_sub_actions(
-    sub_image_prompts: list[str],
-    sub_anim_prompts: list[str],
-    line_mapping: list[int],
-    durations: list[int],
-    images_dir: str,
-    clips_dir: str,
-    style_ref_path: str | None,
-    gen_image_fn,
-    _update_step,
-) -> list[str]:
-    """Animate sub-actions with last-frame chaining for smooth transitions.
-
-    Sub-actions within the same narration line run SEQUENTIALLY — each one's
-    last frame becomes the next one's starting image. Different narration lines
-    run in parallel.
-
-    Args:
-        sub_image_prompts: starting point image prompt per sub-action
-        sub_anim_prompts: ONE animation action per sub-action
-        line_mapping: which narration line each sub-action belongs to
-        durations: seconds per sub-action clip
-        images_dir: where to save images
-        clips_dir: where to save clips
-        style_ref_path: path to style anchor image (scene 0) for consistent generation
-        gen_image_fn: async function(prompt, output_path) to generate an image
-        _update_step: status callback
-
-    Returns list of clip paths in order.
-    """
-    import subprocess
-    from packages.clients.grok import generate_video_async, extend_video_async
-
-    # Group sub-actions by narration line
-    line_groups: dict[int, list[int]] = {}
-    for sa_idx, line_idx in enumerate(line_mapping):
-        line_groups.setdefault(line_idx, []).append(sa_idx)
-
-    clip_paths = [None] * len(sub_image_prompts)
-    total = len(sub_image_prompts)
-
-    async def process_line_group(line_idx: int, sa_indices: list[int]):
-        """Process all sub-actions for one narration line SEQUENTIALLY.
-        First sub-action generates fresh clip; subsequent ones EXTEND it for seamless flow.
-        """
-        last_frame_path = None
-        prev_video_url = None  # URL of previous clip for extension
-
-        for pos, sa_idx in enumerate(sa_indices):
-            img_path = os.path.join(images_dir, f"sub_{sa_idx:03d}.png")
-            clip_path = os.path.join(clips_dir, f"sub_{sa_idx:03d}.mp4")
-            clip_paths[sa_idx] = clip_path
-            is_first = (pos == 0)
-
-            if os.path.exists(clip_path):
-                last_frame_path = os.path.join(images_dir, f"sub_{sa_idx:03d}_lastframe.png")
-                if not os.path.exists(last_frame_path):
-                    subprocess.run([
-                        "ffmpeg", "-y", "-sseof", "-0.1", "-i", clip_path,
-                        "-frames:v", "1", "-update", "1", last_frame_path,
-                    ], capture_output=True, timeout=10)
-                continue
-
-            if is_first or prev_video_url is None:
-                # First sub-action in line (or extend unavailable) — generate fresh clip
-                if not os.path.exists(img_path):
-                    await gen_image_fn(sub_image_prompts[sa_idx], img_path)
-                    logger.info("generated starting image", sub_action=sa_idx)
-
-                with open(img_path, "rb") as f:
-                    img_b64 = f"data:image/png;base64,{base64.b64encode(f.read()).decode()}"
-
-                result = await generate_video_async(
-                    prompt=sub_anim_prompts[sa_idx],
-                    output_path=clip_path,
-                    duration=durations[sa_idx],
-                    aspect_ratio="9:16",
-                    image_url=img_b64,
-                    timeout=600,
-                )
-                # Capture the video URL for extension
-                prev_video_url = result.get("video_url") if isinstance(result, dict) else None
-                logger.info("sub-action generated (first)", sub_action=sa_idx, line=line_idx)
-            else:
-                # Chained sub-action — EXTEND the previous clip for seamless motion
-                try:
-                    result = await extend_video_async(
-                        video_url=prev_video_url,
-                        prompt=sub_anim_prompts[sa_idx],
-                        output_path=clip_path,
-                        duration=durations[sa_idx],
-                        timeout=600,
-                    )
-                    prev_video_url = result.get("video_url") if isinstance(result, dict) else None
-                    logger.info("sub-action EXTENDED", sub_action=sa_idx, line=line_idx)
-                except Exception as ext_err:
-                    logger.warning("extend failed, falling back to last-frame chain", error=str(ext_err)[:100])
-                    # Fallback: use last frame as start image
-                    if last_frame_path and os.path.exists(last_frame_path):
-                        import shutil
-                        shutil.copy2(last_frame_path, img_path)
-                    elif not os.path.exists(img_path):
-                        await gen_image_fn(sub_image_prompts[sa_idx], img_path)
-
-                    with open(img_path, "rb") as f:
-                        img_b64 = f"data:image/png;base64,{base64.b64encode(f.read()).decode()}"
-
-                    result = await generate_video_async(
-                        prompt=sub_anim_prompts[sa_idx],
-                        output_path=clip_path,
-                        duration=durations[sa_idx],
-                        aspect_ratio="9:16",
-                        image_url=img_b64,
-                        timeout=600,
-                    )
-                    prev_video_url = result.get("video_url") if isinstance(result, dict) else None
-
-            # Extract last frame for potential chain fallback on next clip
-            last_frame_path = os.path.join(images_dir, f"sub_{sa_idx:03d}_lastframe.png")
-            subprocess.run([
-                "ffmpeg", "-y", "-sseof", "-0.1", "-i", clip_path,
-                "-frames:v", "1", "-update", "1", last_frame_path,
-            ], capture_output=True, timeout=10)
-
-    # Run line groups in parallel — sub-actions within each group run sequentially
-    await _update_step(f"animating {total} sub-actions")
-    line_tasks = []
-    for line_idx in sorted(line_groups.keys()):
-        line_tasks.append(process_line_group(line_idx, line_groups[line_idx]))
-    await asyncio.gather(*line_tasks)
-
-    return [p for p in clip_paths if p is not None]
-
-
-async def generate_character_references(
-    narration_lines: list[str],
-    output_dir: str,
-    art_style: str,
-    _update_step,
-) -> tuple[list[str], list[list[str]]]:
-    """Generate reference sheets for all characters and map them to scenes.
-
-    Args:
-        narration_lines: the narration script
-        output_dir: base output directory for the run
-        art_style: art style instruction for the reference sheets (e.g. "Simple crude cartoon...")
-        _update_step: status callback
-
-    Returns:
-        (char_ref_paths, scene_characters) where:
-        - char_ref_paths: list of file paths to character reference images
-        - scene_characters: list of lists mapping which characters appear in each scene
-    """
-    import re as _re
-    await _update_step("generating character references")
-    from packages.clients.claude import generate as claude_ref
-
-    # Extract ALL character names
-    chars_resp = claude_ref(
-        prompt=f"""List ALL named characters (anime, game, movie, mythology, etc.) mentioned in this narration. Return ONLY a JSON array of strings. Include the franchise name.
-
-NARRATION:
-{chr(10).join(narration_lines)}
-
-Example: ["Zoro from One Piece", "Pikachu from Pokemon", "Zeus from Greek Mythology"]""",
-        max_tokens=300,
-    )
-    chars_match = _re.search(r'\[.*\]', chars_resp, _re.DOTALL)
-    characters = json.loads(chars_match.group()) if chars_match else []
-    logger.info("characters identified", characters=characters)
-
-    if not characters:
-        return [], [[] for _ in narration_lines]
-
-    # Generate reference sheet for EACH character (up to 5)
-    char_refs_dir = os.path.join(output_dir, "character_refs")
-    os.makedirs(char_refs_dir, exist_ok=True)
-    char_ref_paths = []
-
-    from packages.clients.grok import generate_image_dalle_async
-
-    for char_name in characters[:5]:
-        safe_name = _re.sub(r'[^a-zA-Z0-9]', '_', char_name).lower()
-        ref_path = os.path.join(char_refs_dir, f"{safe_name}.png")
-        if not os.path.exists(ref_path):
-            await _update_step(f"generating reference: {char_name}")
-            await generate_image_dalle_async(
-                prompt=f"{art_style} Full body character reference sheet of {char_name}. Front-facing pose, standing straight, neutral expression. Clean white background. Show their full outfit, hair, weapons, and signature features clearly. This is a reference sheet for visual consistency. NO text anywhere.",
-                output_path=ref_path, size="1024x1536",
-            )
-            logger.info("character reference generated", character=char_name)
-        char_ref_paths.append(ref_path)
-
-    # Map which characters appear in each scene
-    scene_chars_resp = claude_ref(
-        prompt=f"""For each narration line, list which characters from {json.dumps(characters)} appear in that scene. Return a JSON array of arrays.
-
-NARRATION:
-{chr(10).join(f'{i}: "{line}"' for i, line in enumerate(narration_lines))}
-
-Return ONLY a JSON array like: [["Pikachu from Pokemon"], ["Pikachu from Pokemon", "Snorlax from Pokemon"], ...]""",
-        max_tokens=500,
-    )
-    scene_chars_match = _re.search(r'\[.*\]', scene_chars_resp, _re.DOTALL)
-    scene_characters = json.loads(scene_chars_match.group()) if scene_chars_match else [characters[:2] for _ in narration_lines]
-    while len(scene_characters) < len(narration_lines):
-        scene_characters.append(characters[:1])
-    logger.info("scene characters mapped", scenes=len(scene_characters))
-
-    return char_ref_paths, scene_characters
-
-
-async def generate_images_with_references(
-    narration_lines: list[str],
-    image_prompts: list[str],
-    images_dir: str,
-    char_ref_paths: list[str],
-    scene_characters: list[list[str]],
-    characters: list[str],
-    _update_step,
-):
-    """Generate scene images using character reference sheets via gpt-image-1.5 /images/edits.
-
-    Passes the relevant character references for each scene with input_fidelity="high".
-    """
-    import re as _re
-    await _update_step("generating images (parallel)")
-    from openai import AsyncOpenAI
-    client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"), timeout=120.0)
-
-    # Build a map of character name → reference path
-    char_ref_map = {}
-    for char_name, ref_path in zip(characters[:len(char_ref_paths)], char_ref_paths):
-        char_ref_map[char_name] = ref_path
-
-    async def gen_image(i, prompt):
-        img_path = os.path.join(images_dir, f"scene_{i:02d}.png")
-        if os.path.exists(img_path):
-            return
-
-        # Collect reference images for characters in THIS scene
-        scene_char_names = scene_characters[i] if i < len(scene_characters) else []
-        ref_files = []
-        for char_name in scene_char_names:
-            if char_name in char_ref_map and os.path.exists(char_ref_map[char_name]):
-                ref_files.append(char_ref_map[char_name])
-
-        if ref_files:
-            for attempt in range(4):
-                try:
-                    # Open files for the API call
-                    open_files = [open(p, "rb") for p in ref_files]
-                    resp = await client.images.edit(
-                        model="gpt-image-1.5",
-                        image=open_files if len(open_files) > 1 else open_files[0],
-                        prompt=f"Using these character references, create this scene. Characters must look EXACTLY like their references. {prompt}",
-                        size="1024x1536",
-                        quality="medium",
-                        input_fidelity="high",
-                    )
-                    for f in open_files:
-                        f.close()
-                    if resp.data and resp.data[0].b64_json:
-                        import base64 as b64
-                        img_data = b64.b64decode(resp.data[0].b64_json)
-                        with open(img_path, "wb") as f:
-                            f.write(img_data)
-                        break
-                except Exception as e:
-                    logger.warning("ref image gen failed", scene=i, attempt=attempt, error=str(e)[:80])
-                    for f in open_files:
-                        try: f.close()
-                        except: pass
-                    await asyncio.sleep(3)
-
-        if not os.path.exists(img_path):
-            raise RuntimeError(f"Failed to generate scene {i} after 4 attempts with character references")
-        logger.info("image generated", scene=i)
-
-    await run_tasks(
-        [lambda i=i, p=p: gen_image(i, p) for i, p in enumerate(image_prompts)],
-        parallel=True, max_concurrent=5,
-    )
-
-
-async def review_generated_images(
-    narration_lines: list[str],
-    image_prompts: list[str],
-    images_dir: str,
-    _update_step,
-    regenerate_fn,
-    art_style: str = "",
-    channel_rules: str = "",
-) -> list[int]:
-    """Review generated images against narration BEFORE spending on animation.
-
-    Sends each image + its narration line + its prompt to Claude for review.
-    If an image doesn't match, regenerates it with a corrected prompt.
-
-    Args:
-        narration_lines: the narration script
-        image_prompts: the prompts used to generate images
-        images_dir: directory containing scene_XX.png files
-        _update_step: status callback
-        regenerate_fn: async function(scene_index, new_prompt) to regenerate a single image
-        art_style: the channel's art style description (so review knows what's expected)
-        channel_rules: the channel's image rules (so review knows character descriptions)
-
-    Returns list of scene indices that were regenerated.
-    """
-    import base64
-    await _update_step("reviewing images")
-    from packages.clients.claude import generate as claude_generate
-
-    # Build review payload — send all images + narration at once
-    image_descriptions = []
-    for i, line in enumerate(narration_lines):
-        img_path = os.path.join(images_dir, f"scene_{i:02d}.png")
-        if not os.path.exists(img_path):
-            continue
-        with open(img_path, "rb") as f:
-            img_size = os.path.getsize(img_path)
-        image_descriptions.append(f"Scene {i}: narration=\"{line}\" prompt=\"{image_prompts[i]}\"")
-
-    # Review in batches by sending descriptions (can't send 10+ images to Claude efficiently)
-    # Instead, send 2-3 images at a time for detailed review
-    scenes_to_fix = []
-    batch_size = 3
-    for batch_start in range(0, len(narration_lines), batch_size):
-        batch_end = min(batch_start + batch_size, len(narration_lines))
-        batch_images = []
-        batch_info = []
-
-        for i in range(batch_start, batch_end):
-            img_path = os.path.join(images_dir, f"scene_{i:02d}.png")
-            if not os.path.exists(img_path):
-                continue
-            with open(img_path, "rb") as f:
-                img_b64 = base64.b64encode(f.read()).decode()
-            batch_images.append({"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": img_b64}})
-            batch_images.append({"type": "text", "text": f"Scene {i}: \"{narration_lines[i]}\""})
-            batch_info.append(i)
-
-        if not batch_images:
-            continue
-
-        try:
-            import anthropic
-            client = anthropic.Anthropic()
-            review = client.messages.create(
-                model="claude-sonnet-4-6",
-                max_tokens=500,
-                messages=[{
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": f"Review these generated images against their narration lines.\n\nART STYLE FOR THIS CHANNEL: {art_style}\n{('CHARACTER/SCENE RULES: ' + channel_rules[:500]) if channel_rules else ''}\n\nFor each scene check:\n1. Does the image show the SPECIFIC ACTION in the narration?\n2. Is it a single scene (not comic panels/manga layout)?\n3. Are the right characters doing the right thing?\n4. Does the art style match the channel's style described above?\nFAIL ONLY if the action is clearly wrong or it's a comic panel layout. Do NOT fail for minor stylistic differences."},
-                        *batch_images,
-                        {"type": "text", "text": "For each scene, respond with ONLY:\nScene X: PASS or FAIL — specific reason"},
-                    ],
-                }],
-            )
-            review_text = review.content[0].text
-            for i in batch_info:
-                if f"Scene {i}: FAIL" in review_text or f"Scene {i}:FAIL" in review_text:
-                    # Extract the reason
-                    for rline in review_text.split("\n"):
-                        if f"Scene {i}" in rline and "FAIL" in rline:
-                            reason = rline.split("FAIL")[-1].strip(" —:-")
-                            logger.warning("image review failed", scene=i, reason=reason[:100])
-                            scenes_to_fix.append((i, reason))
-                            break
-        except Exception as e:
-            logger.warning("image review batch failed, skipping", batch=f"{batch_start}-{batch_end}", error=str(e)[:100])
-
-    if not scenes_to_fix:
-        logger.info("image review passed — all scenes match narration")
-        return []
-
-    # Regenerate failed scenes with corrected prompts
-    await _update_step(f"fixing {len(scenes_to_fix)} scenes")
-    from packages.clients.claude import generate as claude_gen
-    regenerated = []
-
-    for scene_idx, reason in scenes_to_fix:
-        # Get a corrected prompt
-        fix_resp = claude_gen(
-            prompt=f"""An image was generated for this narration line but it doesn't match.
-
-ART STYLE (MUST KEEP): {art_style}
-{('CHARACTER RULES (MUST FOLLOW): ' + channel_rules[:500]) if channel_rules else ''}
-
-Narration: "{narration_lines[scene_idx]}"
-Original prompt: "{image_prompts[scene_idx]}"
-Problem: {reason}
-
-Write a CORRECTED image prompt that fixes this specific problem. You MUST keep the exact same art style and character description from above — only fix the content/action to match the narration.
-
-Return ONLY the corrected prompt as a single string, no quotes.""",
-            max_tokens=500,
-        )
-        new_prompt = fix_resp.strip().strip('"')
-
-        # Delete old image and regenerate
-        old_path = os.path.join(images_dir, f"scene_{scene_idx:02d}.png")
-        if os.path.exists(old_path):
-            os.remove(old_path)
-
-        try:
-            await regenerate_fn(scene_idx, new_prompt)
-            image_prompts[scene_idx] = new_prompt
-            regenerated.append(scene_idx)
-            logger.info("scene regenerated", scene=scene_idx)
-        except Exception as e:
-            logger.error("scene regeneration failed", scene=scene_idx, error=str(e)[:100])
-
-    logger.info("image review complete", fixed=len(regenerated), total=len(narration_lines))
-    return regenerated
 
 
 async def generate_and_animate_scenes(
@@ -926,6 +457,8 @@ Return ONLY a JSON array of objects.""",
 
     # ─── STEP 3a: Generate all NEW scene images first (reviewable) ───
     await _update_step("generating scene images")
+    import anthropic
+    review_client = anthropic.Anthropic()
     for sa_idx, sa in enumerate(sub_actions):
         if not sa.get("new_scene", True):
             continue  # chained clips get images later
@@ -993,8 +526,6 @@ Return ONLY a JSON array of objects.""",
 
         # Auto-review
         try:
-            import anthropic
-            review_client = anthropic.Anthropic()
             with open(img_path, "rb") as rf:
                 img_b64_review = base64.b64encode(rf.read()).decode()
             line_idx = sa.get("line", 0)
@@ -1055,10 +586,11 @@ Answer PASS or FAIL with specific reason."""},
                     except Exception:
                         try: style_ref2.close()
                         except: pass
-                    await _gen_image(
-                        prompt=f"{era_prefix}{art_style_prompt} {img_prompt} Make sure this EXACTLY matches: {narr_text}. NO text anywhere.",
-                        output_path=img_path, size="1024x1536",
-                    )
+                    if not os.path.exists(img_path):
+                        await _gen_image(
+                            prompt=f"{era_prefix}{art_style_prompt} {img_prompt} Make sure this EXACTLY matches: {narr_text}. NO text anywhere.",
+                            output_path=img_path, size="1024x1536",
+                        )
         except Exception as e:
             logger.error("image review ERROR", error=str(e)[:200], sub_action=sa_idx)
 

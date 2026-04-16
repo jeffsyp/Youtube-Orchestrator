@@ -372,7 +372,8 @@ function formatElapsed(seconds: number): string {
   return `${m}m ${s}s`;
 }
 
-function formatDate(iso: string): string {
+function formatDate(iso: string | null | undefined): string {
+  if (!iso) return '\u2014';
   return new Date(iso).toLocaleString('en-US', {
     month: 'short',
     day: 'numeric',
@@ -431,27 +432,39 @@ function ImageReview({ runId, currentStep }: { runId: number; currentStep: strin
 
   const approveAll = async () => {
     setApproving(true);
-    await fetch(`/api/runs/${runId}/images/approve-all`, { method: 'POST' });
-    setApproving(false);
-    refetch();
+    try {
+      const res = await fetch(`/api/runs/${runId}/images/approve-all`, { method: 'POST' });
+      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+      refetch();
+    } catch (err) {
+      alert(`Failed to approve images: ${err instanceof Error ? err.message : err}`);
+    } finally {
+      setApproving(false);
+    }
   };
 
   const submitReview = async () => {
     setApproving(true);
-    const deniedList = Array.from(denied).map(name => ({
-      name,
-      feedback: feedback[name] || 'Regenerate this image',
-    }));
-    const approvedList = images.filter(img => !denied.has(img.name)).map(img => img.name);
-    await fetch(`/api/runs/${runId}/images/approve`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ approved: approvedList, denied: deniedList }),
-    });
-    setApproving(false);
-    setDenied(new Set());
-    setFeedback({});
-    refetch();
+    try {
+      const deniedList = Array.from(denied).map(name => ({
+        name,
+        feedback: feedback[name] || 'Regenerate this image',
+      }));
+      const approvedList = images.filter(img => !denied.has(img.name)).map(img => img.name);
+      const res = await fetch(`/api/runs/${runId}/images/approve`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ approved: approvedList, denied: deniedList }),
+      });
+      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+      setDenied(new Set());
+      setFeedback({});
+      refetch();
+    } catch (err) {
+      alert(`Failed to submit review: ${err instanceof Error ? err.message : err}`);
+    } finally {
+      setApproving(false);
+    }
   };
 
   return (

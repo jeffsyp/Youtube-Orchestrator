@@ -4,6 +4,7 @@ import json
 import os
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException
+from pydantic import BaseModel
 from sqlalchemy import text
 
 from packages.clients.db import async_session
@@ -11,6 +12,11 @@ from apps.api.schemas import (
     ExecuteConceptRequest,
     ExecuteConceptResponse,
 )
+
+
+class ImageApprovalRequest(BaseModel):
+    approved: list[str] | None = None
+    denied: list[dict] | None = None
 
 router = APIRouter(prefix="/api", tags=["actions"])
 
@@ -94,41 +100,6 @@ def _run_pipeline_bg(run_id: int, concept: dict):
     import asyncio
     from apps.orchestrator.direct_pipeline import run_pipeline
     asyncio.run(run_pipeline(run_id, concept))
-
-
-@router.post("/runs/generate")
-async def execute_deity(concept: dict):
-    """Execute a narrated video short."""
-    from apps.orchestrator.pipeline import run_pipeline
-
-    channel_id = concept.get("channel_id", 14)
-    row = await _get_channel(channel_id)
-
-    title = concept.get("title", "Untitled")
-
-    async with async_session() as session:
-        result = await session.execute(
-            text("INSERT INTO content_runs (channel_id, status, content_type) VALUES (:cid, 'running', 'deity') RETURNING id"),
-            {"cid": channel_id},
-        )
-        run_id = result.scalar_one()
-
-        # Always create content_bank entry so it shows in Activity
-        await session.execute(
-            text("INSERT INTO content_bank (channel_id, title, status, run_id, concept_json) VALUES (:cid, :title, 'generating', :rid, :cj)"),
-            {"cid": channel_id, "title": title, "rid": run_id, "cj": json.dumps(concept)},
-        )
-        await session.commit()
-
-    import asyncio
-    import threading
-
-    def _run_bg():
-        asyncio.run(run_pipeline(run_id, concept))
-
-    threading.Thread(target=_run_bg, daemon=True).start()
-
-    return {"run_id": run_id, "channel_name": row[1], "title": title}
 
 
 @router.post("/runs/{run_id}/publish")
@@ -571,21 +542,23 @@ async def get_run_images(run_id: int):
 
 
 @router.post("/runs/{run_id}/images/approve")
-async def approve_run_images(run_id: int, approved: list[str] = None, denied: list[dict] = None):
-    """Approve or deny specific images. 
-    
+async def approve_run_images(run_id: int, body: ImageApprovalRequest):
+    """Approve or deny specific images.
+
     approved: list of image filenames to approve
     denied: list of {"name": "filename", "feedback": "what to fix"} objects
-    
+
     If all images are approved (none denied), sets run status to continue.
     If any denied, regenerates them with feedback and returns for re-review.
     """
     import os
     from sqlalchemy import text
     from packages.clients.db import async_session
-    
+
+    approved = body.approved
+    denied = body.denied
     images_dir = f"output/run_{run_id}/images"
-    
+
     # Handle denials — regenerate with feedback
     regenerated = []
     if denied:

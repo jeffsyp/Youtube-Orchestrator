@@ -30,35 +30,35 @@ VOICE_ID = "tHX3st5GOLcIi8WJRtqa"  # Deity Drama voice
 MUSIC_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "..", "assets", "music", "epic", "heroic_age.mp3")
 TAGS = ["deity drama", "mythology", "gods", "what if", "comedy", "shorts", "viral"]
 
-ART_STYLE = "Simple crude cartoon — thick wobbly BLACK outlines, flat solid colors, exaggerated round heads, stubby proportions, huge expressive eyes. Like a funny webcomic doodle. NO gradients, NO shading, NO glow effects. Flat color fills only."
+ART_STYLE = "Photorealistic with dramatic cinematic lighting. Gods look like real people in ancient clothing — muscular, divine, imposing — placed into real modern environments. The contrast between ancient divine beings and modern mundane settings IS the visual comedy. Golden hour or dramatic side-lighting."
 
 IMAGE_RULES = """ART STYLE:
-- Simple crude cartoon with thick wobbly BLACK outlines and flat solid colors
-- Like a funny webcomic — NO gradients, NO shading, NO glow effects
-- Flat color fills only. Stubby proportions. Exaggerated expressions.
-- NOT photorealistic, NOT detailed — crude and fun
+- PHOTOREALISTIC — gods and environments must look like real photographs
+- Dramatic cinematic lighting — golden hour, rim lighting, volumetric light, lens flare from divine powers
+- Gods look like REAL PEOPLE in ancient clothing — muscular, tall, imposing, divine aura
+- Modern environments are completely normal and photorealistic (office, Walmart, traffic jam, DMV, kitchen)
+- The ONLY mythological elements are the gods themselves and their power effects
+- Divine power effects (lightning, water geysers, fire, glowing auras) must be DRAMATIC and VISIBLE
 
 MYTHOLOGY CHARACTERS — MUST BE INSTANTLY RECOGNIZABLE:
-- Zeus: white beard, lightning bolt, toga, muscular
-- Poseidon: trident, blue/green robes, seaweed
-- Hades: dark robes, pale skin, underworld flames
-- Apollo: golden/sun imagery, lyre or bow
-- Dionysus: grape vine crown, goblet, purple
-- Ares: red armor, weapons, aggressive
-- Athena: owl, shield, helmet
-- Hermes: winged sandals, caduceus
-- Aphrodite: pink/beauty imagery
-- Demeter: wheat, harvest imagery
-- Thor: Mjolnir, red cape, Viking armor
-- Loki: green/gold, horned helmet, mischievous
-- Gods keep their SIGNATURE WEAPON/ITEM even in modern settings
+- Zeus: white beard, muscular, white/gold toga, lightning bolt crackling in hand, laurel crown
+- Poseidon: trident, flowing sea-blue/green robes, wet hair, seaweed, water swirling around him
+- Hades: dark robes, pale skin, underworld flames flickering, skull motifs, Cerberus nearby
+- Apollo: golden radiance, sun imagery, lyre or golden bow, blonde, glowing skin
+- Dionysus: grape vine crown, ornate golden goblet, purple robes, flushed cheeks, wild hair
+- Ares: blood-red armor, massive weapons, battle scars, aggressive stance, war paint
+- Athena: silver owl on shoulder, aegis shield, plumed helmet, wise grey eyes
+- Hermes: winged sandals glowing, caduceus staff, traveler's cloak, mischievous speed blur
+- Aphrodite: ethereal beauty, pink/rose gold, doves, flowers blooming around her
+- Thor: Mjolnir crackling with lightning, red cape, Viking armor, blonde braids
+- Loki: green/gold armor, horned helmet, shape-shifting visual distortion, sly grin
+- Gods keep their SIGNATURE WEAPON/ITEM even in modern settings — Zeus has his bolt at Walmart
 
 THE COMEDY IS IN THE CONTRAST:
-- Divine god drawn in crude cartoon style doing mundane modern things
-- Modern objects (phones, cars, microwaves) drawn in the SAME crude style
-- Background humans react with HUGE exaggerated expressions
-- Divine power effects (lightning, water, fire) must be VISIBLE and OVER THE TOP
-- Every prompt must end with "NO text anywhere."
+- A literal GOD — photorealistic, divine, glowing — standing in a completely mundane modern place
+- Modern humans around them react realistically — terrified, filming on phones, running, frozen in shock
+- Divine power effects collide with modern objects — lightning hitting a microwave, trident flooding a bathroom, fire melting a self-checkout
+- Every prompt must end with "Photorealistic. NO text anywhere."
 """
 
 SCRIPT_PROMPT = """Write a narration script for a Deity Drama YouTube video.

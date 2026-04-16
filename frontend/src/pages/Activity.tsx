@@ -28,8 +28,13 @@ export default function Activity() {
 
   const clearAll = async () => {
     if (!confirm('Clear all activity? This removes all completed, failed, and rejected items. In-progress items will keep running.')) return;
-    await fetch('/api/content-bank/clear-all', { method: 'POST' });
-    queryClient.invalidateQueries({ queryKey: ['activity'] });
+    try {
+      const res = await fetch('/api/content-bank/clear-all', { method: 'POST' });
+      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+      queryClient.invalidateQueries({ queryKey: ['activity'] });
+    } catch (err) {
+      alert(`Failed to clear activity: ${err instanceof Error ? err.message : err}`);
+    }
   };
 
   if (isLoading) return <div className="animate-pulse h-64 bg-[#1a1a1a] rounded-lg" />;
@@ -114,20 +119,35 @@ function ActivityRow({ item }: { item: ActivityItem }) {
   const handleCancel = async (e: React.MouseEvent) => {
     e.stopPropagation();
     if (!confirm(`Cancel "${item.title}"?`)) return;
-    await fetch(`/api/content-bank/${item.id}/cancel`, { method: 'POST' });
-    queryClient.invalidateQueries({ queryKey: ['activity'] });
+    try {
+      const res = await fetch(`/api/content-bank/${item.id}/cancel`, { method: 'POST' });
+      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+      queryClient.invalidateQueries({ queryKey: ['activity'] });
+    } catch (err) {
+      alert(`Failed to cancel: ${err instanceof Error ? err.message : err}`);
+    }
   };
 
   const handleClear = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    await fetch(`/api/content-bank/${item.id}/clear`, { method: 'POST' });
-    queryClient.invalidateQueries({ queryKey: ['activity'] });
+    try {
+      const res = await fetch(`/api/content-bank/${item.id}/clear`, { method: 'POST' });
+      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+      queryClient.invalidateQueries({ queryKey: ['activity'] });
+    } catch (err) {
+      alert(`Failed to clear item: ${err instanceof Error ? err.message : err}`);
+    }
   };
 
   const handleRetry = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    await fetch(`/api/content-bank/${item.id}/retry`, { method: 'POST' });
-    queryClient.invalidateQueries({ queryKey: ['activity'] });
+    try {
+      const res = await fetch(`/api/content-bank/${item.id}/retry`, { method: 'POST' });
+      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+      queryClient.invalidateQueries({ queryKey: ['activity'] });
+    } catch (err) {
+      alert(`Failed to retry: ${err instanceof Error ? err.message : err}`);
+    }
   };
   const statusColors: Record<string, string> = {
     uploaded: 'bg-purple-500/15 text-purple-400',

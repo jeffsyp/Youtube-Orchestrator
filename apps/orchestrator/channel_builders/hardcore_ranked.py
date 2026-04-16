@@ -25,7 +25,6 @@ from apps.orchestrator.channel_builders.shared import (
     update_database,
     get_duration,
     get_clip_duration,
-    review_generated_images,
     run_tasks,
 )
 

@@ -1,13 +1,35 @@
 import { Link, NavLink, Outlet } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
+
+interface RunSummary {
+  id: number;
+  status: string;
+  current_step: string | null;
+}
 
 const navItems = [
-  { to: '/', label: 'Dashboard', icon: DashboardIcon },
-  { to: '/activity', label: 'Activity', icon: ActivityIcon },
-  { to: '/review', label: 'Image Review', icon: ReviewIcon },
-  { to: '/concepts', label: 'Concepts', icon: ConceptsIcon },
+  { to: '/', label: 'Dashboard', icon: DashboardIcon, badgeKey: null },
+  { to: '/activity', label: 'Activity', icon: ActivityIcon, badgeKey: 'pending_review' as const },
+  { to: '/review', label: 'Image Review', icon: ReviewIcon, badgeKey: 'image_review' as const },
+  { to: '/concepts', label: 'Concepts', icon: ConceptsIcon, badgeKey: null },
 ];
 
+function useSidebarBadges() {
+  const { data } = useQuery<RunSummary[]>({
+    queryKey: ['sidebar-badges'],
+    queryFn: () => fetch('/api/runs?limit=50').then(r => r.ok ? r.json() : []),
+    refetchInterval: 15000,
+  });
+  const runs = data || [];
+  return {
+    pending_review: runs.filter(r => r.status === 'pending_review').length,
+    image_review: runs.filter(r => r.status === 'running' && r.current_step === 'images ready for review').length,
+  };
+}
+
 export default function Layout() {
+  const badges = useSidebarBadges();
+
   return (
     <div className="flex min-h-screen bg-[#0f0f0f]">
       {/* Sidebar */}
@@ -19,7 +41,9 @@ export default function Layout() {
           <p className="text-xs text-gray-500 mt-0.5">Multi-Channel Automation</p>
         </Link>
         <nav className="flex-1 p-3 space-y-1">
-          {navItems.map((item) => (
+          {navItems.map((item) => {
+            const count = item.badgeKey ? badges[item.badgeKey] : 0;
+            return (
             <NavLink
               key={item.to}
               to={item.to}
@@ -34,8 +58,14 @@ export default function Layout() {
             >
               <item.icon />
               <span className="flex-1">{item.label}</span>
+              {count > 0 && (
+                <span className="ml-auto inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-purple-600 text-white text-[10px] font-bold">
+                  {count}
+                </span>
+              )}
             </NavLink>
-          ))}
+            );
+          })}
         </nav>
         <div className="p-4 border-t border-[#2a2a2a]">
           <p className="text-xs text-gray-600">v2.0.0</p>

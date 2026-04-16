@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useConceptDrafts, useApproveConceptDraft, useRejectConceptDraft } from '../hooks/useApi';
+import { api } from '../api/client';
 import type { ConceptDraft } from '../api/types';
 
 interface ChannelSummary {
@@ -15,6 +16,7 @@ interface ChannelSummary {
 
 export default function Concepts() {
   const [formType, setFormType] = useState<'short' | 'long'>('short');
+  const queryClient = useQueryClient();
   const { data: drafts, isLoading } = useConceptDrafts({ status: 'pending', form_type: formType });
   const { data: summaryData } = useQuery<ChannelSummary[]>({
     queryKey: ['concept-summary'],
@@ -26,6 +28,23 @@ export default function Concepts() {
   const rejectMutation = useRejectConceptDraft();
   const [expanded, setExpanded] = useState<number | null>(null);
   const [dismissed, setDismissed] = useState<Set<number>>(new Set());
+
+  // Generate concepts
+  const { data: allChannels } = useQuery({
+    queryKey: ['channels'],
+    queryFn: () => api.getChannels(),
+  });
+  const [genChannelId, setGenChannelId] = useState<number | ''>('');
+  const generateMutation = useMutation({
+    mutationFn: (channelId: number) => api.generateConceptDrafts(channelId, 5),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['concept-drafts'] });
+      queryClient.invalidateQueries({ queryKey: ['concept-summary'] });
+    },
+    onError: (err) => {
+      alert(`Failed to generate concepts: ${err instanceof Error ? err.message : err}`);
+    },
+  });
 
   if (isLoading) {
     return (
@@ -50,20 +69,41 @@ export default function Concepts() {
   return (
     <div className="space-y-8">
       <div>
-        <div className="flex items-center gap-4">
-          <h1 className="text-2xl font-semibold text-white">Concepts</h1>
-          <div className="flex rounded-lg bg-[#1a1a1a] border border-[#2a2a2a] overflow-hidden">
-            <button
-              onClick={() => { setFormType('short'); setDismissed(new Set()); }}
-              className={`px-4 py-1.5 text-sm font-medium transition-colors ${formType === 'short' ? 'bg-green-600 text-white' : 'text-gray-400 hover:text-white'}`}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <h1 className="text-2xl font-semibold text-white">Concepts</h1>
+            <div className="flex rounded-lg bg-[#1a1a1a] border border-[#2a2a2a] overflow-hidden">
+              <button
+                onClick={() => { setFormType('short'); setDismissed(new Set()); }}
+                className={`px-4 py-1.5 text-sm font-medium transition-colors ${formType === 'short' ? 'bg-green-600 text-white' : 'text-gray-400 hover:text-white'}`}
+              >
+                Shorts
+              </button>
+              <button
+                onClick={() => { setFormType('long'); setDismissed(new Set()); }}
+                className={`px-4 py-1.5 text-sm font-medium transition-colors ${formType === 'long' ? 'bg-purple-600 text-white' : 'text-gray-400 hover:text-white'}`}
+              >
+                Long Form
+              </button>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <select
+              value={genChannelId}
+              onChange={(e) => setGenChannelId(e.target.value ? Number(e.target.value) : '')}
+              className="px-3 py-1.5 rounded-lg bg-[#1a1a1a] border border-[#2a2a2a] text-gray-200 text-sm"
             >
-              Shorts
-            </button>
+              <option value="">Select channel...</option>
+              {(allChannels || []).map((ch) => (
+                <option key={ch.id} value={ch.id}>{ch.name}</option>
+              ))}
+            </select>
             <button
-              onClick={() => { setFormType('long'); setDismissed(new Set()); }}
-              className={`px-4 py-1.5 text-sm font-medium transition-colors ${formType === 'long' ? 'bg-purple-600 text-white' : 'text-gray-400 hover:text-white'}`}
+              onClick={() => { if (genChannelId) generateMutation.mutate(genChannelId as number); }}
+              disabled={!genChannelId || generateMutation.isPending}
+              className="px-4 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-500 disabled:bg-purple-800 disabled:cursor-not-allowed text-white text-sm font-medium transition-colors"
             >
-              Long Form
+              {generateMutation.isPending ? 'Generating...' : 'Generate'}
             </button>
           </div>
         </div>

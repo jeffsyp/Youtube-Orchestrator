@@ -63,7 +63,7 @@ class _RateLimiter:
 
     async def wait_if_needed_async(self):
         """Async version — releases the event loop during sleep."""
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         await loop.run_in_executor(None, self.wait_if_needed)
 
     @property
@@ -159,31 +159,12 @@ async def generate_image_grok_async(
     Use for channels with IP/licensed characters that gpt-image always refuses."""
     log = logger.bind(prompt=prompt[:80], size=size)
     log.info("generating image via Grok (direct)")
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     await loop.run_in_executor(
         None,
         lambda: generate_image(prompt, output_path, resolution="2k"),
     )
-    # Crop to portrait if needed
-    try:
-        from PIL import Image as _PILImage
-        _w, _h = [int(x) for x in size.split("x")]
-        with _PILImage.open(output_path) as _img:
-            if (_w < _h) != (_img.width < _img.height):
-                target_ratio = _w / _h
-                src_ratio = _img.width / _img.height
-                if src_ratio > target_ratio:
-                    new_w = int(_img.height * target_ratio)
-                    left = (_img.width - new_w) // 2
-                    _img = _img.crop((left, 0, left + new_w, _img.height))
-                else:
-                    new_h = int(_img.width / target_ratio)
-                    top = (_img.height - new_h) // 2
-                    _img = _img.crop((0, top, _img.width, top + new_h))
-                _img = _img.resize((_w, _h), _PILImage.LANCZOS)
-                _img.save(output_path)
-    except Exception:
-        pass
+    _crop_to_size(output_path, size)
     log.info("grok image saved", path=output_path)
     return output_path
 
@@ -268,33 +249,13 @@ async def generate_image_dalle_async(
         # gpt-image exhausted — fall back to Grok Imagine (more permissive with IP names)
         log.warning("gpt-image exhausted, falling back to Grok Imagine", prompt=original_prompt[:80])
         try:
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             await loop.run_in_executor(
                 None,
                 lambda: generate_image(original_prompt, output_path, resolution="2k"),
             )
             # Grok only outputs landscape — resize to match the requested size (usually portrait for shorts)
-            try:
-                from PIL import Image as _PILImage
-                _w, _h = [int(x) for x in size.split("x")]
-                with _PILImage.open(output_path) as _img:
-                    if (_w < _h) != (_img.width < _img.height):
-                        # Need portrait but got landscape (or vice versa) — center-crop to target aspect
-                        target_ratio = _w / _h
-                        src_ratio = _img.width / _img.height
-                        if src_ratio > target_ratio:
-                            new_w = int(_img.height * target_ratio)
-                            left = (_img.width - new_w) // 2
-                            _img = _img.crop((left, 0, left + new_w, _img.height))
-                        else:
-                            new_h = int(_img.width / target_ratio)
-                            top = (_img.height - new_h) // 2
-                            _img = _img.crop((0, top, _img.width, top + new_h))
-                        _img = _img.resize((_w, _h), _PILImage.LANCZOS)
-                        _img.save(output_path)
-                        log.info("grok fallback resized to portrait", size=f"{_w}x{_h}")
-            except Exception as resize_err:
-                log.warning("grok fallback resize failed, keeping original", error=str(resize_err)[:80])
+            _crop_to_size(output_path, size)
             log.info("grok fallback succeeded", path=output_path)
             return output_path
         except Exception as grok_err:
@@ -450,35 +411,33 @@ Return ONLY the rephrased prompt, nothing else.""",
         return cleaned.strip()
 
 
-def _remove_ip_names(prompt: str) -> str:
-    """Replace copyrighted character names with visual descriptions to bypass safety filters."""
+def _crop_to_size(output_path: str, size: str):
+    """Crop and resize an image to match the requested size (e.g. portrait for shorts).
+
+    Center-crops to the target aspect ratio, then resizes to exact dimensions.
+    No-op if the image already matches the requested orientation.
+    """
     try:
-        from packages.clients.claude import generate
-        resp = generate(
-            prompt=f"This image prompt was blocked because it contains copyrighted character names. Replace ALL character names (Pokemon, League of Legends, anime, etc.) with detailed visual descriptions of what they look like. Do NOT use any character names, franchise names, or game names.\n\nBlocked prompt: {prompt}\n\nReturn ONLY the rewritten prompt.",
-            system="Replace character names with visual descriptions. 'Charizard' becomes 'a large orange dragon with flame on its tail and wings'. 'Magikarp' becomes 'a small orange fish with big eyes and whiskers'. Never use the original names.",
-            model="claude-haiku-4-5-20251001",
-            max_tokens=300,
-        )
-        return resp.strip()
+        from PIL import Image as _PILImage
+        _w, _h = [int(x) for x in size.split("x")]
+        with _PILImage.open(output_path) as _img:
+            if (_w < _h) != (_img.width < _img.height):
+                target_ratio = _w / _h
+                src_ratio = _img.width / _img.height
+                if src_ratio > target_ratio:
+                    new_w = int(_img.height * target_ratio)
+                    left = (_img.width - new_w) // 2
+                    _img = _img.crop((left, 0, left + new_w, _img.height))
+                else:
+                    new_h = int(_img.width / target_ratio)
+                    top = (_img.height - new_h) // 2
+                    _img = _img.crop((0, top, _img.width, top + new_h))
+                _img = _img.resize((_w, _h), _PILImage.LANCZOS)
+                _img.save(output_path)
     except Exception:
-        return prompt
+        pass
 
 
-def _soften_dalle_prompt(prompt: str) -> str:
-    """Rewrite a prompt that was blocked by OpenAI's safety filter."""
-    try:
-        from packages.clients.claude import generate
-        resp = generate(
-            prompt=f"This image prompt was blocked by a safety filter. Rewrite it to be family-friendly while keeping the same visual concept. Remove anything violent, dark, scary, or potentially offensive. Keep the cartoon style and composition.\n\nBlocked prompt: {prompt}\n\nReturn ONLY the rewritten prompt.",
-            system="Rewrite image prompts to pass content safety filters. Keep them fun and cartoon-style.",
-            model="claude-haiku-4-5-20251001",
-            max_tokens=300,
-        )
-        return resp.strip()
-    except Exception:
-        # If softening fails, just add family-friendly prefix
-        return f"Family-friendly cartoon illustration. {prompt}"
 XAI_BASE_URL = "https://api.x.ai/v1"
 
 

@@ -251,8 +251,13 @@ function WorkerStatus() {
 
   const handleToggle = async () => {
     const endpoint = data?.status === 'running' ? '/api/worker/stop' : '/api/worker/start';
-    await fetch(endpoint, { method: 'POST' });
-    setTimeout(() => queryClient.invalidateQueries({ queryKey: ['worker-status'] }), 2000);
+    try {
+      const res = await fetch(endpoint, { method: 'POST' });
+      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+      setTimeout(() => queryClient.invalidateQueries({ queryKey: ['worker-status'] }), 2000);
+    } catch (err) {
+      alert(`Failed to toggle worker: ${err instanceof Error ? err.message : err}`);
+    }
   };
 
   if (isLoading) return null;
