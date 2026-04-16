@@ -71,11 +71,14 @@ THE COMEDY:
 - Include at least one moment where the character fails hilariously before succeeding
 - Background characters should react — the world notices this doesn't belong
 - Physical comedy: someone gets sent through a wall, an attack is comically overpowered, someone uses the wrong move
-- The punchline should be something ABSURD — banned from the anime, breaks the universe, the show gets cancelled
 - Think of it like: what would ACTUALLY happen if this character showed up? The chaos, the confusion, the collateral damage
 
-- The ending must GO COMPLETELY INSANE
-- Reference specific attacks, abilities, and locations by name
+THE ENDING — ANTICLIMAX BEATS ANNIHILATION:
+- End on an ANTICLIMACTIC punchline — the smallest, most bureaucratic resolution to this chaos
+- GOOD endings: "He gets his Hunter License just to make him stop." / "They just hand him the trophy and ask him to leave." / "The kingdom gives him a small allowance and lets him live there."
+- BAD endings: "The show gets cancelled." / "The anime ends." / "The association disbands and everyone retires." / "The universe collapses." — these FEEL like franchise-death and deflate the humor. Viewers love the show and don't want to see it end.
+- The humor comes from the MISMATCH between the cosmic chaos and the tiny resolution — not from destroying the universe
+- Reference specific attacks, abilities, and locations by name throughout
 
 Return ONLY a JSON object:
 {{"narration": ["line 1", "line 2", ...], "title": "SHORT TITLE"}}"""
