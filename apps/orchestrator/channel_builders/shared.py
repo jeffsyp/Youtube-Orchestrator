@@ -738,6 +738,10 @@ def build_segments_from_clip_map(
             narr_dur = get_duration(os.path.join(narr_dir, f"line_{i:02d}.mp3")) + 0.05
         except Exception:
             narr_dur = 3.0  # fallback
+        # Pad the LAST segment by 0.6s so the final narration has room to play out
+        # before the video ends — prevents the cutoff-at-end issue.
+        if i == n_lines - 1:
+            narr_dur += 0.6
         clips = line_clip_map.get(i, [])
 
         if not clips:
@@ -1122,8 +1126,9 @@ def build_numpy_audio(
     output[:narr_len] += title_narr[:narr_len] * 1.0
 
     # Narration lines placed at segment positions
-    # Xfade between segments dips 0.3s into real content — shrinks timeline by 0.3s per transition
-    XFADE_INTO_CONTENT = 0.3
+    # Xfade between segments is 0.4s (matches concat_silent_video's XFADE_DUR) —
+    # each transition shrinks timeline by 0.4s so we subtract that from cumulative position
+    XFADE_INTO_CONTENT = 0.4
     intro_end = int(actual_teaser_dur * SR)
     current_pos = intro_end
     seg_starts = [0.0]  # line 0 at position 0 (in intro)
