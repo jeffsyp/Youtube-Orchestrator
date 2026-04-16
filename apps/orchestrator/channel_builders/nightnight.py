@@ -73,6 +73,16 @@ THE COMEDY:
 - Physical comedy: someone gets sent through a wall, an attack is comically overpowered, someone uses the wrong move
 - Think of it like: what would ACTUALLY happen if this character showed up? The chaos, the confusion, the collateral damage
 
+AVOID THE LAZY "BLOWS UP THE BUILDING" BEAT:
+- "One [signature move] later, [location] is a crater" is the most generic overpowered-character joke possible. It's been done in every crossover meme.
+- Instead, use CHARACTER-SPECIFIC absurdity:
+  - Goku: scouters break reading his power level / he can't sense anyone because their ki is too weak / he's holding back and still sneezes through a wall / he Instant Transmissions to another planet looking for the bathroom
+  - Saitama: people faint from the breeze when he scratches his head / he one-punches air and the air punches them back / the examiner goes flying from him just nodding
+  - Luffy: he thinks everyone is made of rubber and keeps punching / he eats the test materials / his arm stretches across the exam and hits everyone at once
+  - Each character has signature quirks beyond raw destruction — use THOSE
+- The WORLD'S REACTION (confusion, fear, disbelief, scrambling bureaucracy) is funnier than the destruction itself
+- Reference specific attacks/abilities used in unexpected/wrong ways, not just their "finisher move"
+
 THE ENDING — ANTICLIMAX BEATS ANNIHILATION:
 - End on an ANTICLIMACTIC punchline — the smallest, most bureaucratic resolution to this chaos
 - GOOD endings: "He gets his Hunter License just to make him stop." / "They just hand him the trophy and ask him to leave." / "The kingdom gives him a small allowance and lets him live there."
