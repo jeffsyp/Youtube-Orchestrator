@@ -150,6 +150,44 @@ def _generate_image_dalle_sync(prompt, output_path, size="1024x1536", quality="m
     raise RuntimeError(f"gpt-image-1.5 failed after 6 attempts for: {original_prompt[:100]}")
 
 
+async def generate_image_grok_async(
+    prompt: str,
+    output_path: str,
+    size: str = "1024x1536",
+) -> str:
+    """Generate an image directly with Grok Imagine, skipping gpt-image entirely.
+    Use for channels with IP/licensed characters that gpt-image always refuses."""
+    log = logger.bind(prompt=prompt[:80], size=size)
+    log.info("generating image via Grok (direct)")
+    loop = asyncio.get_event_loop()
+    await loop.run_in_executor(
+        None,
+        lambda: generate_image(prompt, output_path, resolution="2k"),
+    )
+    # Crop to portrait if needed
+    try:
+        from PIL import Image as _PILImage
+        _w, _h = [int(x) for x in size.split("x")]
+        with _PILImage.open(output_path) as _img:
+            if (_w < _h) != (_img.width < _img.height):
+                target_ratio = _w / _h
+                src_ratio = _img.width / _img.height
+                if src_ratio > target_ratio:
+                    new_w = int(_img.height * target_ratio)
+                    left = (_img.width - new_w) // 2
+                    _img = _img.crop((left, 0, left + new_w, _img.height))
+                else:
+                    new_h = int(_img.width / target_ratio)
+                    top = (_img.height - new_h) // 2
+                    _img = _img.crop((0, top, _img.width, top + new_h))
+                _img = _img.resize((_w, _h), _PILImage.LANCZOS)
+                _img.save(output_path)
+    except Exception:
+        pass
+    log.info("grok image saved", path=output_path)
+    return output_path
+
+
 async def generate_image_dalle_async(
     prompt: str,
     output_path: str,
@@ -227,7 +265,41 @@ async def generate_image_dalle_async(
                     continue
                 raise
 
-        raise RuntimeError(f"gpt-image-1.5 failed after 6 attempts for: {original_prompt[:100]}")
+        # gpt-image exhausted — fall back to Grok Imagine (more permissive with IP names)
+        log.warning("gpt-image exhausted, falling back to Grok Imagine", prompt=original_prompt[:80])
+        try:
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(
+                None,
+                lambda: generate_image(original_prompt, output_path, resolution="2k"),
+            )
+            # Grok only outputs landscape — resize to match the requested size (usually portrait for shorts)
+            try:
+                from PIL import Image as _PILImage
+                _w, _h = [int(x) for x in size.split("x")]
+                with _PILImage.open(output_path) as _img:
+                    if (_w < _h) != (_img.width < _img.height):
+                        # Need portrait but got landscape (or vice versa) — center-crop to target aspect
+                        target_ratio = _w / _h
+                        src_ratio = _img.width / _img.height
+                        if src_ratio > target_ratio:
+                            new_w = int(_img.height * target_ratio)
+                            left = (_img.width - new_w) // 2
+                            _img = _img.crop((left, 0, left + new_w, _img.height))
+                        else:
+                            new_h = int(_img.width / target_ratio)
+                            top = (_img.height - new_h) // 2
+                            _img = _img.crop((0, top, _img.width, top + new_h))
+                        _img = _img.resize((_w, _h), _PILImage.LANCZOS)
+                        _img.save(output_path)
+                        log.info("grok fallback resized to portrait", size=f"{_w}x{_h}")
+            except Exception as resize_err:
+                log.warning("grok fallback resize failed, keeping original", error=str(resize_err)[:80])
+            log.info("grok fallback succeeded", path=output_path)
+            return output_path
+        except Exception as grok_err:
+            log.error("grok fallback also failed", error=str(grok_err)[:150])
+            raise RuntimeError(f"gpt-image-1.5 failed after 6 attempts for: {original_prompt[:100]}")
 
 
 async def edit_image_dalle_async(

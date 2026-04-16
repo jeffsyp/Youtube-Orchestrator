@@ -126,6 +126,7 @@ async def build_one_on_ones(run_id: int, concept: dict, output_dir: str, _update
     # ─── STEP 3: Unified pipeline — style anchor + sub-actions + chaining ───
     clips_dir, clip_paths, n_clips, line_clip_map = await generate_and_animate_scenes(
         narration_lines, concept, IMAGE_RULES, ART_STYLE, output_dir, _update_step, run_id=run_id,
+        prefer_grok_images=True,
     )
 
     # ─── STEP 4: Build segments from clip map ───

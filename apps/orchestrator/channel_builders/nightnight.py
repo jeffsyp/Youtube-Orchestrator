@@ -57,8 +57,11 @@ CONCEPT: {title}
 BRIEF: {brief}
 
 THE FORMAT:
-- Line 1 MUST state the topic: "What if [character] was in [anime]?"
-- Line 2 goes STRAIGHT into the action
+- Line 1 MUST state the topic with the SPECIFIC SCENARIO from the title — not just the franchise.
+  - If the title says "SAITAMA AT THE FINAL SELECTION", line 1 is "What if Saitama showed up to the Final Selection?" — NOT "What if Saitama was in Demon Slayer?"
+  - If the title says "GOKU ENTERS THE CHUNIN EXAMS", line 1 is "What if Goku entered the Chunin Exams?" — NOT "What if Goku was in Naruto?"
+  - Name the SPECIFIC arc, event, location, or fight from the title. Fans recognize these instantly — generic franchise names lose them.
+- Line 2 goes STRAIGHT into the action — set the scene with SPECIFIC visual landmarks that fans recognize (wisteria trees for Final Selection, the arena for Chunin Exams, the colosseum for One Piece Dressrosa, etc.)
 - 6-8 narration lines, ~20-30 seconds. SHORTER IS BETTER.
 - Each line UNDER 15 words
 - Punchy, fast-paced, funny

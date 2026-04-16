@@ -1212,6 +1212,12 @@ Study these. What made them go viral? Use that psychology — don't copy.
     is_satisfying = channel_id in SATISFYING_CHANNELS
     is_character_dialogue = channel_id in CHARACTER_DIALOGUE_CHANNELS
 
+    # Resolve channel-specific art style up front so any branch's f-string can reference it
+    from apps.orchestrator.pipeline import CHANNEL_ART_STYLE
+    _DEFAULT_STYLE = "Simple crude cartoon — thick wobbly outlines, flat bold colors, exaggerated round heads, simple bodies. Deliberately ugly and charming like a funny doodle. NOT noir, NOT graphic novel, NOT serious."
+    _channel_style = CHANNEL_ART_STYLE.get(channel_id, _DEFAULT_STYLE) if channel_id else _DEFAULT_STYLE
+    art_style_field = f',\n    "art_style": "{_channel_style}"' if (is_character_dialogue or not is_satisfying) else ""
+
     if is_character_dialogue:
         style_guidance = f"""CHARACTER DIALOGUE SHORTS FORMAT — CHARACTERS SPEAK THEIR OWN LINES:
 
@@ -1362,12 +1368,6 @@ CHARACTERS MUST BE SPECIFIC:
 
 CHANNEL ART STYLE: {_channel_style}
 Every image_prompt MUST start with this art style description."""
-
-    # Use the channel's actual art style instead of hardcoding crude cartoon
-    from apps.orchestrator.pipeline import CHANNEL_ART_STYLE
-    _DEFAULT_STYLE = "Simple crude cartoon — thick wobbly outlines, flat bold colors, exaggerated round heads, simple bodies. Deliberately ugly and charming like a funny doodle. NOT noir, NOT graphic novel, NOT serious."
-    _channel_style = CHANNEL_ART_STYLE.get(channel_id, _DEFAULT_STYLE) if channel_id else _DEFAULT_STYLE
-    art_style_field = f',\n    "art_style": "{_channel_style}"' if (is_character_dialogue or not is_satisfying) else ""
 
     system = f"""You create viral no-narration YouTube Shorts for "{channel_name}" — {niche}.
 

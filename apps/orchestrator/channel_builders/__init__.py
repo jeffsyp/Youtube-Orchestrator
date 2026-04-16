@@ -22,7 +22,7 @@ CHANNEL_BUILDERS = {
     18: build_skeletorinio,  # Skeletorinio — skeleton "What If" videos
     19: build_spookland,  # SpookLand — POV horror scenarios
     21: build_one_on_ones,  # One on Ones For Fun — cross-franchise battles
-    # 22: Deity Drama — uses default meme pipeline (crude cartoon, no narration)
+    22: build_deity_drama,  # Deity Drama — narrated "what if [god] did [modern thing]"
     25: build_nature_receipts,  # Nature Receipts — "What if [animal]" scenarios
     26: build_hardcore_ranked,  # Hardcore Ranked — visual comparison/ranking
     27: build_deep_we_go,  # Deep We Go — "What happens to your body" glass person

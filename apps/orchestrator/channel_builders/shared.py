@@ -757,12 +757,18 @@ async def generate_and_animate_scenes(
     output_dir: str,
     _update_step,
     run_id: int = 0,
+    prefer_grok_images: bool = False,
+    character_ref_path: str | None = None,
 ) -> tuple[str, list[str], int, dict[int, list[str]]]:
     """Unified scene generation + animation pipeline.
 
     Implements: style anchor → sub-actions → GPT images → Grok animation → chaining.
     Returns (clips_dir, clip_paths_in_order, n_clips, line_clip_map) where
     line_clip_map maps narration line index → list of clip filenames for that line.
+
+    Args:
+        prefer_grok_images: Skip gpt-image entirely and use Grok Imagine for all images.
+            Use for channels with IP/licensed characters that gpt-image always refuses.
 
     Args:
         narration_lines: the narration script
@@ -772,7 +778,9 @@ async def generate_and_animate_scenes(
         output_dir: base output directory
         _update_step: status callback
     """
-    from packages.clients.grok import generate_image_dalle_async, generate_video_async
+    from packages.clients.grok import generate_image_dalle_async, generate_image_grok_async, generate_video_async
+    # Pick image generator based on channel preference
+    _gen_image = generate_image_grok_async if prefer_grok_images else generate_image_dalle_async
     from packages.clients.claude import generate as claude_generate
     from openai import AsyncOpenAI
     import re as _re
@@ -798,7 +806,7 @@ async def generate_and_animate_scenes(
     await _update_step("generating style anchor")
     style_anchor_path = os.path.join(images_dir, "style_anchor.png")
     if not os.path.exists(style_anchor_path):
-        await generate_image_dalle_async(
+        await _gen_image(
             prompt=f"{art_style_prompt} A simple establishing shot for the video. {narration_lines[0] if narration_lines else 'A character in a scene.'}. NO text anywhere.",
             output_path=style_anchor_path, size="1024x1536",
         )
@@ -818,10 +826,42 @@ async def generate_and_animate_scenes(
     plan_resp = claude_generate(
         prompt=f"""Break this narration into animation sub-actions. Each sub-action is ONE simple movement (2-3 seconds for Grok to animate).
 
+CHANNEL RULES (HIGHEST PRIORITY — every image_prompt must follow these exactly):
+{channel_rules}
+
 NARRATION (with durations):
 {chr(10).join(f'{i}: "{line}" ({_narr_durs[i]:.1f}s)' for i, line in enumerate(narration_lines))}
 
+CRITICAL — CHARACTER CONSISTENCY: If the CHANNEL RULES above describe a specific main character (e.g. a skeletorinio, a frog, a mascot), that exact character MUST appear in EVERY image_prompt as the subject. Do NOT substitute with generic humans, tourists, or other characters. The named main character is the star of every single scene unless the narration explicitly focuses on someone else.
+
 CRITICAL — CLIP COVERAGE: The total duration of sub-action clips for each narration line MUST cover the narration duration. A 6-second narration line needs 2-3 sub-actions (2x3s or 3x2s), NOT one 3s clip. A 4-second line needs at least 2 sub-actions. Only lines under 3.5s can have a single sub-action.
+
+CRITICAL — SHOT VARIETY: Across the full set of image_prompts, vary camera angle, distance, and composition aggressively. Never more than 2 consecutive scenes with the same framing. Mix: close-up, medium, wide, bird's-eye, low-angle, over-the-shoulder, dutch-angle. Mix tight/loose framing. Vary lighting when the scene changes (golden hour, overcast, night, torchlit). Repeating "wide shot at eye level" across most scenes is a FAIL — the video will look static and boring.
+
+CRITICAL — NO STATIC ANIMATION PROMPTS: Every animation_prompt must describe CONTINUOUS VISIBLE motion. Banned words: "motionless", "still", "sits", "stands", "peaceful", "calm", "slowly blinks", "half-closed", "unchanging". If the beat is inherently quiet, describe subject motion (twitching, breathing hard, shifting weight) OR camera motion (fast push-in, pull-back, dolly, whip-pan). A clip where nothing moves reads as a freeze.
+
+CRITICAL — LINE 0 IS THE HOOK (SHOW THE PAYOFF, NOT THE SETUP):
+Line 0's narration is the "what if" question, but the image_prompt for line 0 must show the MOST EXCITING / CLIMACTIC moment of the video — the payoff the viewer is being teased with. NOT the setup, NOT the protagonist holding an object, NOT "about to do" something. SHOW THE ACTUAL COOL THING HAPPENING.
+- BAD: "Skeletorinio stands holding a tiny red canister at the entrance of a jousting arena, knights charging in the distance." (This is setup — viewer swipes away.)
+- GOOD: "Skeletorinio in the center of the jousting arena, laughing, spraying orange pepper mist directly into the faces of two armored knights who are simultaneously falling off their galloping horses with tears streaming, crowd erupting. Dust exploding."
+- The viewer should hear "What if you brought pepper spray to medieval jousting" while SEEING the knights already wiping out. That's how hooks work on shorts.
+- Applies to ALL videos regardless of channel. The hook visual is the #1 determinant of watch time.
+- Lines 1+ still follow temporal alignment (below) — only line 0 gets the "show the payoff" privilege.
+
+CRITICAL — EVERY IMAGE MUST SHOW ACTION IN PROGRESS (NO STANDING/POSING):
+Every `image_prompt` must depict a MOMENT OF ACTION — something physically happening RIGHT NOW. Never "character standing in a location" or "character surrounded by people watching." The character must be MID-MOTION: swinging, crashing, falling, running, grabbing, throwing, reacting with their whole body.
+- BAD: "Skeletorinio stands in front of a crowd in a medieval courtyard" (boring — nothing happening)
+- BAD: "Two thousand people kneel before the skeleton" (static tableau — no action)
+- GOOD: "Skeletorinio mid-swing pulling a glowing sword from a cracking stone, sparks flying, crowd behind him diving out of the way"
+- GOOD: "Skeletorinio crashing a bicycle through castle gates, wood splintering, guards tumbling"
+If a scene is inherently about people REACTING (crowd cheering, king giving award), show the MOMENT OF the reaction with physical motion — confetti mid-air, arms mid-throw, crown tumbling off a head — not the static aftermath.
+
+CRITICAL — TEMPORAL ALIGNMENT (DO NOT FORESHADOW):
+Each sub-action's `image_prompt` and `animation_prompt` MUST depict ONLY the specific event the narration describes for THAT exact line. Do NOT pre-stage events from later lines. Do NOT show aftermath from earlier lines. Do NOT combine beats.
+- If narration line N says "you pull out a canister", the animation shows the canister being pulled out — NOT a spray, NOT an impact, NOT a crash.
+- If narration line N+1 says "spray hits", THAT is where the spray animation belongs.
+- If narration line N+2 says "they crash", THAT is where the crash animation belongs.
+The visible action on screen must match WHAT THE VIEWER IS HEARING AT THAT MOMENT. Front-loading dramatic action into earlier scenes (because the planner is excited about the climax) breaks narration sync and makes the video feel buggy. Every line gets its own beat — no more, no less.
 
 For each sub-action, decide:
 - "new_scene": true if this needs a fresh GPT-generated image (new setting, new character entering). false if it chains from the previous clip's last frame.
@@ -894,27 +934,61 @@ Return ONLY a JSON array of objects.""",
         if os.path.exists(img_path):
             continue
 
-        style_ref = open(style_anchor_path, "rb")
-        try:
-            resp = await client.images.edit(
-                model="gpt-image-1.5",
-                image=style_ref,
-                prompt=f"{era_prefix}Same art style as reference. {art_style_prompt} {img_prompt} {channel_rules.split('EVERY PROMPT MUST')[0] if 'EVERY PROMPT MUST' in channel_rules else ''} NO text anywhere.",
-                size="1024x1536",
-                quality="medium",
-                input_fidelity="high",
-            )
-            style_ref.close()
-            if resp.data and resp.data[0].b64_json:
-                img_data = base64.b64decode(resp.data[0].b64_json)
-                with open(img_path, "wb") as f:
-                    f.write(img_data)
-        except Exception as e:
-            style_ref.close()
-            await generate_image_dalle_async(
+        # Use character reference if provided (more consistent than style anchor)
+        _edit_ref_path = character_ref_path if character_ref_path and os.path.exists(character_ref_path) else style_anchor_path
+
+        if prefer_grok_images:
+            await _gen_image(
                 prompt=f"{era_prefix}{art_style_prompt} {img_prompt} NO text anywhere.",
                 output_path=img_path, size="1024x1536",
             )
+        else:
+            style_ref = open(_edit_ref_path, "rb")
+            try:
+                # Keep edit prompt SHORT — the reference image handles character/style.
+                # Long prompts (art_style + channel_rules) cause gpt-image to override the reference.
+                resp = await client.images.edit(
+                    model="gpt-image-1.5",
+                    image=style_ref,
+                    prompt=f"{era_prefix}Same art style and same character as reference. {img_prompt} NO text anywhere.",
+                    size="1024x1536",
+                    quality="medium",
+                    input_fidelity="high",
+                )
+                style_ref.close()
+                if resp.data and resp.data[0].b64_json:
+                    img_data = base64.b64decode(resp.data[0].b64_json)
+                    with open(img_path, "wb") as f:
+                        f.write(img_data)
+            except Exception as e:
+                style_ref.close()
+                # Re-attempt edit with reference instead of falling back to text-only
+                for _retry in range(2):
+                    try:
+                        style_ref_retry = open(_edit_ref_path, "rb")
+                        resp = await client.images.edit(
+                            model="gpt-image-1.5",
+                            image=style_ref_retry,
+                            prompt=f"{era_prefix}Same art style and same character as reference. {img_prompt} NO text anywhere.",
+                            size="1024x1536",
+                            quality="medium",
+                            input_fidelity="high",
+                        )
+                        style_ref_retry.close()
+                        if resp.data and resp.data[0].b64_json:
+                            img_data = base64.b64decode(resp.data[0].b64_json)
+                            with open(img_path, "wb") as f:
+                                f.write(img_data)
+                            break
+                    except Exception:
+                        try: style_ref_retry.close()
+                        except: pass
+                else:
+                    # All edit retries exhausted — last resort text-only
+                    await _gen_image(
+                        prompt=f"{era_prefix}{art_style_prompt} {img_prompt} NO text anywhere.",
+                        output_path=img_path, size="1024x1536",
+                    )
         logger.info("new scene image", sub_action=sa_idx, prompt=img_prompt[:60])
 
         # Auto-review
@@ -958,24 +1032,30 @@ Answer PASS or FAIL with specific reason."""},
                 logger.warning("image review FAILED — regenerating with style anchor", sub_action=sa_idx, reason=review.content[0].text[:100])
                 os.remove(img_path)
                 # Regenerate using style anchor (same as original generation) to keep consistent character/style
-                try:
-                    style_ref2 = open(style_anchor_path, "rb")
-                    resp2 = await client.images.edit(
-                        model="gpt-image-1.5",
-                        image=style_ref2,
-                        prompt=f"{era_prefix}Same art style and same character as reference. {art_style_prompt} {img_prompt} Make sure this EXACTLY matches: {narr_text}. NO text anywhere.",
-                        size="1024x1536",
-                        quality="medium",
-                        input_fidelity="high",
+                if prefer_grok_images:
+                    await _gen_image(
+                        prompt=f"{era_prefix}{art_style_prompt} {img_prompt} Make sure this EXACTLY matches: {narr_text}. NO text anywhere.",
+                        output_path=img_path, size="1024x1536",
                     )
-                    style_ref2.close()
-                    if resp2.data and resp2.data[0].b64_json:
-                        with open(img_path, "wb") as f2:
-                            f2.write(base64.b64decode(resp2.data[0].b64_json))
-                except Exception:
-                    try: style_ref2.close()
-                    except: pass
-                    await generate_image_dalle_async(
+                else:
+                    try:
+                        style_ref2 = open(style_anchor_path, "rb")
+                        resp2 = await client.images.edit(
+                            model="gpt-image-1.5",
+                            image=style_ref2,
+                            prompt=f"{era_prefix}Same art style and same character as reference. {art_style_prompt} {img_prompt} Make sure this EXACTLY matches: {narr_text}. NO text anywhere.",
+                            size="1024x1536",
+                            quality="medium",
+                            input_fidelity="high",
+                        )
+                        style_ref2.close()
+                        if resp2.data and resp2.data[0].b64_json:
+                            with open(img_path, "wb") as f2:
+                                f2.write(base64.b64decode(resp2.data[0].b64_json))
+                    except Exception:
+                        try: style_ref2.close()
+                        except: pass
+                    await _gen_image(
                         prompt=f"{era_prefix}{art_style_prompt} {img_prompt} Make sure this EXACTLY matches: {narr_text}. NO text anywhere.",
                         output_path=img_path, size="1024x1536",
                     )
@@ -985,18 +1065,19 @@ Answer PASS or FAIL with specific reason."""},
     # ─── STEP 3b: Wait for user approval via file watch ───
     # Skip approval if clips already exist (means images were already approved in a previous run)
     existing_clips = [f for f in os.listdir(clips_dir) if f.endswith('.mp4')] if os.path.isdir(clips_dir) else []
+    approval_file = os.path.join(output_dir, ".images_approved")
+    deny_file = os.path.join(output_dir, ".images_denied")
     if existing_clips:
         logger.info("skipping image approval — clips already exist from previous run", count=len(existing_clips))
+    elif os.path.exists(approval_file):
+        logger.info("skipping image approval — already approved (carried forward from previous run)")
+        os.remove(approval_file)
     else:
         await _update_step("images ready for review")
 
-        approval_file = os.path.join(output_dir, ".images_approved")
-        deny_file = os.path.join(output_dir, ".images_denied")
-
-        # Clean up any stale approval files
-        for f in [approval_file, deny_file]:
-            if os.path.exists(f):
-                os.remove(f)
+        # Clean up stale deny file only (approval was checked above)
+        if os.path.exists(deny_file):
+            os.remove(deny_file)
 
         while True:
             await asyncio.sleep(3)
@@ -1019,7 +1100,7 @@ Answer PASS or FAIL with specific reason."""},
                         feedback_text = open(feedback_path).read().strip()
                         if os.path.exists(img_path):
                             os.remove(img_path)
-                        await generate_image_dalle_async(
+                        await _gen_image(
                             prompt=f"{art_style_prompt} {sa.get('image_prompt', '')} User feedback: {feedback_text}. NO text anywhere.",
                             output_path=img_path, size="1024x1536",
                         )
@@ -1154,9 +1235,9 @@ def build_segments_from_clip_map(
                 ], capture_output=True, timeout=60)
         else:
             # Multiple clips — trim static warmup AND crossfade between them for smooth transitions
-            # Aggressive values to hide the Grok extension seam that looks like a pause/freeze
+            # Shorter xfade = snappier transitions, less "pause" feel and less risk of freeze-pad at segment end.
             TRIM_START = 0.5  # trim Grok's static warmup + any boundary mismatch
-            XFADE_DUR = 1.5   # long prominent crossfade — clearly visible blend between scenes
+            XFADE_DUR = 0.5   # short crossfade — still visibly smooth, no perceived pause
 
             # First, trim the start of chained clips (2nd+)
             trimmed_paths = []
@@ -1372,13 +1453,14 @@ def concat_silent_video(
     - teasers → seg_01: HARD CUT (no transition)
     - seg_N → seg_(N+1): CROSSFADE (visible blend, preserves total duration)
 
-    Each segment starting from seg_02 is extended by XFADE_DUR of freeze-frame at the END
-    so the xfade overlap happens during the extension — original segment content plays fully,
-    narration timing is unchanged.
+    Xfades happen over real content on BOTH sides — no freeze-frame extension. This means
+    the tail of segment N blends with the head of segment N+1 during XFADE_DUR seconds of
+    real motion. Total video shrinks by (n_transitions * XFADE_DUR) vs sum-of-segments, but
+    this avoids the frozen-last-frame-before-transition artifact.
     """
-    XFADE_DUR = 0.8
-    XFADE_INTO_CONTENT = 0.3  # start xfade 0.3s before segment ends (dips into real content)
-    EXT_DUR = XFADE_DUR - XFADE_INTO_CONTENT  # freeze extension length
+    XFADE_DUR = 0.4
+    XFADE_INTO_CONTENT = XFADE_DUR  # xfade entirely over real content, no freeze extension
+    EXT_DUR = XFADE_DUR - XFADE_INTO_CONTENT  # 0 — no freeze extension
 
     all_video_path = os.path.join(output_dir, "all_video_silent.mp4")
 
@@ -1394,11 +1476,11 @@ def concat_silent_video(
         _sh.copy2(teasers_path, all_video_path)
         return all_video_path, get_duration(all_video_path)
 
-    # Extend all segments EXCEPT the last one with short freeze-frame at the end.
-    # The xfade (0.8s) overlaps 0.3s of real content + 0.5s freeze, so transition starts earlier.
+    # Extension step — only runs if EXT_DUR > 0. With the current config (EXT_DUR = 0),
+    # xfades happen entirely over real content on both sides and no freeze is inserted.
     extended_segs = []
     for idx, seg in enumerate(segs):
-        if idx < len(segs) - 1:
+        if idx < len(segs) - 1 and EXT_DUR > 0:
             ext_path = os.path.join(segments_dir, f"ext_{idx:02d}.mp4")
             subprocess.run([
                 "ffmpeg", "-y", "-i", seg,

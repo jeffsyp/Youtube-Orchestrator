@@ -188,6 +188,14 @@ async def _generate_item(item: dict):
                             logger.info("reused file from previous run", prev_run=prev_id, file=fname)
                         except Exception:
                             pass
+                # If previous run had images approved (user clicked approve but subprocess
+                # died before animation), carry the approval forward so user isn't asked again.
+                prev_approval = os.path.join(prev_dir, ".images_approved")
+                if os.path.exists(prev_approval):
+                    dst_approval = os.path.join(new_dir, ".images_approved")
+                    if not os.path.exists(dst_approval):
+                        shutil.copy2(prev_approval, dst_approval)
+                        logger.info("carried forward image approval from previous run", prev_run=prev_id)
                 if copied_something:
                     break  # found a good run to copy from
 

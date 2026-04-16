@@ -29,6 +29,14 @@ STUCK_THRESHOLD_MINUTES = 45  # default for short-form
 STUCK_THRESHOLD_LONG_MINUTES = 120  # for long-form (20+ beats)
 MAX_RETRIES = 3
 
+# Steps that legitimately wait on human input — never auto-kill these.
+# The pipeline subprocess is fine; the user just hasn't clicked yet.
+HUMAN_WAIT_STEPS = {
+    "images ready for review",
+    "script ready for review",
+    "pending_review",
+}
+
 
 def _get_engine():
     db_url = os.getenv("DATABASE_URL", "postgresql+asyncpg://orchestrator:orchestrator@localhost:5432/orchestrator")
@@ -72,6 +80,11 @@ async def _monitor_cycle():
         for run in stuck_candidates:
             run_id, channel_id, step, started_at, bank_id, concept_json = run
             elapsed = (datetime.now(timezone.utc) - started_at.replace(tzinfo=timezone.utc)).total_seconds() / 60
+
+            # Skip human-in-loop steps — the pipeline is alive, waiting on user approval.
+            # Auto-killing these destroys the user's review session.
+            if step in HUMAN_WAIT_STEPS:
+                continue
 
             # Determine threshold based on content type (long-form gets more time)
             threshold = STUCK_THRESHOLD_MINUTES

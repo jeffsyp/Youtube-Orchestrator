@@ -50,18 +50,24 @@ CONCEPT: {title}
 BRIEF: {brief}
 
 THE FORMAT:
-- Line 1 MUST be the hook question: "What if you brought [specific modern item] to [specific historical era]?"
-- The story is about bringing that ITEM to that ERA — NOT about the skeletorinio character himself
-- The skeletorinio is just the person doing it — the ITEM is the star
-- Day-by-day escalation: Day 1 through Day 4-5 (NOT more than 5 days — keep it tight)
-- Day 1: You arrive with the item, show it to the first person
-- Day 2-3: Word spreads, things escalate, complications arise
-- Day 4-5: GO ABSOLUTELY INSANE. The ending should be the most entertaining part.
-  - NOT "people get mad" or "the authorities arrive" — that's boring
-  - YES: you become president, you buy an island, you accidentally start a religion, you get launched into space, you rewrite history, you become so powerful you break reality
-  - The ending should make viewers replay the video. Historically accurate endings are BORING — go full absurd comedy.
+- Line 1 is the HOOK — a "What if..." question that sets up the concept. Tailor it to the actual premise:
+  - Historical disruption: "What if you brought [item] to [era]?"
+  - Modern absurd: "What if you had to spend a day at [place]?" or "What if your [mundane task] went COMPLETELY wrong?"
+  - Sci-fi/future: "What if you woke up [in a dystopian setup]?"
+  - Fantasy: "What if you accidentally [became a chosen one / started a mythic quest / angered a god]?"
+  - Reality show: "What if you were a contestant on [absurd show]?"
+  - Workplace: "What if you got hired as [unexpected job] with zero qualifications?"
+  Pick whichever hook fits the concept — do NOT force the "brought X to Y" template on premises where it doesn't fit.
+- The story is about the SITUATION — the skeletorinio is the person doing it. The situation is the star.
+- Escalation structure (3-5 beats — keep it tight):
+  - Beat 1: You arrive / the situation begins
+  - Beats 2-3: Things escalate, complications, bystanders react
+  - Final beat: GO ABSOLUTELY INSANE. The ending should be the most entertaining part.
+    - NOT "people get mad" or "the authorities arrive" — that's boring
+    - YES: you become president, you buy an island, you accidentally start a religion, you get launched into space, you break reality, the simulation crashes, the gods revolt
+    - The ending should make viewers replay the video. Realistic endings are BORING — go full absurd comedy.
 - The LAST LINE should be a punchline that lands hard — funny, unexpected, satisfying
-- Second person narration ("You bring...", "You show...")
+- Second person narration ("You walk in...", "You show...", "You realize...")
 - 6-8 narration lines total, ~20-30 seconds. SHORTER IS BETTER — every line must earn its place
 - Each line = one scene = one image
 - Each line UNDER 15 words
@@ -143,7 +149,7 @@ async def build_skeletorinio(run_id: int, concept: dict, output_dir: str, _updat
             shutil.copy2(SKELETON_REF, anchor_path)
             logger.warning("style anchor fallback to bare skeletorinio ref", error=str(_e)[:80])
 
-    # ─── STEP 4: Unified pipeline — uses skeletorinio ref as style anchor for all scenes ───
+    # ─── STEP 4: Unified pipeline — uses style anchor (skeleton IN scene) for all edits ───
     clips_dir, clip_paths, n_clips, line_clip_map = await generate_and_animate_scenes(
         narration_lines, concept, IMAGE_RULES, ART_STYLE, output_dir, _update_step, run_id=run_id,
     )

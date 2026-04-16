@@ -498,6 +498,32 @@ async def get_run_images(run_id: int):
                     narration_text = narr_lines.get(0, "(base scene)")
                 elif f == "style_anchor.png":
                     narration_text = "(style reference)"
+
+                # For no-narration channels: fall back to scene video_prompt from concept
+                if not narration_text:
+                    try:
+                        concept_path = f"output/run_{run_id}/concept.json"
+                        if not os.path.exists(concept_path):
+                            # Try loading from content_bank
+                            from sqlalchemy import text as sa_text
+                            from packages.clients.db import async_session as _as
+                            import asyncio as _aio
+                            async def _get_concept():
+                                async with _as() as _s:
+                                    _r = await _s.execute(sa_text("SELECT cb.concept_json FROM content_bank cb JOIN content_runs cr ON cr.content_bank_id=cb.id WHERE cr.id=:r"), {"r": run_id})
+                                    _row = _r.fetchone()
+                                    return _json.loads(_row[0]) if _row and _row[0] else None
+                            _concept = _aio.get_event_loop().run_until_complete(_get_concept())
+                        else:
+                            with open(concept_path) as _cf:
+                                _concept = _json.load(_cf)
+                        if _concept and "scenes" in _concept:
+                            _scene_idx = int(f.split("_")[1].split(".")[0]) if f.startswith(("scene_", "sub_")) else 0
+                            if _scene_idx < len(_concept["scenes"]):
+                                _scene = _concept["scenes"][_scene_idx]
+                                narration_text = _scene.get("video_prompt", _scene.get("image_prompt", ""))[:200]
+                    except Exception:
+                        pass
         except Exception:
             pass
 

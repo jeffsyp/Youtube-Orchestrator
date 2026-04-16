@@ -55,26 +55,30 @@ EVERY PROMPT MUST:
 - End with "Crude cartoon style. NO text anywhere."
 - Describe the human reaction in the scene (people running, screaming, staring) with exaggerated cartoon expressions"""
 
-SCRIPT_PROMPT = """Write a narration script for a Munchlax Lore POV Pokemon IRL video.
+SCRIPT_PROMPT = """Write a narration script for a Munchlax Lore "What If" Pokemon video.
 
 CONCEPT: {title}
 BRIEF: {brief}
 
 THE FORMAT:
-- Line 1 MUST state the scenario: "POV: You find a [Pokemon] in your [location]" — this IS the title. Shorts viewers don't see video titles so line 1 gives them context.
-- Line 2 goes STRAIGHT into the action — what happens next
-- Second person narration — "You reach for it...", "It looks at you...", "You call 911..."
-- The Pokemon acts like it WOULD in real life — Charizard sets things on fire, Snorlax blocks traffic, Gyarados destroys the lake, Pikachu shorts out your electronics
-- ESCALATION is everything — each line makes it worse/crazier
-- Include REAL-WORLD consequences — neighbors call police, news crews show up, the military arrives, the president gets involved
-- If the Pokemon EVOLVES or TRANSFORMS, dedicate a line to the moment itself: "It starts glowing." or "It evolves." — a short dramatic beat before the reveal. The transformation is the payoff, give it space.
-- Every line must show a DIFFERENT angle or location — never two consecutive lines with the same person in the same pose from the same angle. Move through rooms, switch perspectives, show different people reacting.
-- The ending must GO COMPLETELY INSANE — you ride it to work, it becomes a city mascot, the government tries to capture it, you become a real Pokemon trainer, you accidentally start a Pokemon uprising
-- 6-8 narration lines total, ~20-30 seconds. SHORTER IS BETTER — every line must earn its place
+- Line 1 is the HOOK: "What if [Pokemon scenario]?" — name the specific Pokemon and situation.
+  - GOOD: "What if Snorlax blocked the highway during rush hour?"
+  - GOOD: "What if Charizard was your Uber driver?"
+  - GOOD: "What if Mewtwo showed up to your job interview?"
+- Escalation structure (3-5 beats):
+  - Beat 1: The Pokemon appears / the situation begins. Seems manageable.
+  - Beat 2: The Pokemon uses its abilities. Things escalate.
+  - Beat 3-4: Real-world consequences — police, news crews, military, the president.
+  - Final beat: GO COMPLETELY INSANE. The Pokemon takes over, you become a trainer, a new region is declared.
+- The comedy is CONTRAST: a powerful mythical creature in a completely mundane setting
+- The Pokemon uses its ACTUAL moves and abilities — Thunderbolt, Flamethrower, Hyper Beam, etc.
+- Second person narration ("You see...", "It looks at you...", "You realize...")
+- The Pokemon acts like it WOULD in real life — Charizard sets things on fire, Snorlax blocks everything, Gyarados destroys water features, Pikachu shorts out electronics
+- 6-8 narration lines total, ~20-30 seconds. SHORTER IS BETTER.
 - Each line = one scene = one image
 - Each line UNDER 15 words
 - Punchy, dramatic, funny
-- Reference SPECIFIC Pokemon moves and abilities by name (Thunderbolt, Flamethrower, Hyper Beam, etc.)
+- The LAST LINE must be a devastating punchline
 
 Return ONLY a JSON object:
 {{"narration": ["line 1", "line 2", ...], "title": "SHORT PUNCHY TITLE"}}"""

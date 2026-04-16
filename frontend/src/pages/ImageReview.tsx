@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 
 interface RunImage {
@@ -28,12 +28,12 @@ export default function ImageReview() {
       // For each, try to fetch images
       const withImages: RunWithImages[] = [];
       for (const run of allRuns) {
-        if (!['running', 'pending_review'].includes(run.status)) continue;
+        if (run.status !== 'running') continue;
         // Only show runs that are in the image generation/review stage
         const step = run.current_step || '';
         const imageSteps = ['generating scene images', 'images ready for review', 'generating style anchor',
                            'planning sub-actions', 'creating scene variants', 'regenerating images'];
-        if (run.status === 'running' && !imageSteps.some(s => step.startsWith(s))) continue;
+        if (!imageSteps.some(s => step.startsWith(s))) continue;
         try {
           const imgRes = await fetch(`/api/runs/${run.id}/images`);
           if (imgRes.ok) {
@@ -77,10 +77,12 @@ export default function ImageReview() {
 }
 
 function RunImageReview({ run }: { run: RunWithImages }) {
+  const queryClient = useQueryClient();
   const [feedback, setFeedback] = useState<Record<string, string>>({});
   const [denied, setDenied] = useState<Set<string>>(new Set());
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [approved, setApproved] = useState(false);
 
   const toggleDeny = (name: string) => {
     const next = new Set(denied);
@@ -92,7 +94,9 @@ function RunImageReview({ run }: { run: RunWithImages }) {
   const approveAll = async () => {
     setSubmitting(true);
     await fetch(`/api/runs/${run.run_id}/images/approve-all`, { method: 'POST' });
+    setApproved(true);
     setSubmitting(false);
+    queryClient.invalidateQueries({ queryKey: ['runs-with-images'] });
   };
 
   const submitReview = async () => {
@@ -111,7 +115,23 @@ function RunImageReview({ run }: { run: RunWithImages }) {
     setSubmitting(false);
     setDenied(new Set());
     setFeedback({});
+    queryClient.invalidateQueries({ queryKey: ['runs-with-images'] });
   };
+
+  if (approved) {
+    return (
+      <div className="p-5 rounded-lg bg-[#1a1a1a] border border-green-700/40 opacity-70">
+        <div className="flex items-center gap-3">
+          <span className="text-green-400 text-sm font-bold">✓ APPROVED</span>
+          <Link to={`/runs/${run.run_id}`} className="text-blue-400 text-xs no-underline hover:text-blue-300">
+            #{run.run_id}
+          </Link>
+          <span className="text-white text-sm">{run.title}</span>
+          <span className="text-gray-500 text-xs ml-auto">continuing to animation…</span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-5 rounded-lg bg-[#1a1a1a] border border-[#2a2a2a]">

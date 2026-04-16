@@ -103,12 +103,16 @@ THE FORMAT:
   - "Number 2: Honey. Three hours. Basically a statue."
   - "Number 3: Rocket fuel. Instant explosion. Never seen again."
 - ONLY 4-5 items total (lines 2-5 or 2-6). Pick the most DIFFERENT and INTERESTING ones — skip boring/similar items (saltwater is too close to water, skip it)
-- The character in a frog astronaut suit is the test subject in EVERY scene
+- CRITICAL: ONE item PER LINE. NEVER combine multiple items in one line. Each line = one surface/liquid/vehicle/planet = one scene = one image.
+  BAD: "Grass gets him six feet. Dirt path, eight. Asphalt, fifteen." (3 items crammed into 1 line — impossible to visualize)
+  GOOD: "Number 2: Grass. Six feet. Barely counts."
+  GOOD: "Number 3: Dirt path. Eight feet. Getting somewhere."
+- The character in a frog-themed astronaut suit is the test subject in EVERY scene
 - The character does the EXACT SAME THING in every scene — only the VARIABLE changes
 - Start with the most normal, escalate to the most insane
 - The LAST item should be absurd and break the format (explosion, launch into space, instant destruction)
 - 6-8 narration lines, ~20-30 seconds. SHORTER IS BETTER.
-- Each line = one scene, each under 15 words
+- Each line = one scene, each under 15 words. ONE variable per line, no exceptions.
 - Include specific numbers/facts for each item — the numbers ARE the comparison
 
 Return ONLY a JSON object:
@@ -152,12 +156,7 @@ Return ONLY a JSON object:
         _base_text = brief
         for _marker in ['For edits', 'For every edit', 'For animation', 'For each edit']:
             _base_text = _base_text.split(_marker)[0]
-        # Force mid-motion pose in the base scene so Grok animation has something to continue from
-        _motion_tag = ("CRITICAL: Character must be captured MID-MOTION — one leg lifted off the ground in mid-stride, "
-                       "body leaning forward aggressively, arms pumping in running motion, dust clouds kicking up "
-                       "from feet, motion blur on limbs. NOT a static standing pose — a FROZEN MOMENT mid-sprint "
-                       "like a sports photograph. ")
-        base_prompt = f"Photorealistic. SINGLE IMAGE only — NOT a comic panel layout, NOT multiple panels, NOT a grid. One continuous scene. {_motion_tag}{_base_text.strip()} NO text anywhere. ONE single frame only."
+        base_prompt = f"Photorealistic. SINGLE IMAGE only — NOT a comic panel layout, NOT multiple panels, NOT a grid. One continuous scene. CAMERA: Behind-view, looking over the character's shoulder down the path/slope/track ahead. The character is a HUMAN-SIZED PERSON in a green frog-themed astronaut suit with a frog-shaped helmet — NOT an actual frog, NOT a cartoon frog, a HUMAN wearing a frog costume. {_base_text.strip()} NO text anywhere. ONE single frame only."
     else:
         from packages.clients.claude import generate as claude_gen_base
         base_prompt_resp = claude_gen_base(
@@ -165,7 +164,16 @@ Return ONLY a JSON object:
 
 CONCEPT: {title}
 
-Write ONE image prompt showing the character at the starting position in normal/default conditions.
+THE CHARACTER: A HUMAN-SIZED PERSON wearing a green frog-themed astronaut suit with a frog-shaped helmet. NOT an actual frog. A human in a frog costume.
+
+CAMERA: Always BEHIND the character, looking over their shoulder down the path/slope/track ahead. Like a TV camera behind a starting line.
+
+ACTION: The character must be performing the EXACT ACTION from the title:
+- "roll" = curled up in a ball, mid-tumble, body tucked
+- "swim" = arms mid-stroke, body horizontal in water
+- "run" = mid-stride, one leg forward, arms pumping
+- "jump" = legs coiled or mid-launch, leaving the ground
+Match the specific physical action. The character must be MID-ACTION, not standing still.
 
 Start with "Photorealistic." End with "NO text anywhere."
 Return ONLY the prompt.""",
@@ -259,7 +267,7 @@ Return ONLY a JSON array of {n_lines} strings. Line 0 should be "No changes — 
                 resp = await edit_client.images.edit(
                     model="gpt-image-1.5",
                     image=base_file,
-                    prompt=f"Same exact scene, same camera angle, same character position. {edit_prompts[i]} NO text anywhere.",
+                    prompt=f"Same exact scene, same camera angle, same character position. The character must look IDENTICAL to the input image — same suit, same helmet, same body proportions, same colors. ONLY change: {edit_prompts[i]} Everything else stays pixel-identical. NO text anywhere.",
                     size="1024x1536",
                     quality="medium",
                     input_fidelity="high",
@@ -310,19 +318,78 @@ Return ONLY a JSON array of {n_lines} strings. Line 0 should be "No changes — 
     # ─── STEP 4c: Wait for user approval via file ───
     # Skip if clips already exist (images were approved in a previous run)
     _existing_clips = [f for f in os.listdir(clips_dir) if f.endswith('.mp4')] if os.path.isdir(clips_dir) else []
+    _approval_file = os.path.join(output_dir, ".images_approved")
+    _deny_file = os.path.join(output_dir, ".images_denied")
     if _existing_clips:
         logger.info("skipping image approval — clips exist from previous run", count=len(_existing_clips))
+    elif os.path.exists(_approval_file):
+        logger.info("skipping image approval — already approved (carried forward from previous run)")
+        os.remove(_approval_file)
     else:
         await _update_step("images ready for review")
-        _approval_file = os.path.join(output_dir, ".images_approved")
-        if os.path.exists(_approval_file):
-            os.remove(_approval_file)
+        if os.path.exists(_deny_file):
+            os.remove(_deny_file)
         while True:
             await asyncio.sleep(3)
             if os.path.exists(_approval_file):
                 logger.info("user approved images")
                 os.remove(_approval_file)
                 break
+            if os.path.exists(_deny_file):
+                logger.info("user denied images — regenerating with feedback")
+                os.remove(_deny_file)
+                for i in range(n_lines):
+                    fb_path = os.path.join(images_dir, f"scene_{i:02d}_feedback.txt")
+                    img_path = os.path.join(images_dir, f"scene_{i:02d}.png")
+                    if os.path.exists(fb_path):
+                        fb_text = open(fb_path).read().strip()
+                        if os.path.exists(img_path):
+                            os.remove(img_path)
+                        if i == 0:
+                            if os.path.exists(base_scene_path):
+                                os.remove(base_scene_path)
+                            await generate_image_dalle_async(
+                                prompt=f"{base_prompt} User feedback: {fb_text}. NO text anywhere.",
+                                output_path=base_scene_path, size="1024x1536",
+                            )
+                            shutil.copy2(base_scene_path, img_path)
+                        else:
+                            base_file = open(base_scene_path, "rb")
+                            try:
+                                resp = await edit_client.images.edit(
+                                    model="gpt-image-1.5",
+                                    image=base_file,
+                                    prompt=f"Same scene, same camera angle. {edit_prompts[i]} User feedback: {fb_text}. NO text anywhere.",
+                                    size="1024x1536", quality="medium", input_fidelity="high",
+                                )
+                                base_file.close()
+                                if resp.data and resp.data[0].b64_json:
+                                    img_data = base64.b64decode(resp.data[0].b64_json)
+                                    with open(img_path, "wb") as wf:
+                                        wf.write(img_data)
+                            except Exception as regen_err:
+                                try: base_file.close()
+                                except: pass
+                                await generate_image_dalle_async(
+                                    prompt=f"{base_prompt} {edit_prompts[i]} User feedback: {fb_text}. NO text anywhere.",
+                                    output_path=img_path, size="1024x1536",
+                                )
+                        os.remove(fb_path)
+                        logger.info("regenerated from feedback", scene=i, feedback=fb_text[:60])
+                # Also handle base_scene feedback
+                base_fb = os.path.join(images_dir, "base_scene_feedback.txt")
+                if os.path.exists(base_fb):
+                    fb_text = open(base_fb).read().strip()
+                    if os.path.exists(base_scene_path):
+                        os.remove(base_scene_path)
+                    await generate_image_dalle_async(
+                        prompt=f"{base_prompt} User feedback: {fb_text}. NO text anywhere.",
+                        output_path=base_scene_path, size="1024x1536",
+                    )
+                    shutil.copy2(base_scene_path, os.path.join(images_dir, "scene_00.png"))
+                    os.remove(base_fb)
+                    logger.info("regenerated base scene from feedback", feedback=fb_text[:60])
+                await _update_step("images ready for review")
 
     # ─── STEP 5: Animation prompts — speed/movement per scene ───
     await _update_step("planning animations")
