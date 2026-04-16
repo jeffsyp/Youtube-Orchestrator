@@ -57,18 +57,39 @@ async def _cleanup_orphaned_runs():
     if "asyncpg" not in db_url:
         db_url = db_url.replace("postgresql://", "postgresql+asyncpg://")
 
+    # Only clean up runs whose subprocess is NOT actively running.
+    # A hot-reload spawns a new worker while old pipeline subprocesses are still alive —
+    # we must not mark those as failed or we kill in-flight work.
+    import subprocess as _sp
     try:
         engine = create_async_engine(db_url, pool_size=1, max_overflow=0)
         async with engine.begin() as conn:
-            res1 = await conn.execute(
-                sql_text("UPDATE content_runs SET status = 'failed', error = 'Worker restarted' WHERE status = 'running'")
-            )
-            res2 = await conn.execute(
-                sql_text("UPDATE content_bank SET status = 'queued', locked_at = NULL WHERE status = 'locked'")
-            )
-            if res1.rowcount or res2.rowcount:
+            # Get all running run IDs
+            running = await conn.execute(sql_text("SELECT id FROM content_runs WHERE status = 'running'"))
+            orphan_ids = []
+            for row in running.fetchall():
+                rid = row[0]
+                # Check if pipeline_runner subprocess exists for this run
+                r = _sp.run(['pgrep', '-f', f'pipeline_runner.*{rid}'], capture_output=True)
+                if r.returncode != 0:  # no subprocess found — truly orphaned
+                    orphan_ids.append(rid)
+            if orphan_ids:
+                await conn.execute(
+                    sql_text("UPDATE content_runs SET status = 'failed', error = 'Worker restarted' WHERE id = ANY(:ids)"),
+                    {"ids": orphan_ids},
+                )
+            # Also unlock bank items whose run is orphaned
+            res2 = await conn.execute(sql_text("""
+                UPDATE content_bank SET status = 'queued', locked_at = NULL
+                WHERE status = 'locked' AND (
+                    run_id IS NULL OR run_id IN (
+                        SELECT id FROM content_runs WHERE status = 'failed'
+                    )
+                )
+            """))
+            if orphan_ids or res2.rowcount:
                 logger.warning("cleaned up orphaned state from previous worker",
-                               failed_runs=res1.rowcount, unlocked_items=res2.rowcount)
+                               failed_runs=len(orphan_ids), unlocked_items=res2.rowcount)
         await engine.dispose()
     except Exception as e:
         logger.error("orphan cleanup failed (non-fatal)", error=str(e)[:200])
