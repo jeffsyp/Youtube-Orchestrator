@@ -46,6 +46,14 @@ BRIEF: {brief}
 THE FORMAT:
 - Line 1 MUST state the topic as a question: "What if [animal] was [absurd scenario]?" — this IS the title. Shorts viewers don't see video titles so line 1 gives them context.
 - Line 2 goes STRAIGHT into the first time period (Day 1, Week 1, etc.) — NO story intro, NO setup, NO "imagine this"
+- CHOOSE THE RIGHT STRUCTURE:
+  A) DAY-BY-DAY — use when the animal is in a new environment over time:
+     - "Day 1:", "Day 2:", "Week 2:" as part of narration
+     - GOOD fit: "What if a golden retriever was the size of a building" → Day 1: noticed, Day 3: famous, Month 1: worshipped
+  B) REAL-TIME — use when it's a single moment of chaos:
+     - No day markers, rapid escalation
+     - GOOD fit: "What if a cat pressed the nuclear button" → paw on button, alarms, chaos, aftermath
+  Pick whichever fits.
 - Use whatever time structure fits the story — days, weeks, months, years, or no time labels at all. A penguin growing up takes months not days. A giant dog causes chaos in hours. Let the story decide.
 - 6-8 narration lines total, ~20-30 seconds. SHORTER IS BETTER — every line must earn its place
 - Each line = one scene = one image

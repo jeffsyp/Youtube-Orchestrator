@@ -59,14 +59,23 @@ THE FORMAT:
   - Workplace: "What if you got hired as [unexpected job] with zero qualifications?"
   Pick whichever hook fits the concept — do NOT force the "brought X to Y" template on premises where it doesn't fit.
 - The story is about the SITUATION — the skeletorinio is the person doing it. The situation is the star.
-- Escalation structure (3-5 beats — keep it tight):
-  - Beat 1: You arrive / the situation begins
-  - Beats 2-3: Things escalate, complications, bystanders react
-  - Final beat: GO ABSOLUTELY INSANE. The ending should be the most entertaining part.
-    - NOT "people get mad" or "the authorities arrive" — that's boring
-    - YES: you become president, you buy an island, you accidentally start a religion, you get launched into space, you break reality, the simulation crashes, the gods revolt
-    - The ending should make viewers replay the video. Realistic endings are BORING — go full absurd comedy.
-- The LAST LINE should be a punchline that lands hard — funny, unexpected, satisfying
+- CHOOSE THE RIGHT STRUCTURE for the concept:
+  A) DAY-BY-DAY ESCALATION — use when the concept spans time (arriving somewhere new, starting a job, entering a new world):
+     - Lines include "Day 1:", "Day 2:", "Week 2:", "Month 3:" as part of the narration
+     - Time jumps ACCELERATE — Day 1, Day 2, Day 3, then suddenly "Week 2" or "Year 5" to show things spiraling
+     - Each time jump shows a BIGGER consequence
+     - GOOD fit: "What if you brought a lighter to the Ice Age" → Day 1: discovery, Day 3: worshipped, Month 2: civilization built
+     - GOOD fit: "What if you accidentally became the chosen one" → Day 1: sword pull, Week 2: crowned king, Month 3: abolished feudalism
+  B) REAL-TIME ESCALATION — use when the concept is a single moment that spirals (one interaction, one event, one attempt):
+     - No day markers, just rapid beat-by-beat escalation within one scene/event
+     - GOOD fit: "What if Poseidon became a plumber" → shows up, touches pipe, bathroom floods, building floods, city floods
+     - GOOD fit: "What if you tried to return something on Black Friday" → walk in, line is insane, chaos erupts
+  Pick whichever structure fits the concept naturally. Day-by-day is the default for concepts that span time. Real-time is for single-moment chaos.
+- The ending must GO ABSOLUTELY INSANE:
+  - NOT "people get mad" or "the authorities arrive" — that's boring
+  - YES: you become president, you buy an island, you accidentally start a religion, you get launched into space, you break reality, the simulation crashes, the gods revolt
+  - The ending should make viewers replay the video. Realistic endings are BORING — go full absurd comedy.
+- The LAST LINE should be a punchline that lands hard — funny, unexpected, satisfying. Often a callback to something mundane from the premise.
 - Second person narration ("You walk in...", "You show...", "You realize...")
 - 6-8 narration lines total, ~20-30 seconds. SHORTER IS BETTER — every line must earn its place
 - Each line = one scene = one image

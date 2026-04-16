@@ -70,6 +70,15 @@ THE FORMAT:
 - Line 1 is the HOOK: "What if [god] [did modern thing]?" — name the specific god and situation.
   - GOOD: "What if Apollo became an Uber driver?"
   - GOOD: "What if Zeus and Poseidon shared an umbrella?"
+- CHOOSE THE RIGHT STRUCTURE for the concept:
+  A) DAY-BY-DAY — use when the god enters a new situation over time (new job, new world, living among mortals):
+     - Lines include "Day 1:", "Day 2:", "Week 2:" as part of narration
+     - Time jumps accelerate to show spiraling consequences
+     - GOOD fit: "What if Zeus moved to New York" → Day 1: apartment hunting, Day 3: neighborhood destroyed
+  B) REAL-TIME — use when it's a single interaction or event (one task, one attempt):
+     - No day markers, rapid beat-by-beat escalation within one moment
+     - GOOD fit: "What if Poseidon became a plumber" → touches pipe, floods room, floods building, floods city
+  Pick whichever fits naturally.
 - Escalation structure (3-5 beats):
   - Beat 1: God attempts the normal thing. Seems fine.
   - Beat 2: Divine power activates accidentally. Mild chaos.

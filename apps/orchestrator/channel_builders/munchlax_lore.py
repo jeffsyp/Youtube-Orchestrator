@@ -65,6 +65,14 @@ THE FORMAT:
   - GOOD: "What if Snorlax blocked the highway during rush hour?"
   - GOOD: "What if Charizard was your Uber driver?"
   - GOOD: "What if Mewtwo showed up to your job interview?"
+- CHOOSE THE RIGHT STRUCTURE:
+  A) DAY-BY-DAY — use when the Pokemon situation spans time:
+     - "Day 1:", "Day 2:", "Week 2:" as part of narration
+     - GOOD fit: "What if Snorlax blocked the highway" → Day 1: traffic stops, Day 3: news crews, Month 1: new landmark
+  B) REAL-TIME — use when it's a single Pokemon encounter/moment:
+     - No day markers, rapid escalation
+     - GOOD fit: "What if Charizard sneezed in a library" → sneeze, fire, sprinklers, everything destroyed
+  Pick whichever fits.
 - Escalation structure (3-5 beats):
   - Beat 1: The Pokemon appears / the situation begins. Seems manageable.
   - Beat 2: The Pokemon uses its abilities. Things escalate.
