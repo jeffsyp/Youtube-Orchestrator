@@ -148,31 +148,56 @@ Return ONLY a JSON object:
     from openai import AsyncOpenAI
     edit_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"), timeout=120.0)
 
+    # Determine concept type so we pick the right base scene + scene-change strategy
+    from packages.clients.claude import generate as claude_gen_base
+    concept_type_resp = claude_gen_base(
+        prompt=f"""Classify this Hardcore Ranked concept into ONE category:
+
+CONCEPT: {title}
+
+CATEGORIES:
+- "MOTION" — comparing terrain/condition where character physically moves (run, swim, roll, jump, race). The SETTING is the constant, the SURFACE/MEDIUM changes per scene.
+- "EQUIPMENT" — comparing tools/methods (cook with X, build with Y, cut with Z). The CHARACTER ACTION stays similar, the TOOL changes per scene.
+- "CONDITION" — comparing extreme environments or states (survive at X temperature, perform at Y pressure). The CHARACTER is in varying environments.
+- "QUANTITY" — comparing amounts/scales (how many X can fit in Y, how much Z is too much).
+
+Return ONLY the category name, nothing else.""",
+        max_tokens=20,
+    )
+    concept_type = concept_type_resp.strip().upper().strip('"').split()[0] if concept_type_resp else "MOTION"
+    logger.info("concept type classified", type=concept_type)
+
     brief = concept.get("brief", "")
     if brief:
-        # Brief describes the exact setup — use it directly as the base prompt
-        # Split on various markers to extract only the base scene description
         _base_text = brief
         for _marker in ['For edits', 'For every edit', 'For animation', 'For each edit']:
             _base_text = _base_text.split(_marker)[0]
-        base_prompt = f"Photorealistic. SINGLE IMAGE only — NOT a comic panel layout, NOT multiple panels, NOT a grid. One continuous scene. CAMERA: Behind-view, looking over the character's shoulder down the path/slope/track ahead. The character is a HUMAN-SIZED PERSON in a green frog-themed astronaut suit with a frog-shaped helmet — NOT an actual frog, NOT a cartoon frog, a HUMAN wearing a frog costume. {_base_text.strip()} NO text anywhere. ONE single frame only."
+        _character_desc = "The character is a HUMAN-SIZED PERSON in a green frog-themed astronaut suit with a frog-shaped helmet — NOT an actual frog, NOT a cartoon frog, a HUMAN wearing a frog costume."
+        if concept_type == "MOTION":
+            _camera = "CAMERA: Behind-view, looking over the character's shoulder down the path/slope/track ahead. Like a TV camera behind a starting line."
+        elif concept_type == "EQUIPMENT":
+            _camera = "CAMERA: Side or three-quarter view showing the character interacting with the equipment/tool and the subject of the experiment clearly visible. The setting should match the activity (kitchen, workbench, outdoors, etc.)."
+        elif concept_type == "CONDITION":
+            _camera = "CAMERA: Wide or medium shot showing the character IN the extreme environment, with clear visual cues of the condition (temperature extremes, pressure, etc.)."
+        else:
+            _camera = "CAMERA: Wide shot showing the character and the quantity/scale being measured clearly."
+        base_prompt = f"Photorealistic. SINGLE IMAGE only — NOT a comic panel layout, NOT multiple panels, NOT a grid. One continuous scene. {_camera} {_character_desc} {_base_text.strip()} NO text anywhere. ONE single frame only."
     else:
-        from packages.clients.claude import generate as claude_gen_base
         base_prompt_resp = claude_gen_base(
             prompt=f"""Based on this concept, describe the BASE SCENE for the comparison.
 
 CONCEPT: {title}
+CONCEPT TYPE: {concept_type}
 
 THE CHARACTER: A HUMAN-SIZED PERSON wearing a green frog-themed astronaut suit with a frog-shaped helmet. NOT an actual frog. A human in a frog costume.
 
-CAMERA: Always BEHIND the character, looking over their shoulder down the path/slope/track ahead. Like a TV camera behind a starting line.
+CAMERA + SETTING based on concept type:
+- MOTION (races, jumps, rolls): Camera BEHIND character, looking down a track/path/slope. Starting-line energy.
+- EQUIPMENT (cooking, building, testing tools): Side or three-quarter view. Setting matches the activity (kitchen for cooking, workbench for building, lab for testing). Tools/equipment clearly visible.
+- CONDITION (surviving extremes, temperatures): Character IN the environment, wide/medium shot. Environmental cues visible.
+- QUANTITY (how much fits, how many): Wide shot showing scale clearly.
 
-ACTION: The character must be performing the EXACT ACTION from the title:
-- "roll" = curled up in a ball, mid-tumble, body tucked
-- "swim" = arms mid-stroke, body horizontal in water
-- "run" = mid-stride, one leg forward, arms pumping
-- "jump" = legs coiled or mid-launch, leaving the ground
-Match the specific physical action. The character must be MID-ACTION, not standing still.
+ACTION: The character must be MID-ACTION performing the specific activity from the title. Not standing still.
 
 Start with "Photorealistic." End with "NO text anywhere."
 Return ONLY the prompt.""",
@@ -224,31 +249,55 @@ Return ONLY the prompt.""",
     await _update_step("creating scene variants")
 
     from packages.clients.claude import generate as claude_gen_edits
+
+    # Build concept-aware guidance for the per-scene edits
+    if concept_type == "MOTION":
+        _edit_guidance = """MOTION concept guidance:
+- The character is in the SAME setting across all scenes (same road, same pool, same arena)
+- The SURFACE/MEDIUM/OPPONENT is what changes per scene
+- Show the character performing the action (running, swimming, jumping)
+- For RACE-style comparisons: since Grok can't animate things pulling ahead, BAKE the result into the image — if the frog loses, show the opponent already far ahead with motion blur and distance. If the frog wins, show them clearly in the lead.
+- If the variable is a SURFACE (grass, ice, asphalt): show the character on that specific surface with visible differences in their traction/speed"""
+    elif concept_type == "EQUIPMENT":
+        _edit_guidance = """EQUIPMENT concept guidance:
+- The SETTING can evolve — a solar oven belongs outdoors, a microwave in a kitchen, a magnifying glass outside on a sunny day
+- Each scene should show the character actively USING the specific tool/method
+- The SUBJECT of the experiment (egg, soup, whatever is being cooked/built/tested) is clearly visible
+- Show the RESULT becoming visible — egg cooking, smoke rising, water boiling, etc.
+- The character's expression/posture should match the effort level required (straining for a slow method, relaxed for an easy one)"""
+    elif concept_type == "CONDITION":
+        _edit_guidance = """CONDITION concept guidance:
+- The ENVIRONMENT is the variable — each scene should clearly show the character IN that specific extreme condition
+- Visual cues of the condition: ice forming (cold), sweat pouring (hot), body deformed (pressure), etc.
+- Background/setting must match the condition (frozen landscape vs molten lava)
+- The character's body reaction tells the story"""
+    else:
+        _edit_guidance = """QUANTITY concept guidance:
+- Each scene shows a DIFFERENT amount/scale visibly
+- The character should be visible for scale reference
+- Make the scale comparison obvious — small pile vs massive mountain"""
+
     edits_resp = claude_gen_edits(
-        prompt=f"""For each narration line (except line 0), write a SHORT edit instruction. The base scene shows: {base_prompt}
+        prompt=f"""For each narration line (except line 0), write a SHORT edit instruction. The base scene shows: {base_prompt[:200]}...
+
+CONCEPT TITLE: {title}
+CONCEPT TYPE: {concept_type}
 
 NARRATION:
 {chr(10).join(f'{i}: "{line}"' for i, line in enumerate(narration_lines))}
 
-CRITICAL — THE STORY IS "FROG LOSES":
-Grok's video model cannot show subjects pulling ahead and shrinking into distance. So we must BAKE THE LOSS INTO THE IMAGE. The dinosaur must ALREADY be far ahead of the frog in every image — we are capturing the moment AFTER the dinosaur has pulled ahead, not the start of the race.
+{_edit_guidance}
 
-EACH SCENE'S IMAGE MUST SHOW:
-- Frog in foreground at the bottom of the frame, visibly exhausted (hunched, gasping, struggling)
-- The dinosaur ALREADY FAR AHEAD down the road — smaller in the frame due to distance
-- Motion blur / dust trail STRETCHING from the dinosaur back toward the frog, showing it has already been running and pulling away
-- The gap between them increases with each scene:
-  * Triceratops: 50 yards ahead (medium-sized in frame)
-  * T-Rex: 100 yards ahead (smaller in frame, running away)
-  * Velociraptor: 200 yards ahead (tiny, almost at horizon)
-  * Pterodactyl: flies DOWN to grab frog from above (different — no distance gap needed)
-
-Examples:
-- "Add a Triceratops that is ALREADY 50 YARDS AHEAD of the frog on the road, visible in the middle distance, mid-gallop with dust trail extending back toward the frog. The frog in foreground is hunched over, gasping. The Triceratops is SMALLER in the frame because it's further away. Everything else stays identical."
-- "Add a Velociraptor that is ALREADY 200 YARDS AHEAD — a tiny silhouette at the horizon, running away at top speed, huge dust trail extending back toward the frog. The frog in foreground looks defeated, tiny raptor visible in the distance down the road. Make the dinosaur LOOK TINY to show how far ahead it is."
+KEY RULES:
+- The CHARACTER (frog-suit) must stay visually consistent across scenes — same suit, same proportions
+- For MOTION concepts: keep the same camera angle and setting, only change the surface/opponent
+- For EQUIPMENT/CONDITION concepts: the BACKGROUND CAN CHANGE to match the tool/environment. Don't force the base scene's setting if it doesn't fit the variable.
+- Each scene should be VISUALLY DISTINCT from the others — not all same background if the concept doesn't require it
+- The ranking should ESCALATE visually: the last scene should feel more extreme/impressive than the first
+- BAKE the result into the image (don't show something "about to happen" — show it happening/happened)
 
 Return ONLY a JSON array of {n_lines} strings. Line 0 should be "No changes — use base scene as is." """,
-        max_tokens=1000,
+        max_tokens=1500,
     )
     edits_match = re.search(r'\[.*\]', edits_resp, re.DOTALL)
     edit_prompts = json.loads(edits_match.group()) if edits_match else ["No changes." for _ in range(n_lines)]
@@ -266,7 +315,12 @@ Return ONLY a JSON array of {n_lines} strings. Line 0 should be "No changes — 
                 resp = await edit_client.images.edit(
                     model="gpt-image-1.5",
                     image=base_file,
-                    prompt=f"Same exact scene, same camera angle, same character position. The character must look IDENTICAL to the input image — same suit, same helmet, same body proportions, same colors. ONLY change: {edit_prompts[i]} Everything else stays pixel-identical. NO text anywhere.",
+                    prompt=(
+                        f"The character must look IDENTICAL to the input image — same suit, same helmet, same body proportions, same colors. "
+                        + ("Same camera angle, same setting — only change the surface/opponent/variable. Everything else stays pixel-identical. " if concept_type == "MOTION"
+                           else "The character stays consistent but the BACKGROUND and SETTING can change to match the variable for this scene. ")
+                        + f"Change: {edit_prompts[i]} NO text anywhere."
+                    ),
                     size="1024x1536",
                     quality="medium",
                     input_fidelity="high",
