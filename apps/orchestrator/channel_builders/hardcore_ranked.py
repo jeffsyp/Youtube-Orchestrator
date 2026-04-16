@@ -390,31 +390,41 @@ Return ONLY a JSON array of {n_lines} strings. Line 0 should be "No changes — 
                     logger.info("regenerated base scene from feedback", feedback=fb_text[:60])
                 await _update_step("images ready for review")
 
-    # ─── STEP 5: Animation prompts — speed/movement per scene ───
+    # ─── STEP 5: Animation prompts — concept-specific movement per scene ───
     await _update_step("planning animations")
     from packages.clients.claude import generate as claude_gen
     anim_resp = claude_gen(
-        prompt=f"""For each narration line, write an EXTREMELY AGGRESSIVE animation prompt. Grok defaults to slow zooms — we must FORCE it to animate full-body motion.
+        prompt=f"""For each narration line, write an EXTREMELY AGGRESSIVE animation prompt. Grok defaults to slow zooms — we must FORCE it to animate the specific physical action for this concept.
+
+CONCEPT TITLE: {title}
 
 NARRATION:
 {chr(10).join(f'{i}: "{line}"' for i, line in enumerate(narration_lines))}
 
-THE PROBLEM: Grok makes static slideshows unless the prompt is extremely specific about physical motion. EVERY word of the prompt must describe what's moving RIGHT NOW.
+THE PROBLEM: Grok makes static slideshows unless the prompt is extremely specific about physical motion. EVERY word of the prompt must describe what's moving RIGHT NOW, and the motion must MATCH THE CONCEPT.
 
-REQUIRED PATTERN FOR EVERY PROMPT:
-1. Character A's specific limb motion: "Frog's legs pump up and down in a full running stride, knees driving to chest, feet slapping the ground rapidly"
-2. Character B's specific limb motion: "Triceratops gallops forward, all four legs cycling through a full run, tail whipping side to side"
-3. Environmental speed cues: "Dust clouds explode from every footstep, the road streaks past underneath, desert brush blurs as they sprint, air currents push back their hair/scales"
-4. Expression/state changes: "Frog's mouth opens gasping for air, tongue flops out, eyes widen in panic"
-5. Relative motion: "Triceratops PULLS AHEAD, gap widens every second, frog falls further behind"
+STEP 1 — IDENTIFY THE ACTION from the title/narration:
+- "Race/run/sprint/jump" → running motions, leg cycles, chase
+- "Cook/make/create X" → specific cooking/building motions: stirring, flipping, mixing, heating, focusing sunlight through a lens, flames flickering
+- "Try to X / attempt X" → the specific attempt motion + reactions to result (success or failure)
+- "Survive X / endure X" → body reactions to the condition (shivering, sweating, flailing)
+- "Test/compare X" → the specific test being performed
+
+STEP 2 — WRITE EVERY PROMPT WITH:
+1. Character's specific limb/body motion matching the concept's action (e.g. for cooking: "Frog holds magnifying glass steady with both hands, tilts it to focus the sunlight beam, eggshell begins to crackle and sizzle, smoke curls up")
+2. What the object/variable is DOING in reaction (the egg cooks, the hill tilts, the sprinter pulls ahead, the water freezes)
+3. Environmental cues that sell the moment: steam, dust, sparks, smoke, splashes, wind, light
+4. Frog's expression/reaction: concentrated focus, panic, pride, disbelief, exhaustion — match the moment
+5. The frog stays ON THE EXPERIMENT — never wanders off, never does random filler motion, always engaged with the variable being tested
 
 RULES:
-- Line 0 (hook): camera subject stares into camera, breath visible, nervous energy, shifting weight foot to foot preparing to sprint
-- Lines 1+: FULL SPRINT MOTION. Both characters running. Specific leg cycles.
-- Use words like: pumping, driving, slapping, cycling, whipping, thundering, exploding, blurring, streaking, gasping, panting
-- NEVER: "runs", "races", "moves" (too vague). Say EXACTLY how the legs move.
-- NEVER say "camera zooms" or "camera pans" — describe character motion only.
-- Each prompt should be 3-4 sentences packed with motion verbs.
+- The frog is the EXPERIMENTER. Every scene shows them performing the specific action from the narration.
+- Line 0 (hook): frog at the starting position, prepping the action (holding the lens, readying the pan, lining up the shot). Build anticipation.
+- Lines 1+: FULL EXECUTION of the specific action. Each scene shows a different variable/attempt.
+- Use specific verbs matching the concept: for racing → pumping, cycling, thundering / for cooking → stirring, flipping, searing / for freezing → shivering, trembling, cracking / for jumping → crouching, launching, landing
+- NEVER: generic "moves", "does stuff", random idle animation. Always specific to the concept.
+- NEVER say "camera zooms" or "camera pans" — describe character + environment motion only.
+- Each prompt should be 3-4 sentences packed with motion verbs relevant to the specific concept.
 
 Return ONLY a JSON array of {n_lines} strings.""",
         max_tokens=2500,
