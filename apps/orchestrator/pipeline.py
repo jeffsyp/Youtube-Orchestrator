@@ -675,6 +675,9 @@ No markdown, just the JSON array."""
         for i, audio in enumerate(beat_audio):
             seg_path = os.path.join(segments_dir, f"seg_{i}.mp4")
             dur = audio["duration"] + 0.05  # tight padding
+            # Pad LAST segment more so final narration isn't cut by xfade
+            if i == len(beat_audio) - 1:
+                dur += 0.6
             beat = beats[i]
             visual = beat_visuals.get(i, {"type": "image", "path": os.path.join(images_dir, f"beat_{i}.png")})
 
@@ -1328,10 +1331,12 @@ async def _run_no_narration(run_id: int, concept: dict, output_dir: str, _update
                 logger.info("chained last frame to next scene", from_scene=i, to_scene=i + 1)
 
         # Create segment — keep Grok native audio (run in executor to avoid blocking)
-        await asyncio.get_event_loop().run_in_executor(None, lambda: subprocess.run([
+        # Pad last segment so xfade doesn't clip the ending
+        seg_duration = duration + (0.6 if i == len(scenes) - 1 else 0)
+        await asyncio.get_event_loop().run_in_executor(None, lambda d=seg_duration: subprocess.run([
             "ffmpeg", "-y",
             "-stream_loop", "-1", "-i", clip_path,
-            "-t", str(duration),
+            "-t", str(d),
             "-vf", f"scale={WIDTH}:{HEIGHT}:force_original_aspect_ratio=decrease,pad={WIDTH}:{HEIGHT}:(ow-iw)/2:(oh-ih)/2",
             "-r", "30", "-pix_fmt", "yuv420p",
             "-c:v", "libx264", "-preset", "fast", "-crf", "23", "-pix_fmt", "yuv420p",
@@ -2311,6 +2316,8 @@ PROMPT: (only if NO) a corrected image prompt with detailed visual description o
 
     _seg_done = 0
 
+    _n_lines_total = len(line_audio)
+
     def _create_segment(i, audio):
         nonlocal _seg_done
         seg_path = os.path.join(segments_dir, f"seg_{i}.mp4")
@@ -2318,6 +2325,10 @@ PROMPT: (only if NO) a corrected image prompt with detailed visual description o
             _seg_done += 1
             return i, seg_path
         dur = audio["duration"]
+        # Pad the LAST segment by 0.6s so the final narration has room to play
+        # before the video ends — acrossfade blends the last 0.3s otherwise.
+        if i == _n_lines_total - 1:
+            dur += 0.6
         vp = visual_paths.get(i)
 
         if not vp:
