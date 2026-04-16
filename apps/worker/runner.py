@@ -163,7 +163,9 @@ async def _generate_item(item: dict):
             # Files that must NOT be reused (stale plans cause bad clip coverage / wrong scenes)
             STALE_FILES = {"plan.json", "visual_plan.json"}
             copied_something = False
-            for subdir in ["narration", "images", "clips", "segments", "character_refs"]:
+            # Note: "segments" excluded — they're built from clips + plan, and old segments
+            # from a different plan cause the compositor to skip lines (only 2/8 segments built).
+            for subdir in ["narration", "images", "clips", "character_refs"]:
                 src = os.path.join(prev_dir, subdir)
                 dst = os.path.join(new_dir, subdir)
                 if os.path.isdir(src) and not os.path.isdir(dst):

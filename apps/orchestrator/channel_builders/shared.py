@@ -734,7 +734,10 @@ def build_segments_from_clip_map(
             seg_durations.append(get_duration(seg_path))
             continue
 
-        narr_dur = get_duration(os.path.join(narr_dir, f"line_{i:02d}.mp3")) + 0.05
+        try:
+            narr_dur = get_duration(os.path.join(narr_dir, f"line_{i:02d}.mp3")) + 0.05
+        except Exception:
+            narr_dur = 3.0  # fallback
         clips = line_clip_map.get(i, [])
 
         if not clips:
