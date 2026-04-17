@@ -83,6 +83,28 @@ THE FORMAT:
 - Punchy, fast-paced, funny
 - Do NOT mention skeletorinio, bones, or the character's appearance — just tell the story
 
+REFERENCE EXAMPLE (the Chosen One — this was a hit, study its shape):
+Title: WHAT IF YOU ACCIDENTALLY BECAME THE CHOSEN ONE
+Narration:
+  0: What if you accidentally pulled a sword from a stone?
+  1: Day 1: You were just curious. The sword slides out with a hum.
+  2: Day 2: A dragon lands in front of you and bows. You did not ask for this.
+  3: Day 3: Wizards appear from thin air. They are all weeping.
+  4: Week 1: You are crowned king of a realm you cannot pronounce.
+  5: Month 2: The dragon is your ride now. You sleep in a floating castle.
+  6: Year 1: Prophecies about you are carved into mountains.
+  7: You still don't know what the sword does.
+
+Why this worked:
+- Universal mythology (Excalibur) — zero-context entry
+- "You" is a REACTOR — things happen TO you (dragon bows, wizards weep, prophecies carve themselves)
+- Time jumps ACCELERATE: Day 1, Day 2, Day 3, Week 1, Month 2, Year 1
+- CONCRETE visuals only (sword, dragon, crown, castle, mountains) — never abstract
+- Anticlimactic punchline: "You still don't know what the sword does" — leaves mystery
+- 8 lines, each under 15 words
+
+Aim for this shape. Match it in structure and energy.
+
 Return ONLY a JSON object:
 {{"narration": ["line 1", "line 2", ...], "title": "SHORT PUNCHY TITLE"}}"""
 
