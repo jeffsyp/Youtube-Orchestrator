@@ -80,21 +80,23 @@ THE FORMAT:
   - Bad peak examples: "You get a crown", "You get it a chair" (too small — nothing lands after)
   - The peak should feel OVERWHELMING so the final line has something to land against.
 
-- THE LAST LINE — choose ONE of these endings based on the concept:
+- THE LAST LINE — write a REAL STORY ENDING that resolves the arc into a new stable state. The viewer should feel "the story is complete" — not "there's more to figure out."
 
-  A) CLIMACTIC ENDING (usually stronger for shorts): A decisive final moment that gives the viewer payoff. Something happens — a reveal, a transformation, a massive escalation beyond the peak, or a power moment.
-     - Chosen One climactic: "Year 5: The sword finally speaks. It says your name." (reveal — leaves mystery AND impact)
-     - Demon climactic: "One day it asks a favor. You say yes before it finishes the sentence." (turn — now you serve it)
-     - Use this when: the viewer has been building tension/anticipation, the escalation has momentum, or the concept is active (you DID something).
+  GOOD REAL-STORY ENDINGS (the situation RESOLVES, a new normal sticks):
+  - Chosen One: "Year 50: You died of old age. The kingdom named a star after you. The sword quietly returned to its stone." (lifetime arc closes, cycle resets)
+  - Demon: "Year 10: You and the demon run a bakery together now. He does the dishes. You split the rent." (the terror became a roommate — new equilibrium)
+  - Jetpack in Rome: "Year 3: Rome colonized the Moon. History books say you did it on purpose. You did not." (world permanently changed)
+  - Genie lamp: "Year 5: The genie opened a law firm. You're his first client. Business is thriving." (both parties found their place)
 
-  B) ANTICLIMACTIC ENDING: A tiny, deflating callback to the mundane premise. The universe cracks open and you shrug.
-     - Chosen One anticlimactic: "You still don't know what the sword does." (active mystery callback)
-     - Demon anticlimactic: "You still don't know what the line meant." (callback to the book)
-     - Use this when: the character is a passive observer, the humor is in their indifference, or you want the viewer to replay looking for clues.
+  BAD ENDINGS:
+  - Cliffhangers: "You still don't know what the sword does." (leaves mystery unresolved — feels incomplete)
+  - Shrugs without resolution: "It has attended every family dinner." (doesn't show where the story ENDS)
+  - Reveals that open more questions: "The sword finally speaks. It says your name." (another mystery, not a resolution)
+  - Power-status claims: "You are a god now." (too abstract, no concrete endpoint)
 
-  Pick whichever fits the energy of the concept. Climactic is usually stronger for shorts (viewers expect a payoff moment to screenshot/share). Anticlimactic works when the character's obliviousness IS the joke.
+  Structure: TIME JUMP (Year 5, Year 10, Year 50, "decades later") + NEW NORMAL (what life looks like now) + a CONCRETE DETAIL that shows the absurdity has become routine. This is the Pixar-short ending pattern — tension resolves into a new stable equilibrium, not a reveal.
 
-- Either way, the LAST LINE must be memorable — the line people quote when sharing the video. Weak endings ("you are now a king", "everyone loves you") are BAD regardless of style.
+- The LAST LINE must be memorable — the line people quote when sharing the video. Weak endings are BAD.
 - Second person narration ("You walk in...", "You show...", "You realize...")
 - 6-8 narration lines total, ~20-30 seconds. SHORTER IS BETTER — every line must earn its place
 - Each line = one scene = one image
