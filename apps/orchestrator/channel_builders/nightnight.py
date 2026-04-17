@@ -114,6 +114,19 @@ REQUIRED 7-LINE STRUCTURE (use canon events as the beats):
 
 Every line must reference CANON by name. Generic "Phase One: a death march" is BAD. Specific "Phase 1: the 80km Zaban City marathon behind Satotz" is GOOD.
 
+MAIN CANON CHARACTERS MUST APPEAR — NOT JUST THE VISITOR:
+The visitor is the disruptor, but the CANON PROTAGONISTS must be in the video reacting to them. Fans watch crossovers to see THEIR favorites meet the visitor. If it's just the visitor + generic examiners, it's half a video.
+- Hunter Exam: Gon, Killua, Leorio, Kurapika, Hisoka must each appear by NAME in at least one line. Name who's reacting to the visitor.
+- Demon Slayer Final Selection: Tanjiro, Sabito (as ghost), Makomo, Genya, Zenitsu, Inosuke.
+- Chunin Exams: Naruto, Sasuke, Sakura, Hinata, Neji, Rock Lee, Gaara, Orochimaru.
+- Dressrosa: Luffy, Sabo, Bartolomeo, Cavendish, Rebecca, Doflamingo, Law.
+- GOOD: "Killua side-eyes him — 'why is this guy jogging backwards?'"
+- GOOD: "Hisoka licks his lips. Goku just waves and says hi."
+- GOOD: "Gon's whole arm extends into a fishing rod. He's never met anyone bigger than him."
+- BAD: generic "examiners" or "other applicants" without names — fans expect specific characters
+
+Distribute named canon characters across multiple lines so the video feels populated with the right cast, not just two people.
+
 WHAT EACH LINE MUST DO (mandatory):
 - Each line RESOLVES one beat before moving on. NEVER drop a thread.
 - Each line CONNECTS to the next via cause-and-effect, not just "next thing."
