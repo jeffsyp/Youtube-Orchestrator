@@ -35,14 +35,31 @@ ART_STYLE = "Photorealistic world with cinematic golden hour lighting. The main 
 
 IMAGE_RULES = """RULES — FOLLOW THESE EXACTLY:
 - The main character is a FULL-SIZE adult human-height 3D animated plastic skeletorinio with big googly cartoon eyes, gold chain necklace, and sunglasses on forehead. He is the SAME HEIGHT as real humans — NOT a miniature toy.
+- The skeletorinio is "YOU" — the protagonist/observer/reactor in every scene. He is the HUMAN PERSON doing the action.
 - A reference image of the skeletorinio is provided — match this character exactly but at HUMAN SCALE
 - For EVERY scene with the skeletorinio, start the prompt with: "A full-size human-height 3D animated skeletorinio character with gold chain and sunglasses on forehead"
 - The WORLD is PHOTOREALISTIC — real-looking buildings, landscapes, people, objects. Cinematic golden hour lighting.
-- The skeletorinio is the ONLY non-realistic element. Everything else looks like a photograph.
-- Other people (kings, soldiers, workers, merchants) must be described as PHOTOREALISTIC HUMANS, NOT cartoons, NOT skeletorinios
+- The skeletorinio is the ONLY stylized-character element. Everything else looks like a photograph.
 - Do NOT say "toy" or "miniature" or "figurine" — the skeletorinio is HUMAN-SIZED
 - Every prompt must end with "Photorealistic world. NO text anywhere."
-- Each prompt should describe ONE clear scene matching the narration line"""
+- Each prompt should describe ONE clear scene matching the narration line
+
+TWO-CHARACTER CONCEPTS (demon, dragon, genie, alien, monster, ghost, god, creature):
+- When the concept introduces a SECOND major entity (demon, dragon, god, etc.), that entity is a SEPARATE CHARACTER from the skeletorinio.
+- The skeletorinio is "YOU" the human. The demon/dragon/god is the SPECTACLE/THREAT/COMPANION.
+- In scenes where the narration mentions the second entity, that entity MUST be the VISUAL FOCUS of the scene — large, dramatic, centered.
+- DESCRIBE THE SECOND ENTITY IN FULL VISUAL DETAIL — size, color, features, pose, expression. Do NOT just say "the demon" — say "a massive 10-foot horned demon with red skin, glowing yellow eyes, black leathery wings, and curved fangs, looming in the living room."
+- The second entity is ALSO stylized/non-photoreal — treat it as equally cinematic as the skeletorinio (3D animated creature in a photoreal world).
+- Example concept: "you summoned a demon"
+  - Line mentioning the demon arrival: "The skeletorinio stands in his living room looking terrified. Behind him, a MASSIVE 10-foot horned demon with crimson skin, glowing yellow eyes, and black wings has burst through the floor, smoke curling around his hooves. The demon fills the frame."
+  - Line where the demon is just "hanging around": "The skeletorinio watches TV on the couch. The massive demon sits awkwardly on the adjacent armchair, squeezing into it, holding a tiny remote in his giant claws."
+- NEVER swap the second entity for a random human bystander. If the script says "demon," draw a demon.
+
+HOOK / LINE 0 — PAYOFF VISUAL:
+- The hook frame must depict the CONCEPT in motion — not a setup scene, not a random establishing shot.
+- For "summoned a demon": show the skeletorinio in his living room with the massive demon already there (the "can't send back" situation already happening).
+- For "brought a jetpack to Rome": show the skeletorinio flying over the Colosseum in a jetpack.
+- NEVER let the hook be a random unrelated scene (e.g. cupcake shop, coffee house) — it must illustrate the video's actual premise."""
 
 SCRIPT_PROMPT = """Write a narration script for a Skeletorinio YouTube video.
 
