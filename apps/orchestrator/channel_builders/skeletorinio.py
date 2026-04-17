@@ -75,16 +75,26 @@ THE FORMAT:
   - NOT "people get mad" or "the authorities arrive" — that's boring
   - YES: you become president, you buy an island, you accidentally start a religion, you get launched into space, you break reality, the simulation crashes, the gods revolt
   - The ending should make viewers replay the video. Realistic endings are BORING — go full absurd comedy.
-- THE PENULTIMATE LINE (second to last) MUST BE THE MAXIMUM ESCALATION — the biggest, most absurd, world-scale consequence. This sets up the anticlimax.
-  - Chosen One good peak: "Year 1: Prophecies about you are carved into mountains." (world-scale, eternal)
-  - Chosen One bad peak would be: "You get a crown" (too small — nothing to anticlimax from)
-  - Demon good peak: "Year 3: It has a seat at Thanksgiving, a LinkedIn profile, and joint custody of the dog." (multiple absurd integrations, concrete)
-  - Demon bad peak: "You get it a chair" (too small, domestic, already anticlimactic)
-  - The peak should feel OVERWHELMING — the tiny final line then deflates it perfectly
-- THE LAST LINE is the anticlimactic punchline — tiny, deflating, often a callback to the original mundane premise. It should feel like a shrug after the massive peak.
-  - Chosen One good punchline: "You still don't know what the sword does." (active mystery, callback to line 1)
-  - Demon good punchline: "You still don't know what the line meant." (callback to the book)
-  - Formula: small concrete fact that contradicts the cosmic scale of the peak
+- THE PENULTIMATE LINE (second to last) MUST BE A MAXIMUM ESCALATION — the biggest, most absurd, world-scale consequence. The ending line then resolves that peak.
+  - Good peak examples: "Year 1: Prophecies about you are carved into mountains.", "Year 3: It has a seat at Thanksgiving, a LinkedIn profile, and joint custody of the dog."
+  - Bad peak examples: "You get a crown", "You get it a chair" (too small — nothing lands after)
+  - The peak should feel OVERWHELMING so the final line has something to land against.
+
+- THE LAST LINE — choose ONE of these endings based on the concept:
+
+  A) CLIMACTIC ENDING (usually stronger for shorts): A decisive final moment that gives the viewer payoff. Something happens — a reveal, a transformation, a massive escalation beyond the peak, or a power moment.
+     - Chosen One climactic: "Year 5: The sword finally speaks. It says your name." (reveal — leaves mystery AND impact)
+     - Demon climactic: "One day it asks a favor. You say yes before it finishes the sentence." (turn — now you serve it)
+     - Use this when: the viewer has been building tension/anticipation, the escalation has momentum, or the concept is active (you DID something).
+
+  B) ANTICLIMACTIC ENDING: A tiny, deflating callback to the mundane premise. The universe cracks open and you shrug.
+     - Chosen One anticlimactic: "You still don't know what the sword does." (active mystery callback)
+     - Demon anticlimactic: "You still don't know what the line meant." (callback to the book)
+     - Use this when: the character is a passive observer, the humor is in their indifference, or you want the viewer to replay looking for clues.
+
+  Pick whichever fits the energy of the concept. Climactic is usually stronger for shorts (viewers expect a payoff moment to screenshot/share). Anticlimactic works when the character's obliviousness IS the joke.
+
+- Either way, the LAST LINE must be memorable — the line people quote when sharing the video. Weak endings ("you are now a king", "everyone loves you") are BAD regardless of style.
 - Second person narration ("You walk in...", "You show...", "You realize...")
 - 6-8 narration lines total, ~20-30 seconds. SHORTER IS BETTER — every line must earn its place
 - Each line = one scene = one image
