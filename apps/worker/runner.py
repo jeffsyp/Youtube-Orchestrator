@@ -59,8 +59,10 @@ async def _claim_next_item() -> dict | None:
     """Find and claim the next queued item. Returns item dict or None."""
     engine = _get_engine()
     async with AsyncSession(engine) as s:
-        # Find next queued item, respecting channel pause
-        # Skip channels that already have something generating
+        # Find next queued item, respecting channel pause.
+        # Skip channels that already have something generating.
+        # FOR UPDATE SKIP LOCKED on cb prevents two concurrent claimers from
+        # both selecting the same row before either commits the status change.
         result = await s.execute(text("""
             SELECT cb.id, cb.channel_id, cb.title, cb.concept_json, cb.attempt_count,
                    c.name as channel_name
@@ -74,6 +76,7 @@ async def _claim_next_item() -> dict | None:
             )
             ORDER BY cb.priority ASC, cb.created_at ASC
             LIMIT 1
+            FOR UPDATE OF cb SKIP LOCKED
         """))
         row = result.fetchone()
 
@@ -82,7 +85,7 @@ async def _claim_next_item() -> dict | None:
 
         bank_id, channel_id, title, concept_json, attempt_count, channel_name = row
 
-        # Claim the item (optimistic lock)
+        # Claim the item (optimistic lock — second layer of protection).
         claimed = await s.execute(text("""
             UPDATE content_bank
             SET status = 'locked', locked_at = NOW()
@@ -281,6 +284,20 @@ async def _generate_item(item: dict):
         logger.error("generation failed", run_id=run_id, bank_id=bank_id, error=str(e)[:300])
 
         async with AsyncSession(engine) as s:
+            # Only requeue/fail if THIS run is still the one bound to the bank.
+            # If another run has already taken over (race from an earlier duplicate claim),
+            # leave the bank alone so we don't yank it out from under the live run.
+            owner_check = await s.execute(text("""
+                SELECT run_id FROM content_bank WHERE id = :id
+            """), {"id": bank_id})
+            owner = owner_check.scalar_one_or_none()
+            if owner is not None and owner != run_id:
+                logger.info(
+                    "skipping requeue — another run owns this bank",
+                    bank_id=bank_id, dead_run=run_id, live_run=owner,
+                )
+                return
+
             new_attempt = attempt_count + 1
             if new_attempt < 3:
                 await s.execute(text("""
