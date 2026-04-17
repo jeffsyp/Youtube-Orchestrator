@@ -75,7 +75,16 @@ THE FORMAT:
   - NOT "people get mad" or "the authorities arrive" — that's boring
   - YES: you become president, you buy an island, you accidentally start a religion, you get launched into space, you break reality, the simulation crashes, the gods revolt
   - The ending should make viewers replay the video. Realistic endings are BORING — go full absurd comedy.
-- The LAST LINE should be a punchline that lands hard — funny, unexpected, satisfying. Often a callback to something mundane from the premise.
+- THE PENULTIMATE LINE (second to last) MUST BE THE MAXIMUM ESCALATION — the biggest, most absurd, world-scale consequence. This sets up the anticlimax.
+  - Chosen One good peak: "Year 1: Prophecies about you are carved into mountains." (world-scale, eternal)
+  - Chosen One bad peak would be: "You get a crown" (too small — nothing to anticlimax from)
+  - Demon good peak: "Year 3: It has a seat at Thanksgiving, a LinkedIn profile, and joint custody of the dog." (multiple absurd integrations, concrete)
+  - Demon bad peak: "You get it a chair" (too small, domestic, already anticlimactic)
+  - The peak should feel OVERWHELMING — the tiny final line then deflates it perfectly
+- THE LAST LINE is the anticlimactic punchline — tiny, deflating, often a callback to the original mundane premise. It should feel like a shrug after the massive peak.
+  - Chosen One good punchline: "You still don't know what the sword does." (active mystery, callback to line 1)
+  - Demon good punchline: "You still don't know what the line meant." (callback to the book)
+  - Formula: small concrete fact that contradicts the cosmic scale of the peak
 - Second person narration ("You walk in...", "You show...", "You realize...")
 - 6-8 narration lines total, ~20-30 seconds. SHORTER IS BETTER — every line must earn its place
 - Each line = one scene = one image
