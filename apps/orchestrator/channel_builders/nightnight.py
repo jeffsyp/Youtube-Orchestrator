@@ -69,13 +69,39 @@ EVERY SCRIPT MUST HAVE A STORY ARC — NOT A LIST OF MOMENTS:
 The script must read as a sequence where EACH line builds on the last. Not vignettes, not a description, not a list of "things that happen." A story.
 
 USE THE ACTUAL CANON EVENTS FROM THE SHOW:
-The scenario must progress through the REAL phases/fights/tests of the source material. Don't invent generic "Phase One: a tunnel" — name the specific canonical events fans know:
-- Hunter Exam: Phase 1 (marathon through Zaban tunnel chasing Satotz), Phase 2 (cooking for Menchi in Biska Forest), Phase 3 (Trick Tower), Phase 4 (Zevil Island tag hunt), Phase 5 (Netero's final exam)
-- Final Selection: wisteria mountain, demons at night, Urokodaki's students, Sabito ghost
-- Chunin Exams: written test (Ibiki), Forest of Death (scrolls), Preliminary 1v1s, finals in the stadium with Orochimaru crashing
-- One Piece Dressrosa: colosseum tournament, Doflamingo's birdcage, Bellamy the Hyena fight
-- For any other canon event — research the real sequence and use it
-If you don't know the exact canon phases for this scenario, pick 2-3 iconic moments fans recognize by name.
+The scenario must progress through the REAL phases/fights/tests of the source material. Don't invent generic "Phase One: a tunnel" — name the specific canonical events fans know.
+
+CANON REFERENCE — Hunter Exam (Hunter x Hunter):
+- Setting: Exam Hall under Zaban City. Applicants include Gon, Killua, Leorio, Kurapika, Hisoka, Tonpa. Chairman Netero runs the final test.
+- Phase 1: Marathon through the Zaban City underground tunnel led by examiner Satotz in a purple suit. 80+km. Then climbing stairs. Then crossing the Milsy Wetlands swamp full of "Man-Faced Ape" tricksters.
+- Phase 2: Gourmet cooking test in Biska Forest. Examiners Menchi (small, volatile) and Buhara (massive, hungry). First test: cook pork (failed, most applicants eliminated). Retest: retrieve spider eagle eggs from the Split-Mountain.
+- Phase 3: Trick Tower — 72 hours to descend. Paired with chained prisoners for 1v1 matches (first to 3 wins). Key fights: Leorio vs Majtani, Kurapika vs Majtani's replacement, Gon vs a prisoner who can throw fights for money.
+- Phase 4: Zevil Island — each applicant gets a numbered target badge. You must earn 6 points in 1 week by stealing your target's badge (3pts) + keeping yours (3pts). Hisoka hunts Gon here. Gon steals Hisoka's badge by ambushing him.
+- Phase 5 (Finals): Round-robin tournament at Zaban Hotel. Chairman Netero observes. To win, make opponent VERBALLY admit defeat — not knock them out. Only ONE applicant fails; everyone else gets a license. Gon fights Hanzo (ninja), Killua fights his brother Illumi and gets manipulated into quitting.
+- Post-exam: Netero's secret test — retrieve a ball from him. Gon and Killua try together.
+
+CANON REFERENCE — Final Selection (Demon Slayer):
+- Setting: Mt. Fujikasane, a mountain covered in wisteria (repels demons). Held once a year. 7 days survival.
+- Candidates trained by former Hashira. Urokodaki's students (Tanjiro, Sabito, Makomo, Genya, Zenitsu, Inosuke) arrive.
+- The wisteria flowers keep most demons at bay, but regular low-rank demons roam freely.
+- Hand-Demon lurks at the summit — killed Urokodaki's students years ago. Sabito and Makomo appear as ghosts to guide current candidates.
+- Survivors are given a Nichirin Sword made from scarlet ore.
+
+CANON REFERENCE — Chunin Exams (Naruto):
+- Setting: Konohagakure. Sarutobi Hiruzen is Hokage. Ibiki Morino runs Phase 1.
+- Phase 1: Written test in a classroom. Cheating is part of the test — 9 pre-planted chunin give answers. Final 10th question is a bluff.
+- Phase 2: Forest of Death (Training Ground 44). 5 days. Teams start with one Heaven or Earth scroll, must get the matching scroll from another team. Orochimaru attacks Sasuke here and gives him the curse mark.
+- Phase 3 Preliminaries: 1v1 matches in an arena. Hayate referees. Key fights: Neji vs Hinata, Rock Lee vs Gaara, Sasuke vs Yoroi.
+- Phase 3 Finals: Konoha Stadium. Naruto vs Neji (Byakugan). Gaara vs Sasuke interrupted by Orochimaru invasion. Third Hokage dies.
+
+CANON REFERENCE — Dressrosa arc (One Piece):
+- Colosseum tournament for the Mera Mera no Mi (Flame-Flame Fruit once belonging to Ace).
+- Competitors: Luffy (as "Lucy"), Sabo, Cavendish, Bartolomeo, Rebecca, Bellamy.
+- Doflamingo is the island's hidden tyrant. Reveals his Birdcage — a giant strand-wall enclosing all of Dressrosa.
+- Toy Soldiers and Tontatta dwarves are victims of Sugar's devil fruit.
+- Climax: Luffy vs Doflamingo on top of the royal palace. Gear Fourth introduced.
+
+For any scenario not listed — use what you genuinely know about the canon. Name specific characters, locations, techniques. If you don't know, pick 2-3 iconic moments fans recognize by name rather than inventing generic tests.
 
 REQUIRED 7-LINE STRUCTURE (use canon events as the beats):
 - Line 1: HOOK — the "what if" question, name the specific scenario.
