@@ -96,7 +96,8 @@ STRUCTURE: {structure}
 KEY FACTS: {key_facts}
 
 THE FORMAT:
-- Line 1 MUST state the topic: "How fast can frog swim across a pool in every liquid?" — this IS the title. Shorts viewers don't see video titles.
+- Line 1 MUST state the topic as a neutral question: "How fast can you swim across a pool in every liquid?" or "How long does each material take to melt in the sun?" — this IS the title. Shorts viewers don't see video titles.
+- NEVER name the test-subject character — no "frog", no "frog guy", no nickname. If a human subject is needed, refer to generic "you" / "a person" / "the test subject".
 - Line 2 onwards: NUMBERED ranked list. Each line starts with the rank number. Example:
   - "Number 1: Water. Four seconds. Built for this."
   - "Number 2: Honey. Three hours. Basically a statue."
@@ -106,8 +107,7 @@ THE FORMAT:
   BAD: "Grass gets him six feet. Dirt path, eight. Asphalt, fifteen." (3 items crammed into 1 line — impossible to visualize)
   GOOD: "Number 2: Grass. Six feet. Barely counts."
   GOOD: "Number 3: Dirt path. Eight feet. Getting somewhere."
-- The character in a frog-themed astronaut suit is the test subject in EVERY scene
-- The character does the EXACT SAME THING in every scene — only the VARIABLE changes
+- The SAME ACTION is performed in every scene — only the VARIABLE changes
 - Start with the most normal, escalate to the most insane
 - The LAST item should be absurd and break the format (explosion, launch into space, instant destruction)
 - 6-8 narration lines, ~20-30 seconds. SHORTER IS BETTER.
