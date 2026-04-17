@@ -28,37 +28,38 @@ VOICE_ID = "JjsQrIrIBD6TZ656NQfi"  # One on Ones voice
 MUSIC_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "..", "assets", "music", "epic", "five_armies.mp3")
 TAGS = ["who would win", "vs", "battle", "one on one", "shorts", "viral"]
 
-ART_STYLE = "Simple colorful cartoon illustration — bright colors, clean lines, expressive characters, solid backgrounds. Fun and friendly."
+ART_STYLE = "Photorealistic cinematic with dramatic action lighting. Characters rendered as live-action movie versions — realistic textures, real-world lighting, practical effects. Think blockbuster film still, not cartoon. Dynamic motion blur, debris, sparks, smoke. Gritty and epic."
 
 IMAGE_RULES = """ART STYLE:
-- Simple crude cartoon with thick wobbly BLACK outlines and flat solid colors
-- Like a funny webcomic — NO gradients, NO shading, NO glow effects
-- Flat color fills only. Stubby proportions. Exaggerated expressions.
-- The crude style keeps characters CONSISTENT across scenes — same simple design every time
-- NOT photorealistic, NOT detailed — crude and fun
+- PHOTOREALISTIC — cinematic blockbuster-film quality
+- Characters look like LIVE-ACTION MOVIE VERSIONS — real textures, real faces (under masks/helmets), real suits
+- Dramatic action lighting — rim lights, lens flare, volumetric smoke, sparks, debris
+- Real-world environments rendered with full detail (destroyed cities, actual arenas, real rooftops)
+- NOT cartoon, NOT cel-shaded, NOT anime — photorealistic cinematography
 
-CHARACTER ACCURACY — CRUDE DOES NOT MEAN UNRECOGNIZABLE:
-- Use EXACT character names (Link from Zelda, Cloud from Final Fantasy, Iron Man from Marvel, etc.)
-- Characters must be INSTANTLY recognizable even in crude style — signature weapons, colors, silhouettes
-- Each character must look the SAME in every single scene — same proportions, same outfit, same weapon
-- gpt-image knows these characters by name — use names not descriptions
+CHARACTER ACCURACY:
+- Use EXACT character names (Spider-Man, Black Panther, Iron Man, Link, Cloud, Goku, etc.)
+- Characters must look like their MOVIE/HIGH-BUDGET-ANIMATION versions — not comic-book flat
+- Each character must look the SAME in every single scene — same suit, same proportions, same weapon
+- For anime characters, render them as if they were in a live-action movie adaptation
 
 BATTLE COMPOSITION:
 - Show BOTH fighters in every battle scene — never just one
 - The fighters should be actively FIGHTING — mid-punch, dodging, using signature moves
 - Show environmental destruction as collateral damage (craters, broken buildings, debris)
-- SHOW THE IMPACT: When an attack lands, show the fist/sword/blast connecting AND the opponent flying back, crashing, or reacting. Characters don't just disappear — they get sent flying with spiral eyes, embedded in walls, or knocked across the scene.
+- SHOW THE IMPACT: When an attack lands, show the fist/sword/blast connecting AND the opponent flying back, crashing, or reacting. Characters don't just disappear — they get sent flying, embedded in walls, or knocked across the scene.
 
 SCENE FLOW — EACH SCENE MUST CONNECT TO THE NEXT:
 - If scene N shows Character A charging an attack, scene N+1 MUST show that attack landing or being blocked — not a completely new composition
 - The defeated character must be VISIBLE in the defeat scene — not just gone
-- Think of it like a comic strip: each panel follows from the last
+- Think of it like a film fight sequence: each shot follows from the last
 
 EVERY PROMPT MUST:
-- Start with "Simple crude cartoon with thick black outlines and flat colors."
-- Show both characters clearly identifiable by name
+- Start with "Photorealistic cinematic shot."
+- Show both characters clearly identifiable by name (live-action movie appearance)
 - Describe the SPECIFIC action with the RESULT visible
-- End with "NO text anywhere." """
+- Include lighting/atmosphere cues (golden hour, overcast, neon-lit, dust cloud, etc.)
+- End with "Photorealistic. NO text anywhere." """
 
 SCRIPT_PROMPT = """Write a narration script for a One on Ones For Fun battle video.
 
