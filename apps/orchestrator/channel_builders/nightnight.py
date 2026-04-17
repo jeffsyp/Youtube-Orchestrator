@@ -28,12 +28,18 @@ VOICE_ID = "TX3LPaxmHKxFdv7VOQHJ"
 MUSIC_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "..", "assets", "music", "dark", "rising.mp3")
 TAGS = ["anime", "what if", "shorts", "viral", "nightnightshorts"]
 
-ART_STYLE = "Anime art style with detailed expressive characters, warm colors, and clean linework. Characters drawn in recognizable anime proportions with large expressive eyes, detailed hair, and accurate costumes. Backgrounds are detailed and painterly."
+ART_STYLE = "Simple crude cartoon — thick wobbly outlines, flat bold colors, exaggerated round heads, simple bodies. Deliberately ugly and charming. Anime characters rendered in this crude cartoon style — signature hair/outfit/weapons kept recognizable but drawn in the cartoon's chunky simplified style. NOT anime, NOT realistic — crude cartoon."
 
-IMAGE_RULES = """ANIME CHARACTERS:
-- Use actual character names (Zoro from One Piece, Gon from Hunter x Hunter, etc.)
-- gpt-image knows these characters by name — use names not descriptions
-- Characters must be RECOGNIZABLE — signature hair, outfit, weapons
+IMAGE_RULES = """ART STYLE:
+- CRUDE CARTOON — thick wobbly outlines, flat bold colors, round exaggerated heads, stubby simple bodies
+- Deliberately ugly and charming — NOT clean anime linework, NOT realistic proportions
+- Every character keeps their SIGNATURE IDENTITY (Goku's spiky hair + orange gi, Saitama's bald head + yellow suit + red gloves, Luffy's straw hat + red vest + scar under eye) but drawn in crude cartoon
+- Backgrounds are flat, simple, high-contrast — think Adult Swim / early-2000s Flash cartoon, not painterly anime backgrounds
+
+ANIME CHARACTERS — USE THEIR NAMES:
+- Use actual character names (Goku, Gon, Killua, Saitama, Luffy, Tanjiro, Naruto, etc.) in every prompt
+- gpt-image knows these characters by name and will preserve their signature features automatically even in cartoon style
+- Always include signature identifiers in the prompt: "Goku (spiky black hair, orange gi with blue belt)", "Killua (white spiky hair, green turtleneck)", "Hisoka (red hair, jester makeup, star and teardrop face paint)"
 
 FRANCHISE SEPARATION — CRITICAL:
 - The VISITING character is from ONE franchise (e.g. Goku from Dragon Ball)
@@ -45,20 +51,22 @@ FRANCHISE SEPARATION — CRITICAL:
 - Every image prompt MUST explicitly state "No other Dragon Ball characters" (or whichever the visitor's franchise is) to prevent gpt-image from hallucinating Roshi/Krillin/Bulma into host-franchise scenes.
 - Backgrounds and settings must be from the HOST world. No Dragon Ball landscapes in a Hunter Exam scene. No ninja villages in a One Piece scene.
 
-FIGHT SCENES — SHOW THE STARTING POINT:
-- Each image shows the BEGINNING of the action, NOT the result
-- The ANIMATION creates the impact/aftermath
+FIGHT/ACTION SCENES IN CARTOON STYLE:
+- Cartoon physics make action MORE readable — impact stars, motion lines, dust clouds, deformed poses
+- Each image shows the BEGINNING of the action, the ANIMATION creates the impact/aftermath
 - Both characters visible in every fight scene
+- Use cartoon exaggeration: crater-shaped holes in walls, character-shaped dust outlines, characters with X-eyes when KO'd, comically oversized attack energy balls
 
 COMEDY IN EVERY IMAGE:
-- Characters should have EXAGGERATED expressions — bug eyes when shocked, sweat drops when nervous, smug grins when winning
+- Characters should have EXAGGERATED cartoon expressions — bug eyes when shocked, giant sweat drops when nervous, smug grins when winning, tiny white dots for shocked eyes
 - The visiting character should look out of place — confused by the world's rules, using their powers in stupid ways
-- Background characters should be REACTING — jaw drops, pointing, running away, filming on phones
-- Physical comedy: characters embedded in walls, crater-shaped holes, comically oversized attacks
+- Background characters should be REACTING — jaw-on-the-floor drops, pointing, running away in panicked silhouettes
+- Physical comedy: characters embedded in walls, comically oversized attacks, wobbly stretched limbs
 
 MOOD MATCHING:
 - Calm lines = calm scene. Only show fighting when narration describes a fight.
 - BUT even calm scenes should be funny — the character doing something dumb, confused, or out of place
+- Every prompt must end with "Simple crude cartoon. NO text anywhere."
 """
 
 SCRIPT_PROMPT = """Write a narration script for a NightNightShorts anime crossover video.
