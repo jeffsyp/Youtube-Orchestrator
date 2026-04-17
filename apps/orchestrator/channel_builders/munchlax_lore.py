@@ -28,32 +28,32 @@ VOICE_ID = "TX3LPaxmHKxFdv7VOQHJ"  # Liam (energetic)
 MUSIC_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "..", "assets", "music", "epic", "hero_theme.mp3")
 TAGS = ["pokemon", "pov", "what if", "pokemon irl", "shorts", "viral"]
 
-ART_STYLE = "Simple crude cartoon with thick black outlines and flat colors, like Cyanide and Happiness webcomic style. Stubby proportions, simple round eyes, flat color fills."
+ART_STYLE = "Photorealistic with dramatic cinematic lighting. Real-world environments (suburban backyard, highway, office, kitchen) shot like a news/documentary photo. Pokemon rendered as if they were actually there — detailed, textured, correctly proportioned. Golden hour or natural daylight."
 
 IMAGE_RULES = """ART STYLE:
-- Simple crude cartoon with thick wobbly outlines and flat colors
-- Like a funny webcomic or doodle — deliberately simple and charming
-- POV first-person perspective — the viewer's hands should be visible when it makes sense
-- The ENVIRONMENT must be a real-world location (backyard, street, highway, bathroom, kitchen) but drawn in crude cartoon style
+- PHOTOREALISTIC — environments and humans must look like real photographs
+- Real-world settings: suburban backyards, highways, offices, kitchens, streets, parks, etc.
+- Dramatic natural lighting — golden hour, daylight, news-helicopter shots
+- The POKEMON is rendered with full detail as if it really existed in the real world (real fur/scales/feathers texture, real shadow, real mass)
+- Human bystanders look like real people — terrified, confused, filming on phones, news crews
 
-POKEMON ACCURACY — CRUDE DOES NOT MEAN INACCURATE:
+POKEMON ACCURACY — MUST BE INSTANTLY RECOGNIZABLE:
 - Use the EXACT Pokemon name (Pikachu, Charizard, Snorlax, Gyarados, etc.)
-- EVERY Pokemon must have ALL of its signature features even in crude style:
+- EVERY Pokemon must have ALL of its signature features rendered realistically:
   - Pikachu: yellow body, red circle cheeks, black-tipped pointy ears, lightning bolt shaped tail, small and round
   - Charizard: orange body, blue inner wings, flame on tail tip, horn on head, dragon-like
   - Snorlax: massive round body, dark blue-green, cream belly, closed sleepy eyes
   - Gyarados: blue serpentine body, whiskers, fanged mouth, spiky crown, massive
   - Magikarp: orange fish, big dumb round eyes, yellow fins, whiskers, useless expression
-- A viewer must INSTANTLY know which Pokemon it is from the silhouette alone
-- Scale matters: Charizard towers over people, Pikachu fits in your hands, Snorlax fills a room
-- Crude style = wobbly lines and flat colors, NOT missing features or wrong colors
+- A viewer must INSTANTLY know which Pokemon it is
+- Scale matters dramatically in photorealistic style: Charizard towers over buildings, Pikachu fits in your hands, Snorlax fills an entire room
 
 EVERY PROMPT MUST:
-- Start with "Simple crude cartoon with thick wobbly outlines and flat colors."
-- Include a specific real-world setting drawn in crude cartoon style
-- Show the Pokemon DOING the action described in the narration — not just standing there
-- End with "Crude cartoon style. NO text anywhere."
-- Describe the human reaction in the scene (people running, screaming, staring) with exaggerated cartoon expressions"""
+- Start with "Photorealistic cinematic photograph."
+- Include a specific real-world setting rendered photorealistically
+- Show the Pokemon DOING the action described in the narration — using its actual signature ability
+- End with "Photorealistic. NO text anywhere."
+- Describe the human reaction in the scene (people running, screaming, filming, news crews) with real-world realism"""
 
 SCRIPT_PROMPT = """Write a narration script for a Munchlax Lore "What If" Pokemon video.
 
