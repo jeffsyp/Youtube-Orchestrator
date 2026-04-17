@@ -567,33 +567,40 @@ Answer PASS or FAIL with specific reason."""},
                 ]}],
             )
             if "FAIL" in review.content[0].text:
-                logger.warning("image review FAILED — regenerating with style anchor", sub_action=sa_idx, reason=review.content[0].text[:100])
+                logger.warning("image review FAILED — regenerating with reference", sub_action=sa_idx, reason=review.content[0].text[:100])
                 os.remove(img_path)
-                # Regenerate using style anchor (same as original generation) to keep consistent character/style
+                # Use the SAME short-prompt + reference pattern as first-pass to avoid style drift.
+                # Long prompts with art_style_prompt cause gpt-image to ignore the reference image.
                 if prefer_grok_images:
                     await _gen_image(
                         prompt=f"{era_prefix}{art_style_prompt} {img_prompt} Make sure this EXACTLY matches: {narr_text}. NO text anywhere.",
                         output_path=img_path, size="1024x1536",
                     )
                 else:
-                    try:
-                        style_ref2 = open(style_anchor_path, "rb")
-                        resp2 = await client.images.edit(
-                            model="gpt-image-1.5",
-                            image=style_ref2,
-                            prompt=f"{era_prefix}Same art style and same character as reference. {art_style_prompt} {img_prompt} Make sure this EXACTLY matches: {narr_text}. NO text anywhere.",
-                            size="1024x1536",
-                            quality="medium",
-                            input_fidelity="high",
-                        )
-                        style_ref2.close()
-                        if resp2.data and resp2.data[0].b64_json:
-                            with open(img_path, "wb") as f2:
-                                f2.write(base64.b64decode(resp2.data[0].b64_json))
-                    except Exception:
-                        try: style_ref2.close()
-                        except: pass
+                    _regen_prompt = f"{era_prefix}MATCH THE EXACT ART STYLE OF THE REFERENCE IMAGE. Same photographic look, same level of detail, same character design. NOT a cartoon, NOT cel-shaded, NOT a sketch — identical rendering style to the reference. {img_prompt} Make sure this EXACTLY matches: {narr_text}. NO text anywhere."
+                    # Retry the edit up to 3 times with the reference before giving up
+                    for _retry in range(3):
+                        try:
+                            style_ref2 = open(_edit_ref_path, "rb")
+                            resp2 = await client.images.edit(
+                                model="gpt-image-1.5",
+                                image=style_ref2,
+                                prompt=_regen_prompt,
+                                size="1024x1536",
+                                quality="medium",
+                                input_fidelity="high",
+                            )
+                            style_ref2.close()
+                            if resp2.data and resp2.data[0].b64_json:
+                                with open(img_path, "wb") as f2:
+                                    f2.write(base64.b64decode(resp2.data[0].b64_json))
+                                break
+                        except Exception:
+                            try: style_ref2.close()
+                            except: pass
+                    # Only fall to text-only if all edit retries failed — last resort
                     if not os.path.exists(img_path):
+                        logger.warning("review regen: all edit retries failed, falling to text-only (will drift style)", sub_action=sa_idx)
                         await _gen_image(
                             prompt=f"{era_prefix}{art_style_prompt} {img_prompt} Make sure this EXACTLY matches: {narr_text}. NO text anywhere.",
                             output_path=img_path, size="1024x1536",
@@ -629,7 +636,8 @@ Answer PASS or FAIL with specific reason."""},
             if os.path.exists(deny_file):
                 logger.info("user denied images — checking feedback")
                 os.remove(deny_file)
-                # Regenerate images that have feedback files
+                # Regenerate images that have feedback files — use edit-with-reference, not text-only,
+                # to maintain style consistency with other scenes.
                 for sa_idx, sa in enumerate(sub_actions):
                     if not sa.get("new_scene", True):
                         continue
@@ -639,10 +647,38 @@ Answer PASS or FAIL with specific reason."""},
                         feedback_text = open(feedback_path).read().strip()
                         if os.path.exists(img_path):
                             os.remove(img_path)
-                        await _gen_image(
-                            prompt=f"{art_style_prompt} {sa.get('image_prompt', '')} User feedback: {feedback_text}. NO text anywhere.",
-                            output_path=img_path, size="1024x1536",
-                        )
+                        _deny_prompt = f"{era_prefix}MATCH THE EXACT ART STYLE OF THE REFERENCE IMAGE. Same photographic look, same level of detail, same character design. NOT a cartoon, NOT cel-shaded, NOT a sketch — identical rendering style to the reference. {sa.get('image_prompt', '')} User feedback: {feedback_text}. NO text anywhere."
+                        if prefer_grok_images:
+                            await _gen_image(
+                                prompt=f"{art_style_prompt} {sa.get('image_prompt', '')} User feedback: {feedback_text}. NO text anywhere.",
+                                output_path=img_path, size="1024x1536",
+                            )
+                        else:
+                            for _retry in range(3):
+                                try:
+                                    ref_file = open(_edit_ref_path, "rb")
+                                    resp = await client.images.edit(
+                                        model="gpt-image-1.5",
+                                        image=ref_file,
+                                        prompt=_deny_prompt,
+                                        size="1024x1536",
+                                        quality="medium",
+                                        input_fidelity="high",
+                                    )
+                                    ref_file.close()
+                                    if resp.data and resp.data[0].b64_json:
+                                        with open(img_path, "wb") as f2:
+                                            f2.write(base64.b64decode(resp.data[0].b64_json))
+                                        break
+                                except Exception:
+                                    try: ref_file.close()
+                                    except: pass
+                            if not os.path.exists(img_path):
+                                logger.warning("deny regen: all edit retries failed, falling to text-only (will drift style)", sub_action=sa_idx)
+                                await _gen_image(
+                                    prompt=f"{art_style_prompt} {sa.get('image_prompt', '')} User feedback: {feedback_text}. NO text anywhere.",
+                                    output_path=img_path, size="1024x1536",
+                                )
                         os.remove(feedback_path)
                         logger.info("regenerated from feedback", sub_action=sa_idx, feedback=feedback_text[:60])
                 await _update_step("images ready for review")
