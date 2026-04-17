@@ -68,13 +68,25 @@ THE FORMAT:
 EVERY SCRIPT MUST HAVE A STORY ARC — NOT A LIST OF MOMENTS:
 The script must read as a sequence where EACH line builds on the last. Not vignettes, not a description, not a list of "things that happen." A story.
 
-REQUIRED 6-LINE STRUCTURE (use this skeleton):
+USE THE ACTUAL CANON EVENTS FROM THE SHOW:
+The scenario must progress through the REAL phases/fights/tests of the source material. Don't invent generic "Phase One: a tunnel" — name the specific canonical events fans know:
+- Hunter Exam: Phase 1 (marathon through Zaban tunnel chasing Satotz), Phase 2 (cooking for Menchi in Biska Forest), Phase 3 (Trick Tower), Phase 4 (Zevil Island tag hunt), Phase 5 (Netero's final exam)
+- Final Selection: wisteria mountain, demons at night, Urokodaki's students, Sabito ghost
+- Chunin Exams: written test (Ibiki), Forest of Death (scrolls), Preliminary 1v1s, finals in the stadium with Orochimaru crashing
+- One Piece Dressrosa: colosseum tournament, Doflamingo's birdcage, Bellamy the Hyena fight
+- For any other canon event — research the real sequence and use it
+If you don't know the exact canon phases for this scenario, pick 2-3 iconic moments fans recognize by name.
+
+REQUIRED 7-LINE STRUCTURE (use canon events as the beats):
 - Line 1: HOOK — the "what if" question, name the specific scenario.
-- Line 2: ARRIVAL — the visiting character ENTERS the world. Set the scene with iconic landmarks. Show the OUT-OF-PLACE-NESS (in their costume, surrounded by the wrong people).
-- Line 3: FIRST ATTEMPT — they engage with the first challenge in a CHARACTER-SPECIFIC absurd way. Resolve it within this line — don't leave it hanging.
-- Line 4: ESCALATION — second challenge, bigger break. The world's reaction starts (specific named character or authority figure)
-- Line 5: THE PIVOTAL MOMENT — the authority figure REALIZES they cannot test/contain this character. A specific physical action: crumples notes, drops sword, takes off glasses to clean them.
-- Line 6: ANTICLIMAX PUNCHLINE — the bureaucratic resolution (license mailed, trophy handed over, certificate posted).
+- Line 2: ARRIVAL — character enters, iconic landmark visible. Name a real canon location.
+- Line 3: CANON PHASE 1 — named actual test/fight from the show. Visitor breaks it with a CHARACTER-SPECIFIC quirk (not generic destruction).
+- Line 4: CANON PHASE 2 — next named test/fight. Visitor breaks it differently — escalation via a different signature trait. Canon character reacts by name (Menchi, Ibiki, Satotz, Netero, etc.).
+- Line 5: CANON PHASE 3 OR FINAL — the last/hardest canon moment. Visitor does the most uniquely-them thing (Goku eats the test, Saitama is bored, Luffy stretches through the obstacle).
+- Line 6: PIVOTAL MOMENT — the named canon authority figure (Netero, Kaguya, Hokage, etc.) physically reacts: crumples notes, drops their weapon, takes off glasses. Realizes they can't test/contain the visitor.
+- Line 7: ANTICLIMAX PUNCHLINE — bureaucratic resolution (license mailed, certificate printed, trophy delivered).
+
+Every line must reference CANON by name. Generic "Phase One: a death march" is BAD. Specific "Phase 1: the 80km Zaban City marathon behind Satotz" is GOOD.
 
 WHAT EACH LINE MUST DO (mandatory):
 - Each line RESOLVES one beat before moving on. NEVER drop a thread.
