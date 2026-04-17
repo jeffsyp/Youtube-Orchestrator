@@ -50,14 +50,14 @@ CONCEPT: {title}
 BRIEF: {brief}
 
 THE FORMAT:
-- Line 1 is the HOOK — a "What if..." question that sets up the concept. Tailor it to the actual premise:
-  - Historical disruption: "What if you brought [item] to [era]?"
-  - Modern absurd: "What if you had to spend a day at [place]?" or "What if your [mundane task] went COMPLETELY wrong?"
-  - Sci-fi/future: "What if you woke up [in a dystopian setup]?"
-  - Fantasy: "What if you accidentally [became a chosen one / started a mythic quest / angered a god]?"
-  - Reality show: "What if you were a contestant on [absurd show]?"
-  - Workplace: "What if you got hired as [unexpected job] with zero qualifications?"
-  Pick whichever hook fits the concept — do NOT force the "brought X to Y" template on premises where it doesn't fit.
+- Line 1 is the HOOK — it MUST state the concept directly so a viewer with ZERO title context knows what the video is about. Shorts viewers don't see the title.
+  - THE HOOK SHOULD BASICALLY MIRROR THE TITLE AS A "What if..." QUESTION.
+  - TITLE: "WHAT IF YOU ACCIDENTALLY SUMMONED A DEMON YOU COULDN'T SEND BACK" → HOOK: "What if you accidentally summoned a demon you couldn't send back?"
+  - TITLE: "WHAT IF YOU ACCIDENTALLY BECAME THE CHOSEN ONE" → HOOK: "What if you accidentally pulled a sword from a stone?" (close paraphrase — the sword-from-stone IS the becoming-chosen-one moment)
+  - TITLE: "WHAT IF YOU BROUGHT A JETPACK TO ANCIENT ROME" → HOOK: "What if you brought a jetpack to Ancient Rome?"
+- BAD HOOK (skips the concept): TITLE is "SUMMONED A DEMON" but line 1 says "What if you read one line from an old book out loud?" — a viewer has no idea what this is about, no context for the demon that appears in line 2
+- The hook must LABEL the concept — use the specific noun from the title (demon, sword, jetpack, dragon, time portal, genie, etc.) in line 1, not a vague setup
+- If the title says "ACCIDENTALLY X" — the hook must include "accidentally" and name what X is
 - The story is about the SITUATION — the skeletorinio is the person doing it. The situation is the star.
 - CHOOSE THE RIGHT STRUCTURE for the concept:
   A) DAY-BY-DAY ESCALATION — use when the concept spans time (arriving somewhere new, starting a job, entering a new world):
