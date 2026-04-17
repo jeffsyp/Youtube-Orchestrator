@@ -210,30 +210,43 @@ async def _generate_item(item: dict):
         )
         pipeline_timeout = 7200  # 2 hours — includes time waiting for user image approval
 
-        # Spawn pipeline as a subprocess — can be killed cleanly on timeout
+        # Spawn pipeline as a subprocess — can be killed cleanly on timeout.
+        # start_new_session=True detaches the child from this worker's process group,
+        # so a hot-reload that SIGTERMs the worker does NOT kill in-flight pipelines.
+        # stdout/stderr go to log files instead of parent pipes for the same reason —
+        # if the parent dies, the child keeps writing to the file rather than dying on SIGPIPE.
         concept_json_str = json.dumps(concept)
         project_root = os.path.join(os.path.dirname(__file__), "..", "..")
+        log_dir = os.path.join(project_root, "output", f"run_{run_id}")
+        os.makedirs(log_dir, exist_ok=True)
+        stdout_path = os.path.join(log_dir, "pipeline.stdout.log")
+        stderr_path = os.path.join(log_dir, "pipeline.stderr.log")
         cmd = [
             sys.executable, "-m", "apps.worker.pipeline_runner",
             "--run-id", str(run_id),
             "--concept", concept_json_str,
         ]
 
+        stdout_file = open(stdout_path, "wb")
+        stderr_file = open(stderr_path, "wb")
         process = await asyncio.create_subprocess_exec(
             *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
+            stdout=stdout_file,
+            stderr=stderr_file,
             cwd=project_root,
+            start_new_session=True,
         )
 
         try:
-            stdout, stderr = await asyncio.wait_for(
-                process.communicate(),
+            await asyncio.wait_for(
+                process.wait(),
                 timeout=pipeline_timeout,
             )
         except asyncio.TimeoutError:
             process.kill()
             await process.wait()
+            stdout_file.close()
+            stderr_file.close()
             # Force-update DB since the subprocess was killed
             async with AsyncSession(engine) as s:
                 await s.execute(text(
@@ -241,9 +254,24 @@ async def _generate_item(item: dict):
                 ), {"err": f"Pipeline timed out after {pipeline_timeout}s", "id": run_id})
                 await s.commit()
             raise RuntimeError(f"Pipeline timed out after {pipeline_timeout}s")
+        finally:
+            try: stdout_file.close()
+            except Exception: pass
+            try: stderr_file.close()
+            except Exception: pass
 
         if process.returncode != 0:
-            error_msg = stderr.decode()[-500:] if stderr else "Unknown error"
+            # Read the tail of the stderr log file for the error message
+            try:
+                with open(stderr_path, "rb") as _f:
+                    _f.seek(0, 2)  # end
+                    size = _f.tell()
+                    _f.seek(max(0, size - 2000))
+                    error_msg = _f.read().decode(errors="replace")[-500:]
+            except Exception:
+                error_msg = "Unknown error"
+            if not error_msg.strip():
+                error_msg = "Unknown error"
             # Force-update DB in case pipeline didn't
             async with AsyncSession(engine) as s:
                 await s.execute(text(
