@@ -61,10 +61,29 @@ THE FORMAT:
   - If the title says "SAITAMA AT THE FINAL SELECTION", line 1 is "What if Saitama showed up to the Final Selection?" — NOT "What if Saitama was in Demon Slayer?"
   - If the title says "GOKU ENTERS THE CHUNIN EXAMS", line 1 is "What if Goku entered the Chunin Exams?" — NOT "What if Goku was in Naruto?"
   - Name the SPECIFIC arc, event, location, or fight from the title. Fans recognize these instantly — generic franchise names lose them.
-- Line 2 goes STRAIGHT into the action — set the scene with SPECIFIC visual landmarks that fans recognize (wisteria trees for Final Selection, the arena for Chunin Exams, the colosseum for One Piece Dressrosa, etc.)
 - 6-8 narration lines, ~20-30 seconds. SHORTER IS BETTER.
 - Each line UNDER 15 words
 - Punchy, fast-paced, funny
+
+EVERY SCRIPT MUST HAVE A STORY ARC — NOT A LIST OF MOMENTS:
+The script must read as a sequence where EACH line builds on the last. Not vignettes, not a description, not a list of "things that happen." A story.
+
+REQUIRED 6-LINE STRUCTURE (use this skeleton):
+- Line 1: HOOK — the "what if" question, name the specific scenario.
+- Line 2: ARRIVAL — the visiting character ENTERS the world. Set the scene with iconic landmarks. Show the OUT-OF-PLACE-NESS (in their costume, surrounded by the wrong people).
+- Line 3: FIRST ATTEMPT — they engage with the first challenge in a CHARACTER-SPECIFIC absurd way. Resolve it within this line — don't leave it hanging.
+- Line 4: ESCALATION — second challenge, bigger break. The world's reaction starts (specific named character or authority figure)
+- Line 5: THE PIVOTAL MOMENT — the authority figure REALIZES they cannot test/contain this character. A specific physical action: crumples notes, drops sword, takes off glasses to clean them.
+- Line 6: ANTICLIMAX PUNCHLINE — the bureaucratic resolution (license mailed, trophy handed over, certificate posted).
+
+WHAT EACH LINE MUST DO (mandatory):
+- Each line RESOLVES one beat before moving on. NEVER drop a thread.
+- Each line CONNECTS to the next via cause-and-effect, not just "next thing."
+- NEVER use a line that is just "characters react" with no plot movement (BAD: "Killua side-eyed him. Leorio sweated. Gon waved." — this is filler).
+- NEVER skip ahead with "Phase Two:" without showing how Phase One ended.
+- If you mention an effect (torches go out, building shakes, screen goes white), you MUST have set up the cause in the previous line.
+
+CHECK YOUR DRAFT: Read each line and ask "does this advance the story or is it just description?" If it's description, rewrite it as an action with a consequence.
 
 THE COMEDY:
 - The visiting character should be CONFUSED by the world's rules or do something DUMB with their powers
