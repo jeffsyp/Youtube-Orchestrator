@@ -341,6 +341,10 @@ async def generate_and_animate_scenes(
             prompt=f"{art_style_prompt} A simple establishing shot for the video. {narration_lines[0] if narration_lines else 'A character in a scene.'}. NO text anywhere.",
             output_path=style_anchor_path, size="1024x1536",
         )
+    else:
+        # Anchor was reused from previous run — validate size and fix if wrong
+        from packages.clients.grok import _crop_to_size as _crop
+        _crop(style_anchor_path, "1024x1536")
     logger.info("style anchor generated")
 
     # ─── STEP 2: Plan sub-actions ───

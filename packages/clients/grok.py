@@ -415,27 +415,34 @@ def _crop_to_size(output_path: str, size: str):
     """Crop and resize an image to match the requested size (e.g. portrait for shorts).
 
     Center-crops to the target aspect ratio, then resizes to exact dimensions.
-    No-op if the image already matches the requested orientation.
+    Always resizes to the exact target — even if orientation already matches —
+    to guarantee consistent output dimensions across gpt-image and Grok paths.
     """
     try:
         from PIL import Image as _PILImage
         _w, _h = [int(x) for x in size.split("x")]
         with _PILImage.open(output_path) as _img:
-            if (_w < _h) != (_img.width < _img.height):
-                target_ratio = _w / _h
-                src_ratio = _img.width / _img.height
+            src_w, src_h = _img.width, _img.height
+            if src_w == _w and src_h == _h:
+                return  # already exactly right
+            target_ratio = _w / _h
+            src_ratio = src_w / src_h
+            if abs(src_ratio - target_ratio) > 0.01:
+                # Different aspect — center-crop first
                 if src_ratio > target_ratio:
-                    new_w = int(_img.height * target_ratio)
-                    left = (_img.width - new_w) // 2
-                    _img = _img.crop((left, 0, left + new_w, _img.height))
+                    new_w = int(src_h * target_ratio)
+                    left = (src_w - new_w) // 2
+                    _img = _img.crop((left, 0, left + new_w, src_h))
                 else:
-                    new_h = int(_img.width / target_ratio)
-                    top = (_img.height - new_h) // 2
-                    _img = _img.crop((0, top, _img.width, top + new_h))
-                _img = _img.resize((_w, _h), _PILImage.LANCZOS)
-                _img.save(output_path)
-    except Exception:
-        pass
+                    new_h = int(src_w / target_ratio)
+                    top = (src_h - new_h) // 2
+                    _img = _img.crop((0, top, src_w, top + new_h))
+            # Always resize to exact target dimensions
+            _img = _img.resize((_w, _h), _PILImage.LANCZOS)
+            _img.save(output_path)
+            logger.info("image cropped/resized", from_size=f"{src_w}x{src_h}", to_size=f"{_w}x{_h}", path=output_path)
+    except Exception as e:
+        logger.error("crop_to_size failed", error=str(e)[:200], path=output_path, target_size=size)
 
 
 XAI_BASE_URL = "https://api.x.ai/v1"

@@ -88,6 +88,13 @@ THE FORMAT:
 - Punchy, dramatic, funny
 - The LAST LINE must be a devastating punchline
 
+AVOID DRAGGING ENDINGS — END AT THE PUNCHLINE:
+- Stop adding lines after the punchline lands. Aftermath beats that explain consequences AFTER the absurd climax kill pacing.
+- BAD sequence: "Line 5: gym is destroyed. Line 6: FEMA arrives. Line 7: Machamp is certified. Line 8: you are jacked but broken." — four aftermath beats dilute the impact.
+- GOOD sequence: "Line 5: he used Dynamic Punch to motivate you off the treadmill. Line 6: you have never felt better. You have also never felt worse." — two lines max after climax.
+- If a line feels like it's just describing the aftermath of the previous line, cut it. The next line should introduce NEW action or the punchline.
+- TEST: if you can remove a line and the story still works, remove it.
+
 Return ONLY a JSON object:
 {{"narration": ["line 1", "line 2", ...], "title": "SHORT PUNCHY TITLE"}}"""
 
