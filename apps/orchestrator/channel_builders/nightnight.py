@@ -35,6 +35,16 @@ IMAGE_RULES = """ANIME CHARACTERS:
 - gpt-image knows these characters by name — use names not descriptions
 - Characters must be RECOGNIZABLE — signature hair, outfit, weapons
 
+FRANCHISE SEPARATION — CRITICAL:
+- The VISITING character is from ONE franchise (e.g. Goku from Dragon Ball)
+- The HOST WORLD is from a DIFFERENT franchise (e.g. Hunter x Hunter)
+- ONLY characters from the HOST franchise may appear besides the visitor. NEVER include other characters from the visitor's home franchise.
+- BAD: Goku + Master Roshi + Krillin in a Hunter Exam scene (Roshi/Krillin are Dragon Ball — they should NOT be there)
+- BAD: Naruto + Sasuke + Sakura in a Demon Slayer Final Selection (Sasuke/Sakura are Naruto — they should NOT be there)
+- GOOD: Goku (visiting) + Gon + Killua + Leorio + Netero (all Hunter x Hunter — the host world)
+- Every image prompt MUST explicitly state "No other Dragon Ball characters" (or whichever the visitor's franchise is) to prevent gpt-image from hallucinating Roshi/Krillin/Bulma into host-franchise scenes.
+- Backgrounds and settings must be from the HOST world. No Dragon Ball landscapes in a Hunter Exam scene. No ninja villages in a One Piece scene.
+
 FIGHT SCENES — SHOW THE STARTING POINT:
 - Each image shows the BEGINNING of the action, NOT the result
 - The ANIMATION creates the impact/aftermath
