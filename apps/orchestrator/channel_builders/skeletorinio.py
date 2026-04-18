@@ -1,7 +1,7 @@
 """Skeletorinio channel builder — "What if you brought [item] to [era]" videos.
 
-Toy skeletorinio character with googly eyes in historical scenarios.
-Uses unified pipeline: style anchor → sub-actions → GPT images → Grok animation → chaining.
+Concept-specific Skeletorinio variants in historical/fantasy scenarios.
+Uses unified pipeline: style anchor → sub-actions → GPT images → video animation → chaining.
 """
 import asyncio
 import json
@@ -28,16 +28,30 @@ logger = structlog.get_logger()
 CHANNEL_ID = 18
 VOICE_ID = "TxGEqnHWrfWFTfGW9XjX"  # Josh
 MUSIC_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "..", "assets", "music", "skeletorinio_theme.mp3")
-SKELETON_REF = os.path.join(os.path.dirname(__file__), "..", "..", "..", "assets", "character_cache", "skeletorinio.png")
+SKELETON_REF = os.path.join(os.path.dirname(__file__), "..", "..", "..", "assets", "character_cache", "skeletorinio_base.png")
 TAGS = ["skeletorinio", "what if", "skeletorinio", "history", "shorts", "viral", "comedy"]
 
-ART_STYLE = "Photorealistic world with cinematic golden hour lighting. The main character is a FULL-SIZE adult human-height 3D animated plastic skeletorinio with big googly cartoon eyes, gold chain necklace, and sunglasses pushed up on forehead. He is the same height as the humans around him — NOT a miniature toy. He looks like a stylized 3D cartoon character placed into a real photograph."
+BASE_CHARACTER_IDENTITY = (
+    "The core Skeletorinio identity NEVER changes: same ivory plastic skeleton body, "
+    "same oversized googly eyes, same grinning skull face, same overall body proportions, "
+    "same human-height scale, and the same glossy toy-plastic material. "
+    "Remove the old recurring accessories entirely: NO gold chain and NO sunglasses unless a concept explicitly requires them."
+)
+
+ART_STYLE = (
+    "Photorealistic world with cinematic golden hour lighting. "
+    "The main character is a FULL-SIZE adult human-height 3D animated Skeletorinio with an ivory plastic skeleton body "
+    "with oversized googly eyes and a grinning skull face. "
+    "He is the same height as the humans around him — NOT a miniature toy. "
+    "He looks like a stylized glossy plastic toy character placed into a real photograph."
+)
 
 IMAGE_RULES = """RULES — FOLLOW THESE EXACTLY:
-- The main character is a FULL-SIZE adult human-height 3D animated plastic skeletorinio with big googly cartoon eyes, gold chain necklace, and sunglasses on forehead. He is the SAME HEIGHT as real humans — NOT a miniature toy.
+- The main character is a FULL-SIZE adult human-height 3D animated Skeletorinio with an ivory plastic skeleton body, oversized googly eyes, and a grinning skull face. He is the SAME HEIGHT as real humans — NOT a miniature toy.
+- The core identity NEVER changes: same skull face, same googly eyes, same body proportions, same glossy ivory plastic skeleton material. No sunglasses and no gold chain unless the specific concept requires them.
 - The skeletorinio is "YOU" — the protagonist/observer/reactor in every scene. He is the HUMAN PERSON doing the action.
 - A reference image of the skeletorinio is provided — match this character exactly but at HUMAN SCALE
-- For EVERY scene with the skeletorinio, start the prompt with: "A full-size human-height 3D animated skeletorinio character with gold chain and sunglasses on forehead"
+- For EVERY scene with the skeletorinio, start from the exact reference character and preserve the concept-specific variant consistently across every scene
 - The WORLD is PHOTOREALISTIC — real-looking buildings, landscapes, people, objects. Cinematic golden hour lighting.
 - The skeletorinio is the ONLY stylized-character element. Everything else looks like a photograph.
 - Do NOT say "toy" or "miniature" or "figurine" — the skeletorinio is HUMAN-SIZED
@@ -147,10 +161,126 @@ Return ONLY a JSON object:
 {{"narration": ["line 1", "line 2", ...], "title": "SHORT PUNCHY TITLE"}}"""
 
 
+def _heuristic_character_variant(title: str, brief: str, era: str) -> dict:
+    text = f"{title} {brief} {era}".lower()
+    traits: list[str] = []
+    variant_name = "default"
+
+    if any(term in text for term in ["zeus", "olympus", "lightning", "thunder"]):
+        variant_name = "storm king"
+        traits = [
+            "storm-white curly hair crackling with faint blue lightning",
+            "a laurel crown with subtle lightning motifs",
+            "white-and-gold Greek god drapery and divine shoulder armor",
+        ]
+    elif any(term in text for term in ["poseidon", "ocean", "sea", "trident"]):
+        variant_name = "sea king"
+        traits = [
+            "sea-blue crest-like hair swept backward",
+            "coral-and-bronze sea god accessories",
+            "wet oceanic drapery with shell details",
+        ]
+    elif any(term in text for term in ["hades", "underworld", "dead", "afterlife"]):
+        variant_name = "underworld ruler"
+        traits = [
+            "dark smoke-like crown or shadow halo",
+            "black-and-deep-purple underworld robes",
+            "subtle ember glow in the eye sockets",
+        ]
+    elif any(term in text for term in ["rome", "roman", "caesar", "colosseum"]):
+        variant_name = "roman troublemaker"
+        traits = [
+            "messy short curls under a Roman-style laurel wreath",
+            "worn Roman tunic layered over the skeleton body",
+            "leather sandals and simple bronze accents",
+        ]
+    elif any(term in text for term in ["jetpack", "space", "rocket", "moon", "mars"]):
+        variant_name = "sci-fi rider"
+        traits = [
+            "windswept white crest-hair or helmet fins",
+            "sleek sci-fi harness and propulsion rig",
+            "bright metallic accent panels over the skeleton body",
+        ]
+    else:
+        traits = [
+            "concept-appropriate hair or crown only if the setting calls for it",
+            "era-appropriate outfit pieces fitted over the same skeleton body",
+            "no modern jewelry or recurring gag accessories by default",
+        ]
+
+    return {
+        "variant_name": variant_name,
+        "must_keep": BASE_CHARACTER_IDENTITY,
+        "traits": traits,
+        "negative_traits": [
+            "no gold chain",
+            "no sunglasses",
+            "no human skin replacing the skeleton face",
+            "no random redesign of the head or body proportions",
+        ],
+    }
+
+
+def _build_character_variant(title: str, brief: str, era: str) -> dict:
+    variant = _heuristic_character_variant(title, brief, era)
+    try:
+        from packages.clients.claude import generate as claude_generate
+
+        resp = claude_generate(
+            prompt=f"""Design a concept-specific Skeletorinio variant for this one video.
+
+VIDEO TITLE: {title}
+BRIEF: {brief}
+ERA: {era or "not specified"}
+
+BASE CHARACTER RULES:
+- {BASE_CHARACTER_IDENTITY}
+- The variant should adapt with accessories, hair, crowns, clothing layers, or divine markings ONLY
+- Never redesign the core face/head/body
+- Never use the old recurring accessories: no gold chain, no sunglasses
+- Keep it visually simple enough to stay consistent across 5-7 scenes
+
+Return ONLY JSON:
+{{
+  "variant_name": "short label",
+  "must_keep": "one sentence about the unchanged core identity",
+  "traits": ["2-4 short visual traits"],
+  "negative_traits": ["2-4 forbidden traits"]
+}}""",
+            max_tokens=300,
+        )
+        match = re.search(r"\{.*\}", resp, re.DOTALL)
+        if match:
+            parsed = json.loads(match.group())
+            if parsed.get("traits"):
+                parsed.setdefault("must_keep", BASE_CHARACTER_IDENTITY)
+                parsed.setdefault("negative_traits", variant["negative_traits"])
+                return parsed
+    except Exception as e:
+        logger.warning("character variant generation fallback", error=str(e)[:120])
+    return variant
+
+
+def _variant_rules_text(character_variant: dict) -> str:
+    traits = character_variant.get("traits") or []
+    negatives = character_variant.get("negative_traits") or []
+    traits_text = "; ".join(traits) if traits else "no extra accessories"
+    negatives_text = "; ".join(negatives) if negatives else "no off-model redesigns"
+    return (
+        "\n\nCONCEPT-SPECIFIC SKELETORINIO VARIANT:\n"
+        f"- {character_variant.get('must_keep', BASE_CHARACTER_IDENTITY)}\n"
+        f"- For THIS video, add these consistent variant traits: {traits_text}.\n"
+        f"- Forbidden drift: {negatives_text}.\n"
+        "- Every image_prompt must keep this exact variant consistent across the entire video.\n"
+    )
+
+
 async def build_skeletorinio(run_id: int, concept: dict, output_dir: str, _update_step, db_url: str):
     """Full Skeletorinio video build using unified pipeline."""
     title = concept.get("title", "Untitled")
     narration_lines = concept.get("narration", [])
+    brief = concept.get("brief", title)
+    era = concept.get("era", "")
 
     narr_dir = os.path.join(output_dir, "narration")
     segments_dir = os.path.join(output_dir, "segments")
@@ -161,7 +291,6 @@ async def build_skeletorinio(run_id: int, concept: dict, output_dir: str, _updat
     if not narration_lines:
         await _update_step("writing script")
         from packages.clients.claude import generate as claude_generate
-        brief = concept.get("brief", title)
         resp = claude_generate(
             prompt=SCRIPT_PROMPT.format(title=title, brief=brief),
             max_tokens=2000,
@@ -183,24 +312,42 @@ async def build_skeletorinio(run_id: int, concept: dict, output_dir: str, _updat
         narration_lines, narr_dir, output_dir, VOICE_ID, _update_step,
     )
 
-    # ─── STEP 3: Generate style anchor using skeletorinio reference IN the scene ───
+    # ─── STEP 3: Build concept-specific character variant + style anchor ───
     from openai import AsyncOpenAI
     images_dir = os.path.join(output_dir, "images")
     os.makedirs(images_dir, exist_ok=True)
     anchor_path = os.path.join(images_dir, "style_anchor.png")
+    character_variant = concept.get("character_variant") if isinstance(concept.get("character_variant"), dict) else None
+    if not character_variant:
+        await _update_step("designing character variant")
+        character_variant = _build_character_variant(title, brief, era)
+    concept["character_variant"] = character_variant
+    variant_path = os.path.join(output_dir, "character_variant.json")
+    with open(variant_path, "w") as vf:
+        json.dump(character_variant, vf, indent=2)
+
     if not os.path.exists(anchor_path) and os.path.exists(SKELETON_REF):
-        # Generate the skeletorinio IN the first scene — this becomes the style anchor
-        # so all subsequent scenes share the same era, lighting, and character scale
+        # Generate a concept-specific Skeletorinio variant IN the first scene — this becomes the style anchor
+        # so all subsequent scenes share the same era, lighting, character scale, and accessory profile.
         _oai = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"), timeout=120.0)
-        brief = concept.get("brief", title)
-        era = concept.get("era", "")
         era_part = f"STRICT ERA: {era}. All humans in period-accurate clothing. NO modern clothing, NO modern objects. " if era else "Historical time period — NOT modern day. "
+        variant_traits = "; ".join(character_variant.get("traits") or [])
+        variant_negatives = "; ".join(character_variant.get("negative_traits") or [])
         _ref = open(SKELETON_REF, "rb")
         try:
             _resp = await _oai.images.edit(
                 model="gpt-image-1.5",
                 image=_ref,
-                prompt=f"{era_part}Place this exact skeletorinio character (same size, same gold chain, same sunglasses, same googly eyes) into the scene for this video: {title}. {brief[:200]}. {narration_lines[0] if narration_lines else ''}. The skeletorinio is FULL ADULT HUMAN HEIGHT — same size as real people around him. Photorealistic world with cinematic golden hour lighting. NO text anywhere.",
+                prompt=(
+                    f"{era_part}Transform this exact base Skeletorinio reference into the concept-specific variant for this video: {title}. "
+                    f"{character_variant.get('must_keep', BASE_CHARACTER_IDENTITY)} "
+                    f"Add these consistent variant traits: {variant_traits}. "
+                    f"Forbidden drift: {variant_negatives}. "
+                    f"Place the resulting variant into the scene for this video: {brief[:200]}. "
+                    f"{narration_lines[0] if narration_lines else ''}. "
+                    "The character is FULL ADULT HUMAN HEIGHT — same size as real people around him. "
+                    "Photorealistic world with cinematic golden hour lighting. NO text anywhere."
+                ),
                 size="1024x1536",
                 quality="medium",
                 input_fidelity="high",
@@ -219,8 +366,9 @@ async def build_skeletorinio(run_id: int, concept: dict, output_dir: str, _updat
             logger.warning("style anchor fallback to bare skeletorinio ref", error=str(_e)[:80])
 
     # ─── STEP 4: Unified pipeline — uses style anchor (skeleton IN scene) for all edits ───
+    image_rules = IMAGE_RULES + _variant_rules_text(character_variant)
     clips_dir, clip_paths, n_clips, line_clip_map = await generate_and_animate_scenes(
-        narration_lines, concept, IMAGE_RULES, ART_STYLE, output_dir, _update_step, run_id=run_id,
+        narration_lines, concept, image_rules, ART_STYLE, output_dir, _update_step, run_id=run_id, character_ref_path=anchor_path,
     )
 
     # ─── STEP 4: Build segments from clip map ───
