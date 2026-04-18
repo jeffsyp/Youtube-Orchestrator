@@ -34,6 +34,9 @@
     "slug": "what-if-city",
     "builder": "skeletorinio",
     "category": "Entertainment",
+    "video_provider": "veo",
+    "video_model": "veo-3.1-lite-generate-001",
+    "video_resolution": "720p",
     "art_style": "In the style of Kurzgesagt — clean flat vector illustration, simple bold shapes, vibrant saturated colors on dark backgrounds, tiny detailed characters in massive sci-fi environments, cosmic scale. Educational but visually stunning."
   },
   "19": {

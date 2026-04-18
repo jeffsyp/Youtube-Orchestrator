@@ -187,7 +187,7 @@ async def clear_content_bank_item(item_id: int):
             {"id": item_id},
         )
         if concept_id:
-            await update_concept_status(concept_id, status="archived", latest_run_id=run_id, session=session)
+            await update_concept_status(concept_id, status="archived", session=session)
 
         # Now safe to delete the content_run
         if run_id:

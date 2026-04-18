@@ -309,7 +309,13 @@ async def generate_and_animate_scenes(
         output_dir: base output directory
         _update_step: status callback
     """
-    from packages.clients.grok import generate_image_dalle_async, generate_image_grok_async, generate_video_async
+    from packages.clients.grok import generate_image_dalle_async, generate_image_grok_async, generate_video_async as grok_generate_video_async
+    from packages.clients.veo import generate_video_async as veo_generate_video_async
+    from packages.clients.channel_profiles import (
+        get_channel_video_model,
+        get_channel_video_provider,
+        get_channel_video_resolution,
+    )
     # Pick image generator based on channel preference
     _gen_image = generate_image_grok_async if prefer_grok_images else generate_image_dalle_async
     from packages.clients.claude import generate as claude_generate
@@ -323,6 +329,10 @@ async def generate_and_animate_scenes(
 
     client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"), timeout=120.0)
     brief = concept.get("brief", "")
+    channel_id = int(concept.get("channel_id") or 0)
+    video_provider = (concept.get("video_provider") or get_channel_video_provider(channel_id)).strip().lower()
+    video_model = concept.get("video_model") or get_channel_video_model(channel_id)
+    video_resolution = concept.get("video_resolution") or get_channel_video_resolution(channel_id)
     extra_rules = f"\n\nCONCEPT-SPECIFIC INSTRUCTIONS:\n{brief}" if brief else ""
     ref_style_prefix = (
         "MATCH THE EXACT ART STYLE OF THE REFERENCE IMAGE. "
@@ -873,18 +883,38 @@ Answer PASS or FAIL with specific reason."""},
             logger.info("chained from last frame", sub_action=sa_idx)
 
         # Animate
-        with open(img_path, "rb") as f:
-            img_b64 = f"data:image/png;base64,{base64.b64encode(f.read()).decode()}"
+        if video_provider == "veo":
+            await veo_generate_video_async(
+                prompt=anim_prompt,
+                output_path=clip_path,
+                model=video_model or "veo-3.1-lite-generate-001",
+                duration_seconds=duration,
+                aspect_ratio="9:16",
+                resolution=video_resolution or "720p",
+                image_path=img_path,
+                timeout_seconds=600,
+            )
+        else:
+            with open(img_path, "rb") as f:
+                img_b64 = f"data:image/png;base64,{base64.b64encode(f.read()).decode()}"
 
-        await generate_video_async(
-            prompt=anim_prompt,
-            output_path=clip_path,
-            duration=duration,
-            aspect_ratio="9:16",
-            image_url=img_b64,
-            timeout=600,
+            await grok_generate_video_async(
+                prompt=anim_prompt,
+                output_path=clip_path,
+                duration=duration,
+                aspect_ratio="9:16",
+                image_url=img_b64,
+                resolution=video_resolution or "720p",
+                timeout=600,
+            )
+        logger.info(
+            "animated",
+            sub_action=sa_idx,
+            prompt=anim_prompt[:60],
+            provider=video_provider,
+            model=video_model,
+            resolution=video_resolution,
         )
-        logger.info("animated", sub_action=sa_idx, prompt=anim_prompt[:60])
 
         # Extract last frame for potential chaining
         lf = os.path.join(images_dir, f"sub_{sa_idx:03d}_lastframe.png")

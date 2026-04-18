@@ -76,6 +76,11 @@ async def build_hardcore_ranked(run_id: int, concept: dict, output_dir: str, _up
 
     title = concept.get("title", "Untitled")
     narration_lines = concept.get("narration", [])
+    scenes_meta = concept.get("scenes") if isinstance(concept.get("scenes"), list) else []
+    is_planet_jump_format = concept.get("format_strategy") == "ranked_actual_planets" and bool(scenes_meta)
+    video_provider = str(concept.get("video_provider") or get_channel_video_provider(CHANNEL_ID)).strip().lower()
+    video_model = concept.get("video_model") or get_channel_video_model(CHANNEL_ID)
+    video_resolution = concept.get("video_resolution") or get_channel_video_resolution(CHANNEL_ID)
 
     narr_dir = os.path.join(output_dir, "narration")
     images_dir = os.path.join(output_dir, "images")
@@ -146,7 +151,10 @@ Return ONLY a JSON object:
     # ─── STEP 3: Image prompts (shared + channel rules) ───
     brief = concept.get("brief", "")
     extra_rules = f"\n\nCONCEPT-SPECIFIC INSTRUCTIONS:\n{brief}" if brief else ""
-    image_prompts = await generate_image_prompts(narration_lines, IMAGE_RULES + extra_rules, _update_step)
+    if is_planet_jump_format:
+        image_prompts = []
+    else:
+        image_prompts = await generate_image_prompts(narration_lines, IMAGE_RULES + extra_rules, _update_step)
 
     # ─── STEP 4: Generate base scene → edit per liquid → animate ───
     await _update_step("generating base scene")
@@ -154,9 +162,11 @@ Return ONLY a JSON object:
     edit_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"), timeout=120.0)
 
     # Determine concept type so we pick the right base scene + scene-change strategy
-    from packages.clients.claude import generate as claude_gen_base
-    concept_type_resp = claude_gen_base(
-        prompt=f"""Classify this Hardcore Ranked concept into ONE category:
+    concept_type = "MOTION" if is_planet_jump_format else None
+    if not concept_type:
+        from packages.clients.claude import generate as claude_gen_base
+        concept_type_resp = claude_gen_base(
+            prompt=f"""Classify this Hardcore Ranked concept into ONE category:
 
 CONCEPT: {title}
 
@@ -167,13 +177,25 @@ CATEGORIES:
 - "QUANTITY" — comparing amounts/scales (how many X can fit in Y, how much Z is too much).
 
 Return ONLY the category name, nothing else.""",
-        max_tokens=20,
-    )
-    concept_type = concept_type_resp.strip().upper().strip('"').split()[0] if concept_type_resp else "MOTION"
+            max_tokens=20,
+        )
+        concept_type = concept_type_resp.strip().upper().strip('"').split()[0] if concept_type_resp else "MOTION"
     logger.info("concept type classified", type=concept_type)
 
     brief = concept.get("brief", "")
-    if brief:
+    if is_planet_jump_format:
+        first_scene = scenes_meta[0]
+        base_prompt = (
+            "Photorealistic. SINGLE IMAGE only — NOT a comic panel, NOT a chart, NOT multiple panels. "
+            "Strict side-view full-body comparison shot. The human-sized person in the green frog-themed astronaut suit stands ON THE GROUND "
+            "with both feet planted flat beside a striped measurement mast and a silver research lander used for scale. "
+            "The body pose is neutral and grounded, with no crouch, no leap, no floating, and no hero-angle exaggeration. "
+            f"Actual {first_scene.get('planet', 'Earth')} environment: {first_scene.get('environment', 'open rocky plain')}. "
+            "The character is in a grounded pre-jump stance, ready to jump but NOT airborne. "
+            "Keep the mast and lander visible in the same frame for scale. "
+            "This is a static scientific measurement setup before the jump begins. NO text anywhere."
+        )
+    elif brief:
         _base_text = brief
         for _marker in ['For edits', 'For every edit', 'For animation', 'For each edit']:
             _base_text = _base_text.split(_marker)[0]
@@ -282,8 +304,23 @@ Return ONLY the prompt.""",
 - The character should be visible for scale reference
 - Make the scale comparison obvious — small pile vs massive mountain"""
 
-    edits_resp = claude_gen_edits(
-        prompt=f"""For each narration line (except line 0), write a SHORT edit instruction. The base scene shows: {base_prompt[:200]}...
+    if is_planet_jump_format:
+        edit_prompts = ["No changes — grounded baseline Earth hook."]
+        for scene in scenes_meta:
+            edit_prompts.append(
+                f"Only change the planet environment to {scene.get('environment', scene.get('planet', 'planet surface'))}. "
+                "Treat the input image as a LOCKED TEMPLATE. Preserve the exact same side-view camera, crop, frog-suit character size, body pose, foot placement, "
+                "striped mast position, and silver lander position. "
+                "The jumper must remain ON THE GROUND beside the mast with both boots fully touching the surface in a pre-jump stance. "
+                "Do NOT show the jumper crouching deeply, airborne, floating, landing, or at the apex. "
+                "This image is a static start frame before the jump only."
+            )
+        while len(edit_prompts) < n_lines:
+            edit_prompts.append(edit_prompts[-1])
+        edit_prompts = edit_prompts[:n_lines]
+    else:
+        edits_resp = claude_gen_edits(
+            prompt=f"""For each narration line (except line 0), write a SHORT edit instruction. The base scene shows: {base_prompt[:200]}...
 
 CONCEPT TITLE: {title}
 CONCEPT TYPE: {concept_type}
@@ -302,30 +339,41 @@ KEY RULES:
 - BAKE the result into the image (don't show something "about to happen" — show it happening/happened)
 
 Return ONLY a JSON array of {n_lines} strings. Line 0 should be "No changes — use base scene as is." """,
-        max_tokens=1500,
-    )
-    edits_match = re.search(r'\[.*\]', edits_resp, re.DOTALL)
-    edit_prompts = json.loads(edits_match.group()) if edits_match else ["No changes." for _ in range(n_lines)]
-    while len(edit_prompts) < n_lines:
-        edit_prompts.append("No changes.")
-    edit_prompts = edit_prompts[:n_lines]
+            max_tokens=1500,
+        )
+        edits_match = re.search(r'\[.*\]', edits_resp, re.DOTALL)
+        edit_prompts = json.loads(edits_match.group()) if edits_match else ["No changes." for _ in range(n_lines)]
+        while len(edit_prompts) < n_lines:
+            edit_prompts.append("No changes.")
+        edit_prompts = edit_prompts[:n_lines]
 
     for i in range(1, n_lines):
         img_path = os.path.join(images_dir, f"scene_{i:02d}.png")
         if os.path.exists(img_path):
             continue
+        review_text = ""
         for attempt in range(4):
             try:
                 base_file = open(base_scene_path, "rb")
-                resp = await edit_client.images.edit(
-                    model="gpt-image-1.5",
-                    image=base_file,
-                    prompt=(
+                if is_planet_jump_format:
+                    edit_instruction = (
+                        "TREAT THE INPUT IMAGE AS A LOCKED TEMPLATE. "
+                        "Do not change the frog's pose, height in frame, arm position, leg position, foot placement, or facial direction. "
+                        "Do not change the camera angle, crop, or framing. "
+                        "Keep the striped mast and silver lander visible in the exact same relative positions and scale. "
+                        f"{edit_prompts[i]} NO text anywhere."
+                    )
+                else:
+                    edit_instruction = (
                         f"The character must look IDENTICAL to the input image — same suit, same helmet, same body proportions, same colors. "
                         + ("Same camera angle, same setting — only change the surface/opponent/variable. Everything else stays pixel-identical. " if concept_type == "MOTION"
                            else "The character stays consistent but the BACKGROUND and SETTING can change to match the variable for this scene. ")
                         + f"Change: {edit_prompts[i]} NO text anywhere."
-                    ),
+                    )
+                resp = await edit_client.images.edit(
+                    model="gpt-image-1.5",
+                    image=base_file,
+                    prompt=edit_instruction,
                     size="1024x1536",
                     quality="medium",
                     input_fidelity="high",
@@ -336,42 +384,64 @@ Return ONLY a JSON array of {n_lines} strings. Line 0 should be "No changes — 
                     with open(img_path, "wb") as f:
                         f.write(img_data)
                     logger.info("scene variant created", scene=i, edit=edit_prompts[i][:60])
-                    break
             except Exception as e:
                 logger.warning("edit failed", scene=i, attempt=attempt, error=str(e)[:80])
                 try: base_file.close()
                 except: pass
                 await asyncio.sleep(3)
-        if not os.path.exists(img_path):
-            raise RuntimeError(f"Failed to create scene {i} variant after 4 attempts")
+                continue
+            if not os.path.exists(img_path):
+                continue
 
-        # Review: verify the edited image still matches the base scene
-        try:
-            import anthropic
-            review_client = anthropic.Anthropic()
-            with open(img_path, "rb") as rf:
-                img_b64_review = base64.b64encode(rf.read()).decode()
-            with open(base_scene_path, "rb") as rf:
-                base_b64_review = base64.b64encode(rf.read()).decode()
-            review = review_client.messages.create(
-                model="claude-haiku-4-5-20251001",
-                max_tokens=200,
-                messages=[{
-                    "role": "user",
-                    "content": [
-                        {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": base_b64_review}},
-                        {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": img_b64_review}},
-                        {"type": "text", "text": f"Image 1 is the base scene. Image 2 is an edited version. Does image 2 keep the SAME camera angle, same character position, same setting as image 1? Only the liquid/variable should change. Answer PASS or FAIL with reason."},
-                    ],
-                }],
-            )
-            review_text = review.content[0].text
-            if "FAIL" in review_text:
-                logger.warning("scene edit review FAILED", scene=i, reason=review_text[:100])
-            else:
-                logger.info("scene edit review passed", scene=i)
-        except Exception as e:
-            logger.warning("scene edit review skipped", error=str(e)[:80])
+            # Review: verify the edited image still matches the base scene
+            try:
+                import anthropic
+                review_client = anthropic.Anthropic()
+                with open(img_path, "rb") as rf:
+                    img_b64_review = base64.b64encode(rf.read()).decode()
+                with open(base_scene_path, "rb") as rf:
+                    base_b64_review = base64.b64encode(rf.read()).decode()
+                if is_planet_jump_format:
+                    review_prompt = (
+                        "Image 1 is the locked base measurement setup. Image 2 should be the SAME setup on a different planet. "
+                        "PASS only if ALL of these are true: same side-view camera, same crop, same frog character size, same body pose, both boots touching the ground, "
+                        "striped mast visible, silver lander visible, and the image is clearly a pre-jump start frame. "
+                        "FAIL if the frog is airborne, floating, landing, crouching deeply, framed differently, missing the mast, or missing the lander. "
+                        "Answer PASS or FAIL with one short reason."
+                    )
+                else:
+                    review_prompt = (
+                        "Image 1 is the base scene. Image 2 is an edited version. Does image 2 keep the SAME camera angle, same character position, same setting as image 1? "
+                        "Only the liquid/variable should change. Answer PASS or FAIL with reason."
+                    )
+                review = review_client.messages.create(
+                    model="claude-haiku-4-5-20251001",
+                    max_tokens=200,
+                    messages=[{
+                        "role": "user",
+                        "content": [
+                            {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": base_b64_review}},
+                            {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": img_b64_review}},
+                            {"type": "text", "text": review_prompt},
+                        ],
+                    }],
+                )
+                review_text = review.content[0].text
+                if "FAIL" in review_text:
+                    logger.warning("scene edit review FAILED", scene=i, reason=review_text[:100], attempt=attempt + 1)
+                    if os.path.exists(img_path):
+                        os.remove(img_path)
+                    if attempt < 3:
+                        await asyncio.sleep(2)
+                        continue
+                else:
+                    logger.info("scene edit review passed", scene=i)
+            except Exception as e:
+                logger.warning("scene edit review skipped", error=str(e)[:80])
+            break
+        if not os.path.exists(img_path):
+            reason = review_text[:120] if review_text else "review failed"
+            raise RuntimeError(f"Failed to create grounded scene {i} variant after retries: {reason}")
 
     # ─── STEP 4c: Wait for user approval via file ───
     # Skip if clips already exist (images were approved in a previous run)
@@ -384,7 +454,20 @@ Return ONLY a JSON array of {n_lines} strings. Line 0 should be "No changes — 
         logger.info("skipping image approval — already approved (carried forward from previous run)")
         os.remove(_approval_file)
     else:
+        from packages.clients.workflow_state import create_review_task, get_pending_review_task, resolve_review_task
         await _update_step("images ready for review")
+        await create_review_task(
+            run_id=run_id,
+            kind="images",
+            concept_id=concept.get("concept_id"),
+            channel_id=concept.get("channel_id"),
+            stage="images ready for review",
+            payload={
+                "expected_images": n_lines,
+                "images_dir": os.path.abspath(images_dir),
+                "image_names": [f"scene_{i:02d}.png" for i in range(n_lines)],
+            },
+        )
         if os.path.exists(_deny_file):
             os.remove(_deny_file)
         while True:
@@ -392,10 +475,22 @@ Return ONLY a JSON array of {n_lines} strings. Line 0 should be "No changes — 
             if os.path.exists(_approval_file):
                 logger.info("user approved images")
                 os.remove(_approval_file)
+                await resolve_review_task(
+                    run_id=run_id,
+                    kind="images",
+                    status="approved",
+                    resolution={"source": "file_fallback"},
+                )
                 break
             if os.path.exists(_deny_file):
                 logger.info("user denied images — regenerating with feedback")
                 os.remove(_deny_file)
+                await resolve_review_task(
+                    run_id=run_id,
+                    kind="images",
+                    status="rejected",
+                    resolution={"source": "file_fallback"},
+                )
                 for i in range(n_lines):
                     fb_path = os.path.join(images_dir, f"scene_{i:02d}_feedback.txt")
                     img_path = os.path.join(images_dir, f"scene_{i:02d}.png")
@@ -447,13 +542,56 @@ Return ONLY a JSON array of {n_lines} strings. Line 0 should be "No changes — 
                     shutil.copy2(base_scene_path, os.path.join(images_dir, "scene_00.png"))
                     os.remove(base_fb)
                     logger.info("regenerated base scene from feedback", feedback=fb_text[:60])
+                await create_review_task(
+                    run_id=run_id,
+                    kind="images",
+                    concept_id=concept.get("concept_id"),
+                    channel_id=concept.get("channel_id"),
+                    stage="images ready for review",
+                    payload={
+                        "expected_images": n_lines,
+                        "images_dir": os.path.abspath(images_dir),
+                        "image_names": [f"scene_{i:02d}.png" for i in range(n_lines)],
+                    },
+                )
                 await _update_step("images ready for review")
+                continue
+
+            pending_task = await get_pending_review_task(run_id, "images")
+            if pending_task is None:
+                logger.info("image review resolved via review task")
+                break
 
     # ─── STEP 5: Animation prompts — concept-specific movement per scene ───
     await _update_step("planning animations")
-    from packages.clients.claude import generate as claude_gen
-    anim_resp = claude_gen(
-        prompt=f"""For each narration line, write an EXTREMELY AGGRESSIVE animation prompt. Grok defaults to slow zooms — we must FORCE it to animate the specific physical action for this concept.
+    if is_planet_jump_format:
+        anim_prompts = [
+            "Start on the ground beside the striped mast. The frog-suit jumper does one tiny anticipatory bend and settles back down. Keep the full body, mast, and lander visible. No camera movement."
+        ]
+        for scene in scenes_meta:
+            jump_label = scene.get("jump_label", "1 ft 8 in")
+            if jump_label == "8 in":
+                jump_action = "The jumper bends deeply, tries to explode upward, barely rises a few inches beside the mast, then lands back down fast and heavy."
+            elif jump_label.startswith("4 ft"):
+                jump_action = f"The jumper starts on the ground, crouches, launches high up beside the mast to roughly {jump_label}, hangs for a beat, then lands back on the same spot."
+            elif jump_label.startswith("1 ft 11"):
+                jump_action = f"The jumper starts grounded, springs upward to roughly {jump_label} on the mast, pauses briefly at the top, then drops and lands cleanly."
+            elif jump_label.startswith("1 ft 8"):
+                jump_action = f"The jumper starts grounded, performs a normal athletic jump to about {jump_label}, then lands back in the same place."
+            else:
+                jump_action = f"The jumper starts grounded, pushes into a slightly heavy jump to about {jump_label}, then falls back down and lands."
+            anim_prompts.append(
+                f"{jump_action} Show the FULL motion cycle in one shot: start on ground, takeoff, apex, and landing. "
+                f"Keep the {scene.get('planet', 'planet')} environment stable, with the mast and lander visible for scale. "
+                "No camera movement, no scene cuts, no text."
+            )
+        while len(anim_prompts) < n_lines:
+            anim_prompts.append(anim_prompts[-1])
+        anim_prompts = anim_prompts[:n_lines]
+    else:
+        from packages.clients.claude import generate as claude_gen
+        anim_resp = claude_gen(
+            prompt=f"""For each narration line, write an EXTREMELY AGGRESSIVE animation prompt. Grok defaults to slow zooms — we must FORCE it to animate the specific physical action for this concept.
 
 CONCEPT TITLE: {title}
 
@@ -486,20 +624,14 @@ RULES:
 - Each prompt should be 3-4 sentences packed with motion verbs relevant to the specific concept.
 
 Return ONLY a JSON array of {n_lines} strings.""",
-        max_tokens=2500,
-    )
-    anim_match = re.search(r'\[.*\]', anim_resp, re.DOTALL)
-    anim_prompts = json.loads(anim_match.group()) if anim_match else ["Subtle idle movement." for _ in range(n_lines)]
-    while len(anim_prompts) < n_lines:
-        anim_prompts.append("Subtle idle movement.")
-    anim_prompts = anim_prompts[:n_lines]
+            max_tokens=2500,
+        )
+        anim_match = re.search(r'\[.*\]', anim_resp, re.DOTALL)
+        anim_prompts = json.loads(anim_match.group()) if anim_match else ["Subtle idle movement." for _ in range(n_lines)]
+        while len(anim_prompts) < n_lines:
+            anim_prompts.append("Subtle idle movement.")
+        anim_prompts = anim_prompts[:n_lines]
     logger.info("animation prompts generated", count=len(anim_prompts))
-
-    def _resolve_video_settings() -> tuple[str, str | None, str]:
-        provider = str(concept.get("video_provider") or get_channel_video_provider(CHANNEL_ID)).strip().lower()
-        model = concept.get("video_model") or get_channel_video_model(CHANNEL_ID)
-        resolution = concept.get("video_resolution") or get_channel_video_resolution(CHANNEL_ID)
-        return provider, model, resolution
 
     def _veo_duration(narr_path: str) -> int:
         requested = get_clip_duration(narr_path)
@@ -528,6 +660,7 @@ Return ONLY a JSON array of {n_lines} strings.""",
                 aspect_ratio="9:16",
                 resolution=resolution or "720p",
                 image_path=img_path,
+                last_frame_path=img_path if is_planet_jump_format else None,
             )
         else:
             from packages.clients.grok import generate_video_async as grok_generate
@@ -545,15 +678,14 @@ Return ONLY a JSON array of {n_lines} strings.""",
             )
         logger.info("scene animated", scene=i, provider=provider, model=model, resolution=resolution)
 
-    provider, video_model, video_resolution = _resolve_video_settings()
-    await _update_step(f"animating scenes with {provider}")
+    await _update_step(f"animating scenes with {video_provider}")
 
-    if provider == "veo":
+    if video_provider == "veo":
         for i in range(n_lines):
-            await animate_scene(i, provider, video_model, video_resolution)
+            await animate_scene(i, video_provider, video_model, video_resolution)
     else:
         await run_tasks(
-            [lambda i=i: animate_scene(i, provider, video_model, video_resolution) for i in range(n_lines)],
+            [lambda i=i: animate_scene(i, video_provider, video_model, video_resolution) for i in range(n_lines)],
             parallel=True,
             max_concurrent=5,
         )
