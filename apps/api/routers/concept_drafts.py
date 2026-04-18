@@ -1,23 +1,15 @@
 """API routes for concept drafts — auto-generated concepts for review."""
 
 import json
-import os
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+
+from packages.clients.db import async_session
+from packages.clients.workflow_state import ensure_concept, update_concept_status
 
 router = APIRouter(prefix="/api", tags=["concept-drafts"])
-
-db_url = os.getenv("DATABASE_URL", "postgresql+asyncpg://orchestrator:orchestrator@localhost:5432/orchestrator")
-if "asyncpg" not in db_url:
-    db_url = db_url.replace("postgresql://", "postgresql+asyncpg://")
-
-
-def async_session():
-    engine = create_async_engine(db_url, pool_size=2, max_overflow=1)
-    return AsyncSession(engine)
 
 
 @router.get("/concept-drafts")
@@ -126,12 +118,22 @@ async def approve_draft(draft_id: int, bg: BackgroundTasks):
     channel_id, title, concept_json, form_type = row[0], row[1], row[2], row[4] or "short"
 
     async with async_session() as s:
+        concept_id = await ensure_concept(
+            channel_id=channel_id,
+            title=title,
+            concept_json=concept_json,
+            origin="auto",
+            status="queued",
+            form_type=form_type,
+            draft_id=draft_id,
+            session=s,
+        )
         # Insert into content_bank
         cb = await s.execute(text("""
-            INSERT INTO content_bank (channel_id, title, concept_json, status, priority, form_type)
-            VALUES (:cid, :title, :cjson, 'queued', 50, :ft)
+            INSERT INTO content_bank (channel_id, title, concept_json, status, priority, form_type, concept_id)
+            VALUES (:cid, :title, :cjson, 'queued', 50, :ft, :concept_id)
             RETURNING id
-        """), {"cid": channel_id, "title": title, "cjson": concept_json, "ft": form_type})
+        """), {"cid": channel_id, "title": title, "cjson": concept_json, "ft": form_type, "concept_id": concept_id})
         cb_id = cb.scalar()
 
         # Update draft status
@@ -140,6 +142,10 @@ async def approve_draft(draft_id: int, bg: BackgroundTasks):
             SET status = 'approved', resolved_at = :now, content_bank_id = :cbid
             WHERE id = :id
         """), {"id": draft_id, "now": datetime.now(timezone.utc), "cbid": cb_id})
+        await s.execute(
+            text("UPDATE concepts SET updated_at = NOW() WHERE id = :id"),
+            {"id": concept_id},
+        )
         await s.commit()
 
     # Trigger replenishment in background
@@ -165,11 +171,16 @@ async def reject_draft(draft_id: int, bg: BackgroundTasks, reason: str = ""):
     channel_id = row[0]
 
     async with async_session() as s:
+        concept_id = (
+            await s.execute(text("SELECT concept_id FROM concept_drafts WHERE id = :id"), {"id": draft_id})
+        ).scalar_one_or_none()
         await s.execute(text("""
             UPDATE concept_drafts
             SET status = 'rejected', resolved_at = :now, rejection_reason = :reason
             WHERE id = :id
         """), {"id": draft_id, "now": datetime.now(timezone.utc), "reason": reason or None})
+        if concept_id:
+            await update_concept_status(concept_id, status="rejected", session=s)
         await s.commit()
 
     # Trigger replenishment in background

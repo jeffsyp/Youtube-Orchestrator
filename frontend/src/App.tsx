@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import Layout from './components/Layout';
+import Console from './pages/Console';
 import Dashboard from './pages/Dashboard';
 import Activity from './pages/Activity';
 import Concepts from './pages/Concepts';
@@ -24,7 +25,8 @@ export default function App() {
       <BrowserRouter>
         <Routes>
           <Route element={<Layout />}>
-            <Route path="/" element={<Dashboard />} />
+            <Route path="/" element={<Console />} />
+            <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/activity" element={<Activity />} />
             <Route path="/channels/:id" element={<ChannelDetail />} />
             <Route path="/concepts" element={<Concepts />} />

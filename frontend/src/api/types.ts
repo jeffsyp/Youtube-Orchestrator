@@ -34,6 +34,7 @@ export interface RunSummary {
   stalled: boolean;
   youtube_url: string | null;
   youtube_privacy: string | null;
+  last_change?: string | null;
 }
 
 export interface RunDetail extends RunSummary {
@@ -114,6 +115,41 @@ export interface ContentBankItem {
   run_id: number | null;
   error: string | null;
   attempt_count: number;
+  concept_id?: number | null;
+}
+
+export interface ConceptThumbnail {
+  visual?: string;
+  text?: string;
+  emotion?: string;
+}
+
+export interface ConceptChapter {
+  title: string;
+  timing?: string;
+  purpose?: string;
+}
+
+export interface ConceptBeat {
+  narration?: string;
+  image?: string;
+  type?: string;
+  video_prompt?: string;
+  label?: string;
+}
+
+export interface ConceptData {
+  beats?: ConceptBeat[];
+  narration?: string[];
+  chapters?: ConceptChapter[];
+  long_form?: boolean;
+  format_version?: number;
+  thumbnail?: ConceptThumbnail;
+  open_loops?: string[];
+  voice_id?: string;
+  caption?: string;
+  tags?: string[];
+  [key: string]: unknown;
 }
 
 export interface ConceptDraft {
@@ -124,20 +160,45 @@ export interface ConceptDraft {
   brief: string | null;
   score: number;
   status: string;
-  concept: {
-    beats: Array<{
-      narration: string;
-      image: string;
-      type: string;
-      video_prompt?: string;
-      label?: string;
-    }>;
-    voice_id?: string;
-    caption?: string;
-    tags?: string[];
-  };
+  concept: ConceptData;
   created_at: string | null;
   form_type: string;
+}
+
+export interface ReviewTask {
+  id: number;
+  run_id: number;
+  concept_id: number | null;
+  channel_id: number | null;
+  kind: string;
+  status: string;
+  payload: Record<string, unknown>;
+  resolution: Record<string, unknown>;
+  created_at: string | null;
+  resolved_at?: string | null;
+  current_step?: string | null;
+  run_status?: string | null;
+  channel_name?: string | null;
+  title?: string | null;
+}
+
+export interface RunEvent {
+  id: number;
+  run_id: number;
+  ts: string | null;
+  level: string;
+  event_type: string;
+  stage: string | null;
+  message: string;
+  data: Record<string, unknown>;
+}
+
+export interface RunImagesResponse {
+  run_id: number;
+  images: Array<{ name: string; b64: string; narration?: string }>;
+  total: number;
+  expected: number;
+  review_task_id?: number | null;
 }
 
 export interface ConceptDraftSummary {

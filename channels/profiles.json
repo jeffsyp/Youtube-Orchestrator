@@ -1,0 +1,135 @@
+{
+  "12": {
+    "slug": "globe-dump",
+    "category": "News & Politics",
+    "art_style": "Clean flat vector infographic, like Vox or Bloomberg Quicktake graphics. White background, bold blue accents, clean icons, data-driven layout."
+  },
+  "13": {
+    "slug": "munchlax-lore",
+    "builder": "munchlax_lore",
+    "category": "Gaming",
+    "art_style": "Simple crude cartoon with thick wobbly outlines and flat colors. Like a funny webcomic or doodle. Pokemon should be recognizable by their signature features (Pikachu's red cheeks, Charizard's wings and tail flame, Snorlax's round belly) but drawn in crude doodle style. Exaggerated expressions, stubby proportions. Game elements like HP bars, pokeballs, and battle screens drawn in crude cartoon style. NOT realistic, NOT official Pokemon art — crude and funny."
+  },
+  "14": {
+    "slug": "toongunk",
+    "category": "Entertainment",
+    "art_style": "In the visual style of actual 1990s-2000s cartoon show frames — like paused frames from Dexter's Lab, Powerpuff Girls, SpongeBob, or Fairly OddParents. Scenes should look like real cartoon screenshots with the show's backgrounds, character animations mid-action, classic cartoon expressions. NOT modern reinterpretation — actual retro cartoon frames."
+  },
+  "15": {
+    "slug": "very-clean-very-good",
+    "category": "Entertainment",
+    "art_style": "Clean flat lay illustration, birds-eye view, objects arranged symmetrically on white surface. Like an IKEA instruction manual meets Marie Kondo aesthetic. Vector art."
+  },
+  "16": {
+    "slug": "crabrave-shorts",
+    "category": "Gaming",
+    "art_style": "Simple crude cartoon with thick wobbly outlines and flat colors. Like a funny webcomic or doodle. Game characters should be recognizable — use their actual names (Yasuo from League of Legends, Master Chief from Halo, Steve from Minecraft, etc.) and draw them in crude doodle style. Exaggerated expressions, stubby proportions, big heads. Game elements like health bars, chat boxes, and kill feeds drawn in crude cartoon style. NOT realistic, NOT official game art — crude and funny."
+  },
+  "17": {
+    "slug": "smooth-brain-academy",
+    "category": "Education",
+    "art_style": "In the style of a child's crayon drawing on lined notebook paper — wobbly circles, stick figures, misspelled labels, colorful and messy but charming. Like Diary of a Wimpy Kid illustrations."
+  },
+  "18": {
+    "slug": "what-if-city",
+    "builder": "skeletorinio",
+    "category": "Entertainment",
+    "art_style": "In the style of Kurzgesagt — clean flat vector illustration, simple bold shapes, vibrant saturated colors on dark backgrounds, tiny detailed characters in massive sci-fi environments, cosmic scale. Educational but visually stunning."
+  },
+  "19": {
+    "slug": "spookland",
+    "builder": "spookland",
+    "category": "Entertainment",
+    "art_style": "Detailed black and white manga illustration with intricate crosshatching and linework. Stark monochrome with occasional red accents. Unsettling atmosphere with spiral motifs and exaggerated expressions. Japanese horror manga aesthetic."
+  },
+  "20": {
+    "slug": "coldcase-cartoons",
+    "category": "Entertainment",
+    "art_style": "High contrast black and white graphic novel illustration with bold ink linework. Almost entirely monochrome with selective pops of red or yellow for emphasis. Noir mystery aesthetic with dramatic shadows and silhouettes."
+  },
+  "21": {
+    "slug": "one-on-ones-for-fun",
+    "builder": "one_on_ones",
+    "category": "Entertainment",
+    "art_style": "Simple colorful cartoon illustration — bright colors, clean lines, expressive characters, solid backgrounds. Fun and friendly. Illustrated not photographed."
+  },
+  "22": {
+    "slug": "deity-drama",
+    "builder": "deity_drama",
+    "category": "Entertainment",
+    "art_style": "Photorealistic cinematic scene with dramatic lighting. Gods depicted as powerful muscular humans with divine features — glowing eyes, golden armor, supernatural auras. Like a scene from a Marvel or God of War movie. Characters must be recognizable by their iconic attributes (Zeus with lightning, Poseidon with trident, Ares in red armor). Photorealistic world, NOT cartoon, NOT illustrated."
+  },
+  "23": {
+    "slug": "techognizer",
+    "category": "Science & Technology",
+    "skip_image_review": true,
+    "art_style": "Actual dry-erase marker drawing on a real white whiteboard with visible marker streaks and slightly smudged edges. Messy handwritten text, wobbly arrows, imperfect circles drawn by hand. Looks like a real photo of a whiteboard in a classroom. NOT digital art, NOT clean vector graphics — real messy human handwriting on a real whiteboard."
+  },
+  "24": {
+    "slug": "blanket-fort-cartoons",
+    "category": "Entertainment",
+    "art_style": "In the style of Bluey or Peppa Pig animation — soft rounded shapes, warm pastel colors, simple faces, gentle lighting, no sharp edges. Children's TV animation cel style."
+  },
+  "25": {
+    "slug": "nature-receipts",
+    "builder": "nature_receipts",
+    "category": "Pets & Animals",
+    "art_style": "In the style of children's nature book illustration — soft watercolor with rounded friendly shapes, big expressive eyes on animals, warm pastel backgrounds, gentle lighting. Animals should look cute and charming while still being recognizable. Think Studio Ghibli meets National Geographic Kids. Illustrated not photographed."
+  },
+  "26": {
+    "slug": "hardcore-ranked",
+    "builder": "hardcore_ranked",
+    "category": "Entertainment",
+    "video_provider": "veo",
+    "video_model": "veo-3.1-lite-generate-001",
+    "video_resolution": "720p",
+    "art_style": "Bold colorful digital illustration matching the topic — anime style for anime topics, game art style for gaming topics, cinematic poster style for movie topics. Vibrant, high energy, clear subjects. Each image should look like it belongs in the world of whatever is being ranked."
+  },
+  "27": {
+    "slug": "deep-we-go",
+    "builder": "deep_we_go",
+    "category": "Entertainment",
+    "art_style": "Conspiracy theory evidence board — cork board covered in red string connecting photographs, newspaper clippings, post-it notes, and handwritten arrows. Charlie Day Pepe Silvia energy."
+  },
+  "28": {
+    "slug": "nightnightshorts",
+    "builder": "nightnight",
+    "category": "Entertainment",
+    "art_style": "Clean anime-cartoon hybrid — bold clean outlines, flat cel shading, crisp anime silhouettes, simplified but recognizable faces, expressive webtoon energy. Characters stay recognizable by signature hair, outfit, makeup, weapons, and colors, but rendered like a polished 2D parody frame rather than a painterly anime screenshot. NOT photoreal, NOT plush chibi, NOT storybook soft, NOT grimy doodle, NOT glossy 3D mobile-game art."
+  },
+  "29": {
+    "slug": "globe-thoughts",
+    "category": "Education",
+    "skip_image_review": true,
+    "art_style": "In the style of 1950s airline travel posters — bold flat colors, stylized landscapes, art deco typography influence, vintage tourism illustration aesthetic."
+  },
+  "30": {
+    "slug": "historic-ls",
+    "builder": "historic_ls",
+    "category": "Education",
+    "art_style": "Ink wash cartoon illustration with exaggerated caricature features — crosshatched shading, sepia and muted tones, hand-drawn editorial style. Characters with oversized heads and expressive faces. Historical scenes with a humorous twist. Illustrated not photographed."
+  },
+  "31": {
+    "slug": "schmoney-facts",
+    "builder": "schmoney_facts",
+    "category": "Education",
+    "art_style": "In the style of GTA loading screen art — bold illustrated characters, saturated colors, slightly exaggerated proportions, urban and flashy. Money, luxury, and hustle energy. Illustrated not photographed."
+  },
+  "32": {
+    "slug": "mathematicious",
+    "category": "Education",
+    "skip_image_review": true,
+    "art_style": "Actual dry-erase marker drawing on a real white whiteboard with visible marker streaks and slightly smudged edges. Messy handwritten text, wobbly arrows, imperfect circles, equations and graphs drawn by hand. Looks like a real photo of a math teacher's whiteboard after a lecture. NOT digital art, NOT clean vector graphics — real messy human handwriting on a real whiteboard."
+  },
+  "33": {
+    "slug": "thats-a-meme",
+    "category": "Comedy",
+    "art_style": "Simple 2D cartoon style like TheOdd1sOut or Jaiden Animations — clean lines, flat colors, expressive round-headed characters with big eyes, white or solid color backgrounds. Looks hand-drawn but clean. NOT AI-looking, NOT photorealistic, NOT over-detailed."
+  },
+  "34": {
+    "slug": "ctrl-z-the-time",
+    "category": "Science & Technology",
+    "skip_image_review": true,
+    "art_style": "Clean flat vector infographic, like Vox or Bloomberg Quicktake graphics. White background, bold blue accents, clean icons, data-driven layout."
+  }
+}

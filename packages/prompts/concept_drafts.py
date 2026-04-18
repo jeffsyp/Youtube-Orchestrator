@@ -5,6 +5,12 @@ Two-phase generation:
 2. build_script_prompt — writes the full beat-by-beat script for one pitch
 """
 
+from packages.utils.concept_formats import (
+    FORMAT_STRATEGY_DESCRIPTIONS,
+    get_format_strategy_spec,
+    normalize_format_strategy,
+)
+
 
 def build_concept_pitches_prompt(
     channel_name: str,
@@ -56,6 +62,13 @@ WHAT MAKES A GOOD CONCEPT:
 - It should work for someone who knows NOTHING about the topic
 - Simple enough for a 10 year old to follow
 
+FORMAT STRATEGY (choose the SIMPLEST one that still makes the idea work):
+- "single_frame" = the whole premise works as one instantly legible image plus an optional tiny aftermath
+- "attack_result" = one clear setup beat followed by one clear consequence beat
+- "mini_story" = 3-5 clean beats with a small escalation
+- "full_story" = only use this when the viewer truly needs a step-by-step sequence; never by default
+- Most strong Shorts should be "single_frame", "attack_result", or "mini_story". "full_story" is the exception.
+
 WHAT TO AVOID:
 - Vague openings that need context ("everyone argues this" — argues WHAT?)
 - Info dumps or complex explanations — if it needs a diagram, it's not a Short
@@ -69,6 +82,7 @@ OUTPUT — return a JSON array of {count} pitches:
     "brief": "One sentence — why will someone watch this to the end",
     "key_facts": "The SPECIFIC real details the script writer needs to tell this story accurately. Include: real names, real dates, real places, real numbers, what actually happened step by step. The script writer will ONLY know what you put here — if you leave out a name, the script will say 'a player' instead of the actual name. Be thorough.",
     "structure": "Setup: [specific detail] → Escalation: [specific detail] → Punchline: [specific detail]",
+    "format_strategy": "single_frame|attack_result|mini_story|full_story",
     "hook_type": "curiosity_gap|escalation|identity|shock|ranking|debate"
   }}
 ]
@@ -94,11 +108,15 @@ def build_script_prompt(
     brief: str,
     structure: str,
     key_facts: str = "",
+    format_strategy: str = "mini_story",
 ) -> tuple[str, str]:
     """Phase 2: Write narration-only script for one concept pitch.
 
     Visuals are planned later AFTER narration is generated and timestamped.
     """
+    format_strategy = normalize_format_strategy(format_strategy)
+    format_spec = get_format_strategy_spec(format_strategy)
+    format_description = FORMAT_STRATEGY_DESCRIPTIONS[format_strategy]
 
     system = f"""You are a scriptwriter for "{channel_name}" — a YouTube Shorts channel about {niche}.
 
@@ -108,10 +126,12 @@ YOUR GOAL: Maximum watch time. Every word must earn its place.
 
 WRITING RULES:
 - STRICT LENGTH RULES:
-  * 4-6 narration lines MAXIMUM. Not 7. Not 8. Count them.
+  * This concept's format strategy is "{format_strategy}".
+  * Keep it as simple as possible: {format_description}.
+  * Write {format_spec["min_lines"]}-{format_spec["max_lines"]} narration lines total. Do NOT upscale it into a bigger format.
   * Each line MUST be under 15 words. If you wrote more, cut it or split it.
-  * Total video MUST be 20-30 seconds. Count: 15 words ≈ 5 seconds. So 4 lines × 15 words = ~20 seconds. 6 lines × 15 words = ~30 seconds.
-  * If your script would take more than 30 seconds to read aloud, DELETE lines until it fits.
+  * Total video MUST be under {format_spec["max_duration"]:.0f} seconds.
+  * If the idea lands in one image and one line, STOP there. Do not add filler just to sound complete.
 - Each line = one visual = one video clip. MORE short lines = MORE visual cuts = MORE stimulating.
 - Each narration line = one visual on screen. One sentence per line, not a paragraph. More lines = more visual cuts = more stimulating.
 - A viewer scrolling on their phone should be able to follow this with ZERO effort. If they have to think hard or rewind to understand, you've lost them.
@@ -171,6 +191,7 @@ OUTPUT — return a JSON object:
   "tags": ["specific_tag", "broader_tag", "niche_tag", "shorts"],
   "voice_id": "{voice_id}",
   "channel_id": {channel_id},
+  "format_strategy": "{format_strategy}",
   "format_version": 2
 }}
 
@@ -232,6 +253,8 @@ PITCH: {brief}
 KEY FACTS: {key_facts}
 STRUCTURE: {structure}
 {vs_block}{comedy_block}{ranking_block}
+FORMAT STRATEGY: {format_strategy}
+
 Write ONLY the words that will be spoken. No visual descriptions. Use the KEY FACTS — these are the real details that make the story specific and credible. Name the actual people, places, dates, and numbers. Make every line sound like someone excitedly telling a story at a party. The visual director will handle everything else AFTER hearing your narration."""
 
     return system, user
@@ -1209,13 +1232,65 @@ ALREADY MADE OR REJECTED (do NOT repeat these or anything too similar):
 Study these. What made them go viral? Use that psychology — don't copy.
 """
 
+    channel_diversity_block = ""
+    if channel_id == 28:
+        channel_diversity_block = """
+
+NIGHTNIGHTSHORTS CHARACTER ROTATION RULES (CRITICAL):
+- Stop defaulting to the same 5-6 anchor characters. Freshness matters.
+- In this batch, use 5 DIFFERENT lead characters and at least 4 DIFFERENT franchises.
+- At most ONE concept in the batch may use any of these overused anchors: Goku, Saitama, Naruto, Tanjiro, Light, Luffy, Gojo.
+- Look at the ALREADY MADE / REJECTED titles above and infer which characters have been overused recently. Avoid repeating those names unless the angle is truly exceptional.
+- Prefer underused anime characters from a wider roster such as: Ichigo, Aizen, Yuji, Sukuna, Megumi, Todo, Denji, Makima, Power, Eren, Levi, Reiner, Gon, Killua, Hisoka, Meruem, Edward Elric, Roy Mustang, Mob, Reigen, Lelouch, Frieren, Fern, Aqua, Subaru, Rimuru, Jotaro, Dio, Yusuke, Hiei, Kakashi, Madara, Itachi, Vegeta, Piccolo, Sanji, Zoro.
+- Mix HEROES and VILLAINS. Mix MAIN CHARACTERS and fan-favorite side characters.
+- A batch that leans on Goku/Saitama/Naruto/Light again is a FAIL unless the ideas are radically stronger than the alternatives.
+"""
+    elif channel_id == 25:
+        channel_diversity_block = """
+
+NATURE RECEIPTS PREMISE RULES (CRITICAL):
+- Stop defaulting to the same title skeleton: "[animal] was the size of a skyscraper and discovered a city/store/highway."
+- In this batch, use 5 DIFFERENT lead animals and at least 4 DIFFERENT premise engines.
+- At most ONE giant-size concept in the batch.
+- At most ONE "discovers a generic human place/system" concept in the batch. "discovers downtown / a city / a grocery store / a highway / taxes / rush hour" is overused.
+- Prefer SPECIFIC collisions over generic destinations. GOOD: one sunflower seed silo, an airport baggage belt, a luxury koi pond, a national cheese cave. BAD: "a city", "downtown", "the neighborhood", "rush hour."
+- Make the animal's REAL instinct the reason the scenario is funny. A raccoon should steal and pry things open. A penguin should slide, huddle, or panic in heat. An otter should hoard, juggle, or obsess over one object.
+- Mix premise families:
+  1. habitat inversion
+  2. predator/prey reversal
+  3. impossible power-up or physical trait
+  4. human system collision (government, airports, shipping, sports, finance, etc.)
+  5. swarm/pack takeover
+  6. imprinting/obsession with one object or machine
+- Mix PETS, WILD MAMMALS, BIRDS, OCEAN ANIMALS, REPTILES, and SMALL CHAOTIC CREATURES.
+- Avoid dog/hamster/corgi/bunny-heavy batches unless one concept is clearly exceptional.
+- Each idea should feel like a tiny disaster movie with one instantly visual image, one escalation ladder, and one replayable ending.
+- A batch full of generic "animal + power + discovers place" ideas is a FAIL.
+"""
+
     is_satisfying = channel_id in SATISFYING_CHANNELS
     is_character_dialogue = channel_id in CHARACTER_DIALOGUE_CHANNELS
 
-    # Resolve channel-specific art style up front so any branch's f-string can reference it
-    from apps.orchestrator.pipeline import CHANNEL_ART_STYLE
+    format_strategy_block = """FORMAT STRATEGY (choose the SIMPLEST version that still lands):
+- "single_frame" = one instantly legible thesis image. Optional micro-aftermath only if it makes the joke clearer.
+- "attack_result" = one clear setup beat and one clear consequence beat. Usually 2-3 scenes max.
+- "mini_story" = 3-5 connected beats with a tiny escalation. Use this only when the premise truly benefits from sequence.
+- "full_story" = avoid for no-narration shorts unless the concept absolutely breaks without it.
+- Ask this FIRST: "If this were one strong image with one caption, would it still be compelling?" If yes, keep it simple.
+- Do NOT inflate a simple joke into extra scenes just because AI can generate them.
+
+SCENE COUNT BY STRATEGY:
+- single_frame: 1 scene, or 2 only if the second is a tiny aftermath
+- attack_result: 2-3 scenes
+- mini_story: 3-5 scenes
+- full_story: only if absolutely necessary, and still keep it short
+"""
+
+    # Resolve channel-specific art style up front so any branch's f-string can reference it.
+    from apps.orchestrator.pipeline import get_channel_art_style
+
     _DEFAULT_STYLE = "Simple crude cartoon — thick wobbly outlines, flat bold colors, exaggerated round heads, simple bodies. Deliberately ugly and charming like a funny doodle. NOT noir, NOT graphic novel, NOT serious."
-    _channel_style = CHANNEL_ART_STYLE.get(channel_id, _DEFAULT_STYLE) if channel_id else _DEFAULT_STYLE
+    _channel_style = get_channel_art_style(channel_id) if channel_id else _DEFAULT_STYLE
     art_style_field = f',\n    "art_style": "{_channel_style}"' if (is_character_dialogue or not is_satisfying) else ""
 
     if is_character_dialogue:
@@ -1230,7 +1305,8 @@ THE GOLDEN RULES:
 4. THE DIALOGUE IS THE COMEDY — Lines should be funny, absurd, or shocking on their own. Casual tone like someone talking to a friend, not a script being read.
 5. SHOW DON'T TELL — If a character goes to prison, show them being dragged away. Don't skip to the next location with a hard cut.
 
-ART STYLE: Simple crude cartoon — thick wobbly outlines, flat bold colors, exaggerated round heads, simple bodies. Deliberately ugly and charming. NOT serious, NOT noir, NOT realistic. This keeps it feeling like entertainment, not a documentary.
+ART STYLE: {_channel_style}
+This style should stay entertaining and visually readable, not stiff or overcomplicated.
 
 SCENE FLOW IS CRITICAL:
 - Each scene must visually connect to the next — the viewer must understand what changed
@@ -1260,8 +1336,8 @@ WHAT DOESN'T WORK:
 
 CHANNEL CONTEXT: This is for "{channel_name}" ({niche}). Every concept must fit this channel's world and niche."""
 
-        scene_format = """Each scene needs:
-- "image_prompt": Simple crude cartoon illustration. ALWAYS start with "Simple crude cartoon — thick wobbly outlines, flat colors." ONE character per scene (the one speaking). Close-up framing. Exaggerated facial expression matching the dialogue. Add "One character only. NO text anywhere." at the end.
+        scene_format = f"""Each scene needs:
+- "image_prompt": Start with "{_channel_style}". ONE character per scene (the one speaking). Close-up framing. Exaggerated facial expression matching the dialogue. Add "One character only. NO text anywhere." at the end.
 - "video_prompt": Describe what the character DOES and SAYS. The dialogue must be written naturally in the prompt so Grok generates the character speaking it. Also include sound effects.
   GOOD: "Guy leans forward into the microphone smugly and says yeah he is guilty, shrugs his shoulders. Courtroom murmur, dramatic dun dun sound."
   GOOD: "Guy slams his hands on the table and yells but you are my best friend, tears fly off his face. Table slam, crowd gasps."
@@ -1269,7 +1345,7 @@ CHANNEL CONTEXT: This is for "{channel_name}" ({niche}). Every concept must fit 
   BAD: "Camera slowly zooms out" (boring — nothing moves)
   BAD: "Guy looks sad" (no dialogue, no physical action)
   RULE: One character speaks per scene. Keep dialogue under 10 words. Describe their physical reaction while speaking.
-- "duration": 3-4 seconds per scene. Total video 12-16 seconds, 5 scenes max."""
+- "duration": 3-4 seconds per scene. Use as few scenes as the chosen format_strategy needs. Total video 12-16 seconds, 5 scenes max."""
     elif is_satisfying:
         style_guidance = """SATISFYING VIDEO RULES:
 - These videos should make viewers say "wait... is that real? That's TOO perfect." The goal is IMPOSSIBLE PRECISION that makes people question if it's AI or real.
@@ -1286,6 +1362,9 @@ WHAT ACTUALLY GOES VIRAL (aim for these):
 THE FORMULA: Make the viewer's jaw drop TWICE — once at how bad it is, once at how perfect it becomes. They HAVE to rewatch it.
 
 ART STYLE: Photorealistic but SURREAL. The scene should look real enough to question, but the perfection should feel impossible.
+
+FORMAT NOTE:
+- Satisfying concepts should almost always be "single_frame". One mesmerizing transformation is usually enough.
 
 AI VIDEO GENERATOR LIMITATIONS:
 - The generator can do ONE simple motion in 5-10 seconds.
@@ -1324,11 +1403,13 @@ TRANSITIONS BETWEEN SCENES ARE CRITICAL:
 - Each scene must flow visually into the next so the viewer never loses track of the story
 
 SCENE STRUCTURE:
-- 3-5 scenes total (including transition scenes). Under 15 seconds total.
+- Use the fewest scenes possible. Under 15 seconds total.
+- single_frame = one dominant image, optional tiny aftermath
+- attack_result = setup → consequence
+- mini_story = setup → escalation → punchline
 - Each main scene: 3-5 seconds
-- Each transition scene: 2 seconds
-- The story must be: setup → (transition) → escalation → (transition) → punchline
-- Hold the PUNCHLINE scene longest — give viewers time to process and laugh
+- Each transition scene: 2 seconds only when the viewer genuinely needs that bridge
+- Hold the PUNCHLINE or CONSEQUENCE scene longest — give viewers time to process and laugh
 
 PROVEN PATTERNS:
 1. Plant/build something → time passes → it grows huge → it gets destroyed instantly (the bigger the buildup, the funnier the collapse)
@@ -1364,7 +1445,7 @@ CHARACTERS MUST BE SPECIFIC:
   GOOD: "Guy jumps up celebrating with fists pumping, coins rain from tree. Triumphant fanfare, coins clattering."
   BAD: "Camera slowly zooms out" (boring — nothing moves)
   RULE: image_prompt = the STARTING state. video_prompt = what PHYSICALLY HAPPENS. The bigger the movement, the better.
-- "duration": 2-5 seconds per scene. Total video should be 10-15 seconds max.
+- "duration": 2-5 seconds per scene. Total video should match the chosen format_strategy and stay under 15 seconds.
 
 CHANNEL ART STYLE: {_channel_style}
 Every image_prompt MUST start with this art style description."""
@@ -1373,6 +1454,8 @@ Every image_prompt MUST start with this art style description."""
 
 {style_guidance}
 
+{format_strategy_block}
+
 {scene_format}
 
 OUTPUT — return a JSON array of {count} complete concepts:
@@ -1380,6 +1463,7 @@ OUTPUT — return a JSON array of {count} complete concepts:
   {{
     "title": "ALL CAPS TITLE",
     "brief": "One sentence — why will someone watch/share this",
+    "format_strategy": "single_frame|attack_result|mini_story|full_story",
     "scenes": [
       {{
         "image_prompt": "Full image generation prompt",
@@ -1401,6 +1485,7 @@ Return ONLY valid JSON, no markdown."""
 
 {trending_block}
 {past_block}
+{channel_diversity_block}
 
 Each concept must be complete with all scenes ready to generate. Make them scroll-stopping."""
 

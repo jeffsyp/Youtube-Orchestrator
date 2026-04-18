@@ -8,7 +8,8 @@ interface RunSummary {
 }
 
 const navItems = [
-  { to: '/', label: 'Dashboard', icon: DashboardIcon, badgeKey: null },
+  { to: '/', label: 'Console', icon: DashboardIcon, badgeKey: null },
+  { to: '/dashboard', label: 'Dashboard', icon: ActivityIcon, badgeKey: null },
   { to: '/activity', label: 'Activity', icon: ActivityIcon, badgeKey: 'pending_review' as const },
   { to: '/review', label: 'Image Review', icon: ReviewIcon, badgeKey: 'image_review' as const },
   { to: '/concepts', label: 'Concepts', icon: ConceptsIcon, badgeKey: null },

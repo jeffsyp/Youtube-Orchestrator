@@ -12,6 +12,11 @@ import time
 
 import structlog
 from dotenv import load_dotenv
+from packages.clients.channel_profiles import (
+    get_channel_art_style as get_profile_art_style,
+    get_channel_category as get_profile_category,
+    should_skip_image_review as get_profile_skip_image_review,
+)
 
 load_dotenv(override=True)
 logger = structlog.get_logger()
@@ -70,10 +75,10 @@ CHANNEL_ART_STYLE = {
     22: "Photorealistic cinematic scene with dramatic lighting. Gods depicted as powerful muscular humans with divine features — glowing eyes, golden armor, supernatural auras. Like a scene from a Marvel or God of War movie. Characters must be recognizable by their iconic attributes (Zeus with lightning, Poseidon with trident, Ares in red armor). Photorealistic world, NOT cartoon, NOT illustrated.",  # Deity Drama
     23: "Actual dry-erase marker drawing on a real white whiteboard with visible marker streaks and slightly smudged edges. Messy handwritten text, wobbly arrows, imperfect circles drawn by hand. Looks like a real photo of a whiteboard in a classroom. NOT digital art, NOT clean vector graphics — real messy human handwriting on a real whiteboard.",  # Techognizer
     24: "In the style of Bluey or Peppa Pig animation — soft rounded shapes, warm pastel colors, simple faces, gentle lighting, no sharp edges. Children's TV animation cel style.",  # Blanket Fort Cartoons
-    25: "In the style of children's nature book illustration — soft watercolor with rounded friendly shapes, big expressive eyes on animals, warm pastel backgrounds, gentle lighting. Animals should look cute and charming while still being recognizable. Think Studio Ghibli meets National Geographic Kids. Illustrated not photographed.",  # Nature Receipts
+    25: "Photorealistic editorial wildlife photography — absurd animal scenarios rendered like real high-end press or documentary photos. Real feathers, fur, scales, anatomy, and lighting. Naturalistic textures, believable shadows, real camera depth of field, subtle lens imperfections. Human environments and props may be absurd, but the final image must still look like a real photograph. NOT cartoon, NOT illustrated, NOT cel-shaded.",  # Nature Receipts
     26: "Bold colorful digital illustration matching the topic — anime style for anime topics, game art style for gaming topics, cinematic poster style for movie topics. Vibrant, high energy, clear subjects. Each image should look like it belongs in the world of whatever is being ranked.",  # Hardcore Ranked
     27: "Conspiracy theory evidence board — cork board covered in red string connecting photographs, newspaper clippings, post-it notes, and handwritten arrows. Charlie Day Pepe Silvia energy.",  # Deep We Go
-    28: "In the visual style of actual anime episodes — like paused frames from Attack on Titan, Jujutsu Kaisen, or Demon Slayer. Scenes should look like real anime frames with the show's backgrounds, characters in motion, dramatic camera angles. NOT fan art, NOT static character poses — actual animated show frames.",  # NightNightShorts
+    28: "Clean anime-cartoon hybrid — bold clean outlines, flat cel shading, crisp anime silhouettes, simplified but recognizable faces, expressive webtoon energy. Characters stay recognizable by signature hair, outfit, makeup, weapons, and colors, but rendered like a polished 2D parody frame rather than a painterly anime screenshot. NOT photoreal, NOT plush chibi, NOT storybook soft, NOT grimy doodle, NOT glossy 3D mobile-game art.",  # NightNightShorts
     29: "In the style of 1950s airline travel posters — bold flat colors, stylized landscapes, art deco typography influence, vintage tourism illustration aesthetic.",  # Globe Thoughts
     30: "Ink wash cartoon illustration with exaggerated caricature features — crosshatched shading, sepia and muted tones, hand-drawn editorial style. Characters with oversized heads and expressive faces. Historical scenes with a humorous twist. Illustrated not photographed.",  # Historic Ls
     31: "In the style of GTA loading screen art — bold illustrated characters, saturated colors, slightly exaggerated proportions, urban and flashy. Money, luxury, and hustle energy. Illustrated not photographed.",  # Schmoney Facts
@@ -82,18 +87,55 @@ CHANNEL_ART_STYLE = {
 }
 
 
+def get_channel_category(channel_id: int) -> str:
+    return get_profile_category(
+        channel_id,
+        fallback_map=CHANNEL_CATEGORY,
+        default="Entertainment",
+    )
+
+
+def get_channel_art_style(channel_id: int) -> str:
+    return get_profile_art_style(
+        channel_id,
+        fallback_map=CHANNEL_ART_STYLE,
+        default=_DEFAULT_STYLE,
+    )
+
+
+def should_skip_image_review(channel_id: int) -> bool:
+    return get_profile_skip_image_review(channel_id)
+
+
 async def run_pipeline(run_id: int, concept: dict):
     """Run the full video generation pipeline."""
     from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
     from sqlalchemy.orm import sessionmaker
     from sqlalchemy import text
+    from packages.clients.workflow_state import (
+        append_run_event,
+        create_review_task,
+        ensure_run_bundle,
+        get_pending_review_task,
+        resolve_review_task,
+        update_concept_status,
+        update_run_manifest,
+    )
 
-    db_url = os.getenv("DATABASE_URL", "postgresql+asyncpg://orchestrator:orchestrator@localhost:5432/orchestrator")
+    db_url = os.getenv("DATABASE_URL", "postgresql+asyncpg://postgres:postgres@localhost:5432/youtube_orchestrator")
     if "asyncpg" not in db_url:
         db_url = db_url.replace("postgresql://", "postgresql+asyncpg://")
 
     _log_engine = create_async_engine(db_url, pool_size=1, max_overflow=1)
     _pipeline_start = time.time()
+    await ensure_run_bundle(
+        run_id,
+        concept=concept,
+        channel_id=concept.get("channel_id"),
+        pipeline_mode="default",
+        stage="starting",
+        status="running",
+    )
 
     async def _update_step(step):
         """Update current_step and append to log. Use for major phase changes."""
@@ -117,6 +159,14 @@ async def run_pipeline(run_id: int, concept: dict):
                     {"step": step, "line": log_line, "id": run_id},
                 )
                 await sess.commit()
+            await append_run_event(
+                run_id,
+                event_type="stage_started",
+                message=step,
+                stage=step,
+                data={"log_line": log_line},
+            )
+            await update_run_manifest(run_id, {"stage": step, "last_log_line": log_line})
         except Exception as e:
             logger.warning("step update failed (non-fatal)", step=step, error=str(e)[:100])
 
@@ -141,6 +191,13 @@ async def run_pipeline(run_id: int, concept: dict):
                     {"line": log_line, "id": run_id},
                 )
                 await sess.commit()
+            await append_run_event(
+                run_id,
+                event_type="log",
+                message=msg,
+                stage=None,
+                data={"log_line": log_line},
+            )
         except Exception:
             pass
 
@@ -180,6 +237,13 @@ async def run_pipeline(run_id: int, concept: dict):
                     {"lines": combined, "id": run_id},
                 )
                 await sess.commit()
+            for line in lines:
+                await append_run_event(
+                    run_id,
+                    event_type="log",
+                    message=line,
+                    data={"log_line": line},
+                )
         except Exception:
             pass
 
@@ -926,15 +990,23 @@ No markdown, just the JSON array."""
             "title": title,
             "description": concept.get("caption", ""),
             "tags": concept.get("tags", []),
-            "category": CHANNEL_CATEGORY.get(channel_id, "Entertainment"),
+            "category": get_channel_category(channel_id),
         })
 
         # 7. Update DB — step + status + assets in one transaction
         engine = create_async_engine(db_url, pool_size=1, max_overflow=0)
         async with AsyncSession(engine) as s:
+            concept_id = (
+                await s.execute(text("SELECT concept_id FROM content_runs WHERE id = :id"), {"id": run_id})
+            ).scalar_one_or_none()
             await s.execute(
                 text("UPDATE content_runs SET status = 'pending_review', current_step = 'pending_review', completed_at = NOW() WHERE id = :id"),
                 {"id": run_id},
+            )
+            await s.execute(
+                text("INSERT INTO assets (run_id, channel_id, asset_type, content) VALUES (:rid, :cid, :type, :content)"),
+                {"rid": run_id, "cid": channel_id, "type": "rendered_video",
+                 "content": json.dumps({"path": final_path, "file_size_bytes": file_size})},
             )
             await s.execute(
                 text("INSERT INTO assets (run_id, channel_id, asset_type, content) VALUES (:rid, :cid, :type, :content)"),
@@ -951,8 +1023,11 @@ No markdown, just the JSON array."""
                     text("INSERT INTO assets (run_id, channel_id, asset_type, content) VALUES (:rid, :cid, :type, :content)"),
                     {"rid": run_id, "cid": channel_id, "type": "publish_metadata", "content": metadata},
                 )
+            if concept_id:
+                await update_concept_status(concept_id, status="ready", latest_run_id=run_id, session=s)
             await s.commit()
         await engine.dispose()
+        await update_run_manifest(run_id, {"status": "pending_review", "stage": "pending_review", "final_video": final_path})
 
         # Copy to channel folder with title as filename
         _copy_to_channel_folder(final_path, title, channel_id, db_url)
@@ -963,12 +1038,18 @@ No markdown, just the JSON array."""
         try:
             engine = create_async_engine(db_url, pool_size=1, max_overflow=0)
             async with AsyncSession(engine) as s:
+                concept_id = (
+                    await s.execute(text("SELECT concept_id FROM content_runs WHERE id = :id"), {"id": run_id})
+                ).scalar_one_or_none()
                 await s.execute(
                     text("UPDATE content_runs SET status = 'failed', error = :err WHERE id = :id"),
                     {"id": run_id, "err": str(e)[:500]},
                 )
+                if concept_id:
+                    await update_concept_status(concept_id, status="failed", latest_run_id=run_id, session=s)
                 await s.commit()
             await engine.dispose()
+            await update_run_manifest(run_id, {"status": "failed", "error": str(e)[:500]})
         except Exception as db_err:
             logger.error("failed to update DB after pipeline failure", run_id=run_id, db_error=str(db_err)[:100])
 
@@ -1193,7 +1274,6 @@ async def _run_no_narration(run_id: int, concept: dict, output_dir: str, _update
                     logger.warning("character description failed", character=char_name, error=str(e)[:100])
 
     # 1. Generate images, then wait for approval, then animate
-    SKIP_APPROVAL_CHANNELS = {23, 29, 32, 34}  # Informational: Techognizer, Globe Thoughts, Mathematicious, Ctrl Z
     await _update_step("generating scene images")
     segment_paths = []
 
@@ -1248,7 +1328,7 @@ async def _run_no_narration(run_id: int, concept: dict, output_dir: str, _update
     _existing_clips = [f for f in os.listdir(clips_dir) if f.endswith('.mp4')] if os.path.isdir(clips_dir) else []
     if _existing_clips:
         logger.info("skipping image approval — clips exist from previous run", count=len(_existing_clips))
-    elif channel_id not in SKIP_APPROVAL_CHANNELS:
+    elif not should_skip_image_review(channel_id):
         all_images_exist = all(
             os.path.exists(os.path.join(images_dir, f"scene_{i}.png"))
             for i in range(len(scenes))
@@ -1257,6 +1337,19 @@ async def _run_no_narration(run_id: int, concept: dict, output_dir: str, _update
             await _update_step("images ready for review")
             approval_file = os.path.join(output_dir, ".images_approved")
             deny_file = os.path.join(output_dir, ".images_denied")
+            review_task_id = await create_review_task(
+                run_id=run_id,
+                kind="images",
+                concept_id=concept.get("concept_id"),
+                channel_id=channel_id,
+                stage="images ready for review",
+                payload={
+                    "expected_images": len(scenes),
+                    "images_dir": os.path.abspath(images_dir),
+                    "image_names": [f"scene_{i}.png" for i in range(len(scenes))],
+                },
+            )
+            await update_run_manifest(run_id, {"review_task_id": review_task_id, "stage": "images ready for review"})
             for _f in [approval_file, deny_file]:
                 if os.path.exists(_f):
                     os.remove(_f)
@@ -1265,11 +1358,27 @@ async def _run_no_narration(run_id: int, concept: dict, output_dir: str, _update
                 if os.path.exists(approval_file):
                     logger.info("user approved images")
                     os.remove(approval_file)
+                    await resolve_review_task(
+                        run_id=run_id,
+                        kind="images",
+                        status="approved",
+                        resolution={"source": "file_fallback"},
+                    )
                     break
                 if os.path.exists(deny_file):
                     logger.info("user denied images — stopping")
                     os.remove(deny_file)
+                    await resolve_review_task(
+                        run_id=run_id,
+                        kind="images",
+                        status="rejected",
+                        resolution={"source": "file_fallback"},
+                    )
                     raise RuntimeError("Images denied by user")
+                pending_task = await get_pending_review_task(run_id, "images")
+                if pending_task is None:
+                    logger.info("image review resolved via review task")
+                    break
 
     # --- PASS 2: Animate each scene ---
     for i, scene in enumerate(scenes):
@@ -1460,15 +1569,23 @@ async def _run_no_narration(run_id: int, concept: dict, output_dir: str, _update
         "title": title,
         "description": concept.get("caption", ""),
         "tags": concept.get("tags", []),
-        "category": CHANNEL_CATEGORY.get(channel_id, "Entertainment"),
+        "category": get_channel_category(channel_id),
     }
     metadata = json.dumps(metadata_dict)
 
     engine = create_async_engine(db_url, pool_size=1, max_overflow=0)
     async with AsyncSession(engine) as s:
+        concept_id = (
+            await s.execute(text("SELECT concept_id FROM content_runs WHERE id = :id"), {"id": run_id})
+        ).scalar_one_or_none()
         await s.execute(
             text("UPDATE content_runs SET status = 'pending_review', current_step = 'pending_review', completed_at = NOW() WHERE id = :id"),
             {"id": run_id},
+        )
+        await s.execute(
+            text("INSERT INTO assets (run_id, channel_id, asset_type, content) VALUES (:rid, :cid, :type, :content)"),
+            {"rid": run_id, "cid": channel_id, "type": "rendered_video",
+             "content": json.dumps({"path": final_path, "file_size_bytes": file_size})},
         )
         await s.execute(
             text("INSERT INTO assets (run_id, channel_id, asset_type, content) VALUES (:rid, :cid, :type, :content)"),
@@ -1484,8 +1601,11 @@ async def _run_no_narration(run_id: int, concept: dict, output_dir: str, _update
                 text("INSERT INTO assets (run_id, channel_id, asset_type, content) VALUES (:rid, :cid, :type, :content)"),
                 {"rid": run_id, "cid": channel_id, "type": "publish_metadata", "content": metadata},
             )
+        if concept_id:
+            await update_concept_status(concept_id, status="ready", latest_run_id=run_id, session=s)
         await s.commit()
     await engine.dispose()
+    await update_run_manifest(run_id, {"status": "pending_review", "stage": "pending_review", "final_video": final_path})
 
     _copy_to_channel_folder(final_path, title, channel_id, db_url)
     logger.info("no-narration pipeline complete", run_id=run_id, path=final_path,
@@ -1500,6 +1620,13 @@ async def _run_narration_first(run_id: int, concept: dict, output_dir: str, _upd
     """
     from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
     from sqlalchemy import text
+    from packages.clients.workflow_state import (
+        create_review_task,
+        get_pending_review_task,
+        resolve_review_task,
+        update_concept_status,
+        update_run_manifest,
+    )
     import base64
     import re as _re
 
@@ -1639,7 +1766,7 @@ async def _run_narration_first(run_id: int, concept: dict, output_dir: str, _upd
         )
 
         aspect = "16:9 landscape" if is_long_form else "9:16 vertical portrait"
-        art_style = concept.get("art_style") or CHANNEL_ART_STYLE.get(channel_id, _DEFAULT_STYLE)
+        art_style = concept.get("art_style") or get_channel_art_style(channel_id)
         visual_system = f"""You write image prompts for YouTube videos. Channel: "{channel_name}" ({niche}).
 
 One prompt per narration line. Every prompt starts with "{art_style}"
@@ -1799,7 +1926,7 @@ CRITICAL: The viewer should be able to understand the video on MUTE just from th
     if n_diagram: parts.append(f"{n_diagram} diagrams")
     if n_grok: parts.append(f"{n_grok} video clips")
     await _update_step(f"generating {', '.join(parts)}")
-    art_style = CHANNEL_ART_STYLE.get(channel_id, _DEFAULT_STYLE)
+    art_style = get_channel_art_style(channel_id)
     from packages.clients.grok import generate_image as grok_gen_image
     from packages.clients.grok import generate_image_dalle as dalle_gen_image
     from packages.clients.grok import generate_video_async as grok_generate, extend_video_async as grok_extend
@@ -2601,7 +2728,7 @@ PROMPT: (only if NO) a corrected image prompt with detailed visual description o
         "title": title,
         "description": concept.get("caption", ""),
         "tags": concept.get("tags", []),
-        "category": CHANNEL_CATEGORY.get(channel_id, "Entertainment"),
+        "category": get_channel_category(channel_id),
     }
     metadata = json.dumps(metadata_dict)
 
@@ -2823,30 +2950,50 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 lines.append(f"Dialogue: 0,{_format_time(start)},{_format_time(end)},Label,,0,0,0,,{clean_label}")
 
     if words:
-        # Split words into line groups — never mix words from different narration lines
-        # Detect line boundaries by time gaps > 0.5s between consecutive words
+        # Split into line groups. Prefer explicit line ids when available so we never
+        # mix words across narration lines like "smile? He". Fall back to gap-based
+        # grouping for older callers that pass 3-tuples only.
         line_groups = []
-        current_group = [words[0]]
-        for k in range(1, len(words)):
-            prev_end = words[k - 1][2]
-            curr_start = words[k][1]
-            if curr_start - prev_end > 0.25:
-                # Line boundary — flush current group
+        if len(words[0]) >= 4:
+            current_line_id = words[0][3]
+            current_group = [words[0]]
+            for word in words[1:]:
+                if word[3] != current_line_id:
+                    line_groups.append(current_group)
+                    current_group = [word]
+                    current_line_id = word[3]
+                else:
+                    current_group.append(word)
+            if current_group:
                 line_groups.append(current_group)
-                current_group = []
-            current_group.append(words[k])
-        if current_group:
-            line_groups.append(current_group)
+        else:
+            current_group = [words[0]]
+            for k in range(1, len(words)):
+                prev_end = words[k - 1][2]
+                curr_start = words[k][1]
+                if curr_start - prev_end > 0.25:
+                    line_groups.append(current_group)
+                    current_group = []
+                current_group.append(words[k])
+            if current_group:
+                line_groups.append(current_group)
 
         # Now group words into chunks of 3 WITHIN each line group
-        for line_words in line_groups:
+        for group_idx, line_words in enumerate(line_groups):
+            next_group_start = None
+            if group_idx + 1 < len(line_groups):
+                next_group_start = line_groups[group_idx + 1][0][1]
             for gi in range(0, len(line_words), 3):
                 group = line_words[gi:gi + 3]
                 texts = [_emoji_pat.sub("", w[0]) for w in group]
                 wc = len(group)
                 times = []
-                for j, (_, ws, we) in enumerate(group):
-                    times.append((ws, group[j + 1][1] if j + 1 < wc else we))
+                for j, word_entry in enumerate(group):
+                    _, ws, we = word_entry[:3]
+                    next_boundary = group[j + 1][1] if j + 1 < wc else we
+                    if j == wc - 1 and next_group_start is not None:
+                        next_boundary = min(next_boundary, max(next_group_start - 0.01, ws))
+                    times.append((ws, next_boundary))
                 for ai in range(wc):
                     parts = []
                     for j, t in enumerate(texts):

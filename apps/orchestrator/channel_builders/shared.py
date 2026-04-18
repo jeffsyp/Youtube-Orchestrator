@@ -324,6 +324,13 @@ async def generate_and_animate_scenes(
     client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"), timeout=120.0)
     brief = concept.get("brief", "")
     extra_rules = f"\n\nCONCEPT-SPECIFIC INSTRUCTIONS:\n{brief}" if brief else ""
+    ref_style_prefix = (
+        "MATCH THE EXACT ART STYLE OF THE REFERENCE IMAGE. "
+        "Keep the same rendering medium, same line quality, same level of detail, same character design, "
+        "and same overall visual roughness. If the reference is cartoon, stay cartoon. "
+        "If the reference is photoreal, stay photoreal. Do NOT clean it up, polish it, "
+        "or switch mediums away from the reference."
+    )
 
     # Era enforcement — ALL image prompts and reviews must specify this era
     era = concept.get("era", "")
@@ -375,15 +382,51 @@ CRITICAL — CLIP COVERAGE: The total duration of sub-action clips for each narr
 
 CRITICAL — SHOT VARIETY: Across the full set of image_prompts, vary camera angle, distance, and composition aggressively. Never more than 2 consecutive scenes with the same framing. Mix: close-up, medium, wide, bird's-eye, low-angle, over-the-shoulder, dutch-angle. Mix tight/loose framing. Vary lighting when the scene changes (golden hour, overcast, night, torchlit). Repeating "wide shot at eye level" across most scenes is a FAIL — the video will look static and boring.
 
-CRITICAL — NO STATIC ANIMATION PROMPTS: Every animation_prompt must describe CONTINUOUS VISIBLE motion. Banned words: "motionless", "still", "sits", "stands", "peaceful", "calm", "slowly blinks", "half-closed", "unchanging". If the beat is inherently quiet, describe subject motion (twitching, breathing hard, shifting weight) OR camera motion (fast push-in, pull-back, dolly, whip-pan). A clip where nothing moves reads as a freeze.
+CRITICAL — NO STATIC ANIMATION PROMPTS: Every animation_prompt must describe CONTINUOUS VISIBLE motion. Banned words: "motionless", "still", "sits", "stands", "peaceful", "calm", "slowly blinks", "half-closed", "unchanging". If the beat is inherently quiet, describe subject motion or environmental motion (twitching, breathing hard, shifting weight, dust drifting, papers flying). Never solve a weak beat with camera language.
 
-CRITICAL — LINE 0 IS THE HOOK (SHOW THE PAYOFF, NOT THE SETUP):
-Line 0's narration is the "what if" question, but the image_prompt for line 0 must show the MOST EXCITING / CLIMACTIC moment of the video — the payoff the viewer is being teased with. NOT the setup, NOT the protagonist holding an object, NOT "about to do" something. SHOW THE ACTUAL COOL THING HAPPENING.
-- BAD: "Skeletorinio stands holding a tiny red canister at the entrance of a jousting arena, knights charging in the distance." (This is setup — viewer swipes away.)
-- GOOD: "Skeletorinio in the center of the jousting arena, laughing, spraying orange pepper mist directly into the faces of two armored knights who are simultaneously falling off their galloping horses with tears streaming, crowd erupting. Dust exploding."
-- The viewer should hear "What if you brought pepper spray to medieval jousting" while SEEING the knights already wiping out. That's how hooks work on shorts.
-- Applies to ALL videos regardless of channel. The hook visual is the #1 determinant of watch time.
-- Lines 1+ still follow temporal alignment (below) — only line 0 gets the "show the payoff" privilege.
+CRITICAL — CAMERA LANGUAGE IS BANNED IN animation_prompt:
+- Do NOT write: "camera", "zoom", "push in", "pull back", "pan", "whip-pan", "dolly", "rack focus", "tracking shot", "camera slowly"
+- Grok performs better when the prompt describes CHARACTER / OBJECT / ENVIRONMENT motion only
+- GOOD: "Hisoka's grin twitches and disappears as sweat rolls down his face"
+- BAD: "Camera slowly pushes in on Hisoka's face"
+
+CRITICAL — MULTIPLE CHARACTERS ARE FINE, DIRECT CONTACT IS NOT:
+- Grok can handle several characters in frame, but it struggles when the key action requires two characters to physically touch, grapple, collide, wrestle, exchange objects hand-to-hand, or overlap heavily.
+- Prefer ONE moving subject per sub-action. Other characters may be visible, but they should mostly be watching, recoiling, bracing, or standing several feet away.
+- If narration implies "A hits B", "A grabs B", "A hands B something", "A and B clash", or "A knocks B out", do NOT try to show the literal contact moment in one crowded image.
+- Instead, split it into separate clean beats:
+  - Beat A: attacker powers up / swings / fires / lunges, with the other character visible but clearly separated
+  - Beat B: defender alone getting launched / cratered / stunned / falling / knocked out from the result
+- If the named attack is already iconic enough, you may simplify even further:
+  - Beat A: winner alone doing the named move cleanly
+  - Beat B: loser alone in the aftermath, with damage / dust / crater / slash trail proving what happened
+- GOOD: "Zoro surges forward with blades raised while Killua braces several feet away"
+- GOOD: "Zoro alone surges through Onigiri, dust ripping backward"
+- GOOD: "Killua alone slams into rubble and slides down the wall, smoke bursting"
+- BAD: "Zoro's swords physically connect with Killua in the same frame"
+- BAD: "An official presses the license directly into Gojo's hand"
+- For prop handoff beats, show the prop EXTENDED TOWARD the main character, or already in their possession. Avoid literal hand-to-hand contact.
+
+CRITICAL — LITERAL PROOF OF THE JOKE:
+If the narration contains a specific proof-detail, the image must SHOW it literally and clearly.
+- "walking backward" must visibly read as backward walking
+- "smile disappears" must show the smile already faltering or gone
+- "frozen midair" must show the object suspended, not just being thrown
+- "mail/license/officials beg" must show the license card, the officials, and the desperate body language
+- "stops talking" must show the speaker physically going silent — mouth mid-close or closed, frozen posture, stunned face
+- reaction punchlines must be DOMINANT in frame. If the joke is shock, fear, begging, or silence, the body language has to be obvious at a glance
+Do not settle for a generic version of the beat.
+
+CRITICAL — LINE 0 IS THE HOOK (SHOW THE STRONGEST START FRAME FOR THE PAYOFF):
+Line 0's narration is the hook, but this pipeline uses IMAGE-TO-VIDEO. That means the source image becomes the STARTING FRAME, not a loose visual reference.
+- So line 0 should show the CLEAREST, STRONGEST PRE-IMPACT SETUP of the payoff — the frame that most clearly promises the cool thing is about to happen.
+- Do NOT use a bland setup with no tension.
+- Do NOT use the fully completed payoff if that leaves the animation nowhere meaningful to go.
+- Aim for "half a second before the impact" rather than "after everything already happened."
+- BAD: "Skeletorinio stands holding a tiny red canister at the entrance of a jousting arena, knights tiny in the distance." (too early and weak)
+- BAD: "The knights are already face-down on the ground while pepper mist settles." (too late — nothing left to animate)
+- GOOD: "Skeletorinio in the center of the jousting arena, grinning, already spraying orange pepper mist toward two armored knights who are just starting to lose control of their horses." (strong starting frame, obvious next motion)
+- Applies to ALL image-to-video scenes, especially the hook. The first frame should be the strongest readable setup for motion, not a static prelude and not a completed aftermath.
 
 CRITICAL — EVERY IMAGE MUST SHOW ACTION IN PROGRESS (NO STANDING/POSING):
 Every `image_prompt` must depict a MOMENT OF ACTION — something physically happening RIGHT NOW. Never "character standing in a location" or "character surrounded by people watching." The character must be MID-MOTION: swinging, crashing, falling, running, grabbing, throwing, reacting with their whole body.
@@ -400,10 +443,58 @@ Each sub-action's `image_prompt` and `animation_prompt` MUST depict ONLY the spe
 - If narration line N+2 says "they crash", THAT is where the crash animation belongs.
 The visible action on screen must match WHAT THE VIEWER IS HEARING AT THAT MOMENT. Front-loading dramatic action into earlier scenes (because the planner is excited about the climax) breaks narration sync and makes the video feel buggy. Every line gets its own beat — no more, no less.
 
+CRITICAL — SETUP THEN REACTION, IN THAT ORDER:
+If one narration line contains a setup action followed by a reaction, split them into separate sub-actions and keep the reaction OUT of the setup frame.
+- Example: "Gojo jogs backward behind Satotz; Gon and Killua nearly trip staring"
+  - Sub-action A: Satotz leads, Gojo is clearly jogging backward behind him, Gon and Killua are still following the group normally.
+  - Sub-action B: Gon and Killua finally notice, twist toward Gojo, and nearly trip.
+- BAD: The very first frame already shows Gon and Killua bug-eyed, pointing, stumbling, or mid-reaction before the viewer has seen the thing they are reacting to.
+- GOOD: First show the weird thing clearly. Then show the reaction it causes.
+- Apply this to ALL setup→reaction beats: first the surprising action, then the shocked faces / stumbling / begging / silence / panic.
+
+CRITICAL — ATTACKER BEAT THEN CONSEQUENCE BEAT:
+For fights, hits, knockouts, blasts, or collisions, prefer separated cause→effect staging over literal contact staging.
+- BAD: one image or clip that tries to show "Zoro hits Killua and knocks him out"
+- GOOD: sub-action A = "Zoro powers up and slashes forward, Killua still separated in frame"
+- GOOD: sub-action B = "Killua alone getting blasted backward into stone, sparks and debris exploding"
+- GOOD: sub-action A = "Zoro alone launches Onigiri through dust"
+- GOOD: sub-action B = "Killua alone sprawled on cracked stone with a fresh slash gouge behind him"
+- GOOD: sub-action A = "Gojo raises Infinity while Hisoka's card approaches"
+- GOOD: sub-action B = "The card folds and drops while Hisoka recoils"
+If a viewer can understand the move and then the result across two simple clips, choose that over one complex contact shot every time.
+
+CRITICAL — LEGIBILITY FIRST (THE FRAME MUST READ IN HALF A SECOND):
+Before writing any image_prompt, reduce the beat to ONE visual sentence a stranger would understand on mute.
+- Ask: "What is the one thing the viewer should understand from this frame?"
+- If the answer contains "and", split it into two sub-actions unless the second detail is only background support.
+- Favor ICONIC SHORTHAND over clutter: one recognizable character design, one recognizable prop, one recognizable location, one recognizable action.
+- A strong frame usually has:
+  - one dominant subject
+  - one dominant action
+  - one proof detail or prop
+  - one clear location
+  - supporting characters only if they make the idea clearer
+- GOOD: "Modern runner in a USA uniform beside an ancient runner in a tunic at a starting line"
+- GOOD: "Zoro alone surging into a slash in a ruined arena"
+- GOOD: "Killua alone cratered into rubble, smoke bursting from impact"
+- BAD: "Zoro hits Killua while rubble explodes, lightning crackles, and the crowd reacts"
+- BAD: "Gojo jogs backward while Satotz leads and Gon points and Killua stumbles in the same first frame"
+
+CRITICAL — IMAGE PROMPT ORDER:
+Write image_prompt details in this order so the model gets the readable idea first:
+1. FRAMING: close-up / medium / wide / side view / low angle / overhead
+2. MAIN SUBJECT: exact named character or object the viewer should focus on first
+3. ACTION STATE: what that subject is doing RIGHT NOW
+4. PROOF DETAIL: the one prop/body cue proving the narration claim
+5. SUPPORTING CHARACTERS: only if needed, and keep them secondary
+6. LOCATION: one specific recognizable place
+Example skeleton:
+"Wide side view. Zoro from One Piece in the left foreground raises all three swords for a slash. Killua stands several feet away bracing, clearly separated. Cracked arena stone underfoot. Tournament arena background. NO text anywhere."
+
 For each sub-action, decide:
 - "new_scene": true if this needs a fresh GPT-generated image (new setting, new character entering). false if it chains from the previous clip's last frame.
 - "image_prompt": what the starting image should show (BEFORE the action happens). Only needed if new_scene=true.
-- "animation_prompt": ONE simple action for Grok (2-3 seconds). One verb. e.g. "opens door and walks through", "swings sword hitting opponent", "energy builds in fist"
+- "animation_prompt": ONE simple action for Grok (2-3 seconds). One moving subject. e.g. "opens door and walks through", "raises sword and lunges", "energy builds in fist", "slides backward into a wall"
 - "line": which narration line (0-indexed) this belongs to
 - "duration": seconds (2-3)
 - "chain_rule": if chaining, what must be in the last frame for the chain to work (e.g. "Zoro visible in hallway")
@@ -441,9 +532,11 @@ CRITICAL RULES FOR IMAGE PROMPTS:
    - If narration says "X, then Y" or "X and then Y" — that's TWO sub-actions for the same line, not one image showing both.
    - BAD: narration "Goku Instant Transmissions to the exit, then back" → ONE image with split-screen showing both
    - GOOD: narration "Goku Instant Transmissions to the exit, then back" → sub-action A: Goku flashing in at the exit (light burst, examiners shocked) + sub-action B: Goku flashing back at the start (chained from A's last frame, examinees gasping)
+   - GOOD: narration "Gojo jogs backward behind Satotz; Gon and Killua nearly trip staring" → sub-action A: Gojo backward-jogging in formation behind Satotz while Gon/Killua still run normally + sub-action B: Gon/Killua notice and nearly trip.
+   - GOOD: narration "Zoro hits Killua and knocks him out" → sub-action A: Zoro powers up and attacks while Killua stays separated in frame + sub-action B: Killua alone getting launched, cratered, or knocked out by the result
    - Multiple sub-actions for the same `line` index is fully supported — use it whenever the narration has multiple beats.
 
-5. For fight/action scenes: show the MOMENT OF IMPACT or the STARTING POINT of the action, with both characters visible and the result beginning to happen.
+5. For fight/action scenes: prefer the STARTING POINT of the attack or the CONSEQUENCE of the hit, not the literal instant of two characters making contact. Keep the active character and the affected character readable and separated whenever possible.
 
 OTHER RULES:
 - Line 0 (the hook) is always new_scene=true
@@ -496,7 +589,7 @@ Return ONLY a JSON array of objects.""",
                 resp = await client.images.edit(
                     model="gpt-image-1.5",
                     image=style_ref,
-                    prompt=f"{era_prefix}MATCH THE EXACT ART STYLE OF THE REFERENCE IMAGE. Same photographic look, same level of detail, same character design. NOT a cartoon, NOT cel-shaded, NOT a sketch — identical rendering style to the reference. {img_prompt} NO text anywhere.",
+                    prompt=f"{era_prefix}{ref_style_prefix} {img_prompt} NO text anywhere.",
                     size="1024x1536",
                     quality="medium",
                     input_fidelity="high",
@@ -515,7 +608,7 @@ Return ONLY a JSON array of objects.""",
                         resp = await client.images.edit(
                             model="gpt-image-1.5",
                             image=style_ref_retry,
-                            prompt=f"{era_prefix}MATCH THE EXACT ART STYLE OF THE REFERENCE IMAGE. Same photographic look, same level of detail, same character design. NOT a cartoon, NOT cel-shaded, NOT a sketch — identical rendering style to the reference. {img_prompt} NO text anywhere.",
+                            prompt=f"{era_prefix}{ref_style_prefix} {img_prompt} NO text anywhere.",
                             size="1024x1536",
                             quality="medium",
                             input_fidelity="high",
@@ -564,10 +657,16 @@ Check ALL of these:
 1. Does the image show the SPECIFIC ACTION described in the narration? Not just the right characters — the actual action happening.
 2. Is it a SINGLE SCENE? Comic panel layouts, manga grids, split panels = automatic FAIL.
 3. Are the characters recognizable as who they should be?
-4. Does the art style match what's expected? (crude cartoon should be crude cartoon, not anime)
+4. Does the art style match what's expected? The exact finish matters, not just "cartoony."
 5. ERA CHECK: If an era is required above, ALL humans must be in period-accurate clothing. Modern clothing (T-shirts, jeans, suits, casual wear), modern vehicles, or modern objects in a historical-era video = automatic FAIL.
-5. Does the image show the STARTING POINT of the action (before the result)? Images showing the aftermath instead of the moment = FAIL.
-6. Is there anything that contradicts the narration?
+6. Does the image show the STARTING POINT of the action (before the result)? Images showing the aftermath instead of the moment = FAIL.
+7. Does the image visibly prove the specific joke/detail in the narration? If the narration says "backward", "smile gone", "license", "begging", "frozen midair", or another concrete proof-detail, the image must make that detail obvious at a glance.
+8. If the narration beat is primarily a REACTION punchline ("stops talking", "goes silent", "begs", "stares", "smile disappears"), is that reaction visually dominant and unmistakable? Subtle face changes are FAILs.
+9. Is there anything that contradicts the narration?
+10. If multiple characters are present, is the staging simple enough for Grok? Crowded touching, grappling, hand-to-hand exchanges, or collision-dependent poses should FAIL unless absolutely necessary to the beat.
+11. Does the frame communicate ONE dominant visual claim on mute? If it feels split-focus, busy, or "technically related but hard to parse at a glance," FAIL it.
+
+FAIL any image that drifts into the wrong finish. If the expected style is crude cartoon, reject polished webtoon/chibi/mobile-game art. If the expected style is clean anime-cartoon, reject grimy doodle, painterly realism, plush/chibi softness, or glossy 3D-game rendering. The style must match the exact channel identity, not just be "cartoony."
 
 Answer PASS or FAIL with specific reason."""},
                 ]}],
@@ -583,7 +682,7 @@ Answer PASS or FAIL with specific reason."""},
                         output_path=img_path, size="1024x1536",
                     )
                 else:
-                    _regen_prompt = f"{era_prefix}MATCH THE EXACT ART STYLE OF THE REFERENCE IMAGE. Same photographic look, same level of detail, same character design. NOT a cartoon, NOT cel-shaded, NOT a sketch — identical rendering style to the reference. {img_prompt} Make sure this EXACTLY matches: {narr_text}. NO text anywhere."
+                    _regen_prompt = f"{era_prefix}{ref_style_prefix} {img_prompt} Make sure this EXACTLY matches: {narr_text}. NO text anywhere."
                     # Retry the edit up to 3 times with the reference before giving up
                     for _retry in range(3):
                         try:
@@ -625,7 +724,20 @@ Answer PASS or FAIL with specific reason."""},
         logger.info("skipping image approval — already approved (carried forward from previous run)")
         os.remove(approval_file)
     else:
+        from packages.clients.workflow_state import create_review_task, get_pending_review_task, resolve_review_task
         await _update_step("images ready for review")
+        await create_review_task(
+            run_id=run_id,
+            kind="images",
+            concept_id=concept.get("concept_id"),
+            channel_id=concept.get("channel_id"),
+            stage="images ready for review",
+            payload={
+                "expected_images": len([sa for sa in sub_actions if sa.get("new_scene", True)]),
+                "images_dir": os.path.abspath(images_dir),
+                "image_names": [f"sub_{idx:03d}.png" for idx, sa in enumerate(sub_actions) if sa.get("new_scene", True)],
+            },
+        )
 
         # Clean up stale deny file only (approval was checked above)
         if os.path.exists(deny_file):
@@ -637,11 +749,23 @@ Answer PASS or FAIL with specific reason."""},
             if os.path.exists(approval_file):
                 logger.info("user approved images — continuing to animation")
                 os.remove(approval_file)
+                await resolve_review_task(
+                    run_id=run_id,
+                    kind="images",
+                    status="approved",
+                    resolution={"source": "file_fallback"},
+                )
                 break
 
             if os.path.exists(deny_file):
                 logger.info("user denied images — checking feedback")
                 os.remove(deny_file)
+                await resolve_review_task(
+                    run_id=run_id,
+                    kind="images",
+                    status="rejected",
+                    resolution={"source": "file_fallback"},
+                )
                 # Regenerate images that have feedback files — use edit-with-reference, not text-only,
                 # to maintain style consistency with other scenes.
                 for sa_idx, sa in enumerate(sub_actions):
@@ -653,7 +777,7 @@ Answer PASS or FAIL with specific reason."""},
                         feedback_text = open(feedback_path).read().strip()
                         if os.path.exists(img_path):
                             os.remove(img_path)
-                        _deny_prompt = f"{era_prefix}MATCH THE EXACT ART STYLE OF THE REFERENCE IMAGE. Same photographic look, same level of detail, same character design. NOT a cartoon, NOT cel-shaded, NOT a sketch — identical rendering style to the reference. {sa.get('image_prompt', '')} User feedback: {feedback_text}. NO text anywhere."
+                        _deny_prompt = f"{era_prefix}{ref_style_prefix} {sa.get('image_prompt', '')} User feedback: {feedback_text}. NO text anywhere."
                         if prefer_grok_images:
                             await _gen_image(
                                 prompt=f"{art_style_prompt} {sa.get('image_prompt', '')} User feedback: {feedback_text}. NO text anywhere.",
@@ -687,7 +811,25 @@ Answer PASS or FAIL with specific reason."""},
                                 )
                         os.remove(feedback_path)
                         logger.info("regenerated from feedback", sub_action=sa_idx, feedback=feedback_text[:60])
+                await create_review_task(
+                    run_id=run_id,
+                    kind="images",
+                    concept_id=concept.get("concept_id"),
+                    channel_id=concept.get("channel_id"),
+                    stage="images ready for review",
+                    payload={
+                        "expected_images": len([sa for sa in sub_actions if sa.get("new_scene", True)]),
+                        "images_dir": os.path.abspath(images_dir),
+                        "image_names": [f"sub_{idx:03d}.png" for idx, sa in enumerate(sub_actions) if sa.get("new_scene", True)],
+                    },
+                )
                 await _update_step("images ready for review")
+                continue
+
+            pending_task = await get_pending_review_task(run_id, "images")
+            if pending_task is None:
+                logger.info("image review resolved via review task")
+                break
 
 
     # ─── STEP 3c: Animate with chaining ───
@@ -1233,7 +1375,7 @@ def add_subtitles(
     from apps.orchestrator.pipeline import _write_karaoke_ass
 
     all_words = [
-        (w["word"], seg_starts[w["line"]] + w["start"], seg_starts[w["line"]] + w["end"])
+        (w["word"], seg_starts[w["line"]] + w["start"], seg_starts[w["line"]] + w["end"], w["line"])
         for w in word_data
         if w["line"] < len(seg_starts)
     ]
@@ -1263,6 +1405,7 @@ async def update_database(
     """Update database with completed video."""
     from sqlalchemy.ext.asyncio import create_async_engine
     from sqlalchemy import text as sql_text
+    from packages.clients.workflow_state import update_concept_status, update_run_manifest
 
     if tags is None:
         tags = ["shorts", "viral"]
@@ -1270,6 +1413,9 @@ async def update_database(
     caption = f"{title}\n\n" + " ".join(f"#{t}" for t in tags)
     engine = create_async_engine(db_url)
     async with engine.begin() as conn:
+        concept_id = (
+            await conn.execute(sql_text("SELECT concept_id FROM content_runs WHERE id = :rid"), {"rid": run_id})
+        ).scalar_one_or_none()
         await conn.execute(
             sql_text("UPDATE content_runs SET status = 'pending_review', current_step = 'pending_review' WHERE id = :rid"),
             {"rid": run_id},
@@ -1286,4 +1432,7 @@ async def update_database(
             sql_text("INSERT INTO assets (run_id, channel_id, asset_type, content) VALUES (:rid, :cid, 'publish_metadata', :c)"),
             {"rid": run_id, "cid": channel_id, "c": json.dumps({"title": title, "description": caption, "tags": tags, "privacy": "private"})},
         )
+        if concept_id:
+            await update_concept_status(concept_id, status="ready", latest_run_id=run_id, session=conn)
     await engine.dispose()
+    await update_run_manifest(run_id, {"status": "pending_review", "stage": "pending_review", "final_video": os.path.join(output_dir, "final.mp4")})

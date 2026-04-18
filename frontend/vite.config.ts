@@ -11,7 +11,7 @@ export default defineConfig({
         // Video streaming needs selfHandleResponse to avoid proxy buffering
         selfHandleResponse: true,
         configure: (proxy) => {
-          proxy.on('proxyRes', (proxyRes, req, res) => {
+          proxy.on('proxyRes', (proxyRes, _req, res) => {
             // Pass through status, headers, and body without buffering
             res.writeHead(proxyRes.statusCode!, proxyRes.headers);
             proxyRes.pipe(res);

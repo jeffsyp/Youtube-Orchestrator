@@ -44,6 +44,8 @@ export const api = {
 
   getRun: (id: number) => request<import('./types').RunDetail>(`/runs/${id}`),
 
+  getRunEvents: (id: number) => request<import('./types').RunEvent[]>(`/runs/${id}/events`),
+
   publishRun: ({ id, privacy }: { id: number; privacy?: string }) =>
     request<{ status: string }>(`/runs/${id}/publish?privacy=${privacy || 'private'}`, {
       method: 'POST',
@@ -68,6 +70,27 @@ export const api = {
     const qs = status ? `?status=${status}` : '';
     return request<unknown[]>(`/concepts${qs}`);
   },
+
+  getReviewTasks: (params?: { status?: string; kind?: string; limit?: number }) => {
+    const search = new URLSearchParams();
+    if (params?.status) search.set('status', params.status);
+    if (params?.kind) search.set('kind', params.kind);
+    if (params?.limit) search.set('limit', String(params.limit));
+    const qs = search.toString();
+    return request<import('./types').ReviewTask[]>(`/review-tasks${qs ? `?${qs}` : ''}`);
+  },
+
+  getRunImages: (runId: number) =>
+    request<import('./types').RunImagesResponse>(`/runs/${runId}/images`),
+
+  approveRunImages: (runId: number, body: { approved?: string[]; denied?: Array<{ name: string; feedback: string }> }) =>
+    request<{ status: string }>(`/runs/${runId}/images/approve`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  approveAllImages: (runId: number) =>
+    request<{ status: string }>(`/runs/${runId}/images/approve-all`, { method: 'POST' }),
 
   approveConcept: (id: number) =>
     request<{ id: number; status: string }>(`/concepts/${id}/approve`, { method: 'POST' }),

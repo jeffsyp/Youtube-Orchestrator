@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useConceptDrafts, useApproveConceptDraft, useRejectConceptDraft } from '../hooks/useApi';
 import { api } from '../api/client';
-import type { ConceptDraft } from '../api/types';
+import type { ConceptBeat, ConceptChapter, ConceptDraft } from '../api/types';
 
 interface ChannelSummary {
   channel_id: number;
@@ -170,12 +170,12 @@ function ConceptCard({
   onReject: () => void;
 }) {
   const concept = draft.concept || {};
-  const beats = concept.beats || [];
-  const narration = concept.narration || [];
-  const chapters = concept.chapters || [];
+  const beats = (concept.beats || []) as ConceptBeat[];
+  const narration = (concept.narration || []) as string[];
+  const chapters = (concept.chapters || []) as ConceptChapter[];
   const isLongForm = concept.long_form || concept.format_version === 2 && narration.length >= 20;
-  const grokCount = beats.filter((b: { type: string }) => b.type === 'grok').length;
-  const imageCount = beats.filter((b: { type: string }) => b.type === 'image').length;
+  const grokCount = beats.filter((b) => b.type === 'grok').length;
+  const imageCount = beats.filter((b) => b.type === 'image').length;
 
   // Estimate duration from word count (150 words/min speaking pace)
   const totalWords = narration.reduce((sum: number, line: string) => sum + line.split(/\s+/).length, 0);
@@ -273,7 +273,7 @@ function ConceptCard({
           {isLongForm && chapters.length > 0 && (
             <div className="space-y-2">
               <h4 className="text-purple-400 text-xs font-bold uppercase tracking-wider">Chapters</h4>
-              {chapters.map((ch: { title: string; timing: string; purpose: string }, i: number) => (
+              {chapters.map((ch, i) => (
                 <div key={i} className="flex gap-2 p-2 rounded bg-[#0f0f0f]">
                   <span className="text-gray-600 text-[10px] font-mono shrink-0 pt-0.5">{i + 1}</span>
                   <div className="flex-1 min-w-0">
@@ -314,7 +314,7 @@ function ConceptCard({
           )}
 
           {/* Legacy beats */}
-          {beats.length > 0 && narration.length === 0 && beats.map((beat: { type: string; label?: string; narration: string; video_prompt?: string; image?: string }, i: number) => (
+          {beats.length > 0 && narration.length === 0 && beats.map((beat, i) => (
             <div key={i} className="flex gap-3 p-3 rounded bg-[#0f0f0f]">
               <div className="shrink-0 flex flex-col items-center gap-1">
                 <span className="text-gray-600 text-[10px] font-mono">{i}</span>

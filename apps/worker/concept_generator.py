@@ -1,6 +1,7 @@
 """Auto-generate concept drafts per channel using Claude."""
 
 import asyncio
+from collections import Counter
 import json
 import os
 import re
@@ -22,10 +23,410 @@ def _strip_code_block(text: str) -> str:
     text = re.sub(r"\s*```\s*$", "", text)
     return text.strip()
 
+
+def _extract_nightnight_characters(text: str) -> list[str]:
+    """Return known anime character names mentioned in text, in reading order."""
+    matches = []
+    lowered = text.lower()
+    for name, pattern in _NIGHTNIGHT_CHARACTER_PATTERNS:
+        for match in pattern.finditer(lowered):
+            matches.append((match.start(), name))
+
+    matches.sort(key=lambda item: item[0])
+    ordered = []
+    seen = set()
+    for _, name in matches:
+        if name in seen:
+            continue
+        seen.add(name)
+        ordered.append(name)
+    return ordered
+
+
+def _diversify_nightnight_concepts(concepts: list[dict], past_titles: list[str], remaining: int) -> list[dict]:
+    """Prefer fresher NightNight concepts instead of repeating the same anchors."""
+    if remaining <= 0 or len(concepts) <= remaining:
+        return concepts[:remaining]
+
+    recent_titles = past_titles[-60:]
+    historical_char_counts = Counter()
+    historical_franchise_counts = Counter()
+    for title in recent_titles:
+        characters = _extract_nightnight_characters(title)
+        if not characters:
+            continue
+        historical_char_counts.update(characters)
+        historical_franchise_counts.update(
+            {NIGHTNIGHT_CHARACTER_FRANCHISE[character] for character in characters}
+        )
+
+    ranked = []
+    for idx, concept in enumerate(concepts):
+        text_blob = " ".join(
+            part for part in [concept.get("title", ""), concept.get("brief", "")]
+            if part
+        )
+        characters = _extract_nightnight_characters(text_blob)
+        lead_character = characters[0] if characters else None
+
+        franchises = []
+        seen_franchises = set()
+        for character in characters:
+            franchise = NIGHTNIGHT_CHARACTER_FRANCHISE.get(character)
+            if franchise and franchise not in seen_franchises:
+                seen_franchises.add(franchise)
+                franchises.append(franchise)
+
+        ranked.append({
+            "concept": concept,
+            "index": idx,
+            "characters": characters,
+            "lead_character": lead_character,
+            "franchises": franchises,
+        })
+
+    selected = []
+    used_characters = set()
+    used_franchises = set()
+    selected_overused_leads = 0
+    pool = ranked[:]
+
+    while pool and len(selected) < remaining:
+        def concept_score(item: dict) -> tuple[int, int, int, int, int, int, int]:
+            lead = item["lead_character"]
+            franchises = item["franchises"]
+            lead_history = historical_char_counts.get(lead, 0) if lead else 0
+            franchise_history = sum(historical_franchise_counts.get(franchise, 0) for franchise in franchises)
+            fresh_lead = 1 if lead and lead not in used_characters else 0
+            fresh_franchise = sum(1 for franchise in franchises if franchise not in used_franchises)
+            overused_penalty = 1 if lead in NIGHTNIGHT_OVERUSED_CHARACTERS else 0
+
+            return (
+                1 if not overused_penalty else 0,
+                1 if not (overused_penalty and selected_overused_leads) else 0,
+                fresh_lead,
+                fresh_franchise,
+                -lead_history,
+                -franchise_history,
+                -item["index"],
+            )
+
+        best = max(pool, key=concept_score)
+        selected.append(best["concept"])
+        used_characters.update(best["characters"][:2])
+        used_franchises.update(best["franchises"])
+        if best["lead_character"] in NIGHTNIGHT_OVERUSED_CHARACTERS:
+            selected_overused_leads += 1
+        pool.remove(best)
+
+    return selected
+
+
+def _extract_nature_receipts_animals(text: str) -> list[str]:
+    """Return canonical animal names mentioned in text, in reading order."""
+    matches = []
+    lowered = text.lower()
+    for alias, canonical in _NATURE_RECEIPTS_ANIMAL_PATTERNS:
+        for match in alias.finditer(lowered):
+            matches.append((match.start(), canonical))
+
+    matches.sort(key=lambda item: item[0])
+    ordered = []
+    seen = set()
+    for _, canonical in matches:
+        if canonical in seen:
+            continue
+        seen.add(canonical)
+        ordered.append(canonical)
+    return ordered
+
+
+def _extract_nature_receipts_target(text: str) -> str | None:
+    """Extract the key thing/place/system the animal collides with."""
+    lowered = text.lower()
+    patterns = [
+        r"\bdiscovered(?: it was running)? ([a-z0-9' -]+)$",
+        r"\braised by ([a-z0-9' -]+)$",
+        r"\binvaded ([a-z0-9' -]+?)(?: and|$)",
+        r"\bimprinted on ([a-z0-9' -]+)$",
+        r"\bran (?:the )?([a-z0-9' -]+)$",
+        r"\bowned ([a-z0-9' -]+)$",
+        r"\bruled ([a-z0-9' -]+)$",
+        r"\bwanted to ([a-z0-9' -]+)$",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, lowered)
+        if not match:
+            continue
+        target = re.sub(r"^(a|an|the)\s+", "", match.group(1).strip())
+        return target
+    return None
+
+
+def _classify_nature_receipts_scenarios(text: str) -> list[str]:
+    """Bucket Nature Receipts concepts by premise engine."""
+    lowered = text.lower()
+    buckets = []
+    if any(phrase in lowered for phrase in [
+        "size of", "as tall as", "as big as", "100 feet tall", "mountain", "moon", "skyscraper", "godzilla",
+    ]):
+        buckets.append("giant_scale")
+    if any(phrase in lowered for phrase in [
+        "fastest", "supersonic", "cheetah speed", "speed of", "moved at",
+    ]):
+        buckets.append("super_speed")
+    if any(phrase in lowered for phrase in [
+        "indestructible", "invisible", "could fly", "could breathe air", "strength of", "as strong as",
+        "apex predator", "billionaire",
+    ]):
+        buckets.append("power_swap")
+    if any(phrase in lowered for phrase in [
+        "president", "taxes", "wall street", "government", "power grid", "owned an entire country",
+        "ran an entire city", "ran the government", "ruled the world", "press conferences",
+    ]):
+        buckets.append("human_system")
+    if any(phrase in lowered for phrase in [
+        "raised by", "lived on land", "sahara", "airport", "first class cabin", "fighter jet",
+        "construction site", "racetrack", "highway", "grocery store", "shopping mall", "city fountain",
+        "downtown", "city", "desert", "bamboo forest",
+    ]):
+        buckets.append("habitat_collision")
+    if any(phrase in lowered for phrase in [
+        "invaded", "millions of", "took over", "ran an entire city",
+    ]):
+        buckets.append("swarm_takeover")
+    if any(phrase in lowered for phrase in [
+        "imprinted on", "wanted to play", "laser pointer",
+    ]):
+        buckets.append("obsession")
+    if "discovered " in lowered:
+        buckets.append("discovery_template")
+
+    return buckets or ["other"]
+
+
+def _diversify_nature_receipts_concepts(concepts: list[dict], past_titles: list[str], remaining: int) -> list[dict]:
+    """Prefer fresher Nature Receipts animals, premise engines, and targets."""
+    if remaining <= 0 or len(concepts) <= remaining:
+        return concepts[:remaining]
+
+    recent_titles = past_titles[-80:]
+    historical_animal_counts = Counter()
+    historical_scenario_counts = Counter()
+    historical_target_counts = Counter()
+    for title in recent_titles:
+        animals = _extract_nature_receipts_animals(title)
+        target = _extract_nature_receipts_target(title)
+        scenarios = _classify_nature_receipts_scenarios(title)
+        if animals:
+            historical_animal_counts.update(animals[:1])
+        historical_scenario_counts.update(scenarios)
+        if target:
+            historical_target_counts.update([target])
+
+    ranked = []
+    for idx, concept in enumerate(concepts):
+        text_blob = " ".join(
+            part for part in [concept.get("title", ""), concept.get("brief", "")]
+            if part
+        )
+        animals = _extract_nature_receipts_animals(text_blob)
+        lead_animal = animals[0] if animals else None
+        scenarios = _classify_nature_receipts_scenarios(text_blob)
+        target = _extract_nature_receipts_target(text_blob)
+        ranked.append({
+            "concept": concept,
+            "index": idx,
+            "lead_animal": lead_animal,
+            "scenarios": scenarios,
+            "target": target,
+            "uses_discovery_template": "discovery_template" in scenarios,
+        })
+
+    selected = []
+    used_animals = set()
+    used_scenarios = set()
+    used_targets = set()
+    selected_giant_scale = 0
+    selected_discovery_template = 0
+    pool = ranked[:]
+
+    while pool and len(selected) < remaining:
+        def concept_score(item: dict) -> tuple[int, int, int, int, int, int, int, int, int, int]:
+            lead_animal = item["lead_animal"]
+            scenarios = item["scenarios"]
+            target = item["target"]
+            animal_history = historical_animal_counts.get(lead_animal, 0) if lead_animal else 0
+            scenario_history = sum(historical_scenario_counts.get(scenario, 0) for scenario in scenarios)
+            target_history = historical_target_counts.get(target, 0) if target else 0
+            fresh_animal = 1 if lead_animal and lead_animal not in used_animals else 0
+            fresh_scenario = sum(1 for scenario in scenarios if scenario not in used_scenarios)
+            fresh_target = 1 if target and target not in used_targets else 0
+            giant_penalty = 1 if "giant_scale" in scenarios and selected_giant_scale else 0
+            discovery_penalty = 1 if item["uses_discovery_template"] and selected_discovery_template else 0
+            generic_target_penalty = 1 if target in _NATURE_RECEIPTS_GENERIC_TARGETS else 0
+
+            return (
+                1 if not item["uses_discovery_template"] else 0,
+                1 if "giant_scale" not in scenarios else 0,
+                1 if not generic_target_penalty else 0,
+                1 if not giant_penalty else 0,
+                1 if not discovery_penalty else 0,
+                fresh_animal,
+                fresh_scenario,
+                fresh_target,
+                -(animal_history + scenario_history + target_history),
+                -item["index"],
+            )
+
+        best = max(pool, key=concept_score)
+        selected.append(best["concept"])
+        if best["lead_animal"]:
+            used_animals.add(best["lead_animal"])
+        used_scenarios.update(best["scenarios"])
+        if best["target"]:
+            used_targets.add(best["target"])
+        if "giant_scale" in best["scenarios"]:
+            selected_giant_scale += 1
+        if best["uses_discovery_template"]:
+            selected_discovery_template += 1
+        pool.remove(best)
+
+    return selected
+
 REPLENISH_INTERVAL = 120  # check every 2 minutes
 DRAFTS_PER_CHANNEL = 5
 YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY")
 _RESEARCH_CACHE_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "output", "research_cache")
+NIGHTNIGHT_CHARACTER_FRANCHISE = {
+    "naruto": "naruto",
+    "sasuke": "naruto",
+    "kakashi": "naruto",
+    "madara": "naruto",
+    "itachi": "naruto",
+    "gaara": "naruto",
+    "luffy": "one piece",
+    "zoro": "one piece",
+    "sanji": "one piece",
+    "shanks": "one piece",
+    "goku": "dragon ball",
+    "vegeta": "dragon ball",
+    "piccolo": "dragon ball",
+    "gohan": "dragon ball",
+    "frieza": "dragon ball",
+    "saitama": "one punch man",
+    "genos": "one punch man",
+    "garou": "one punch man",
+    "tanjiro": "demon slayer",
+    "nezuko": "demon slayer",
+    "muzan": "demon slayer",
+    "rengoku": "demon slayer",
+    "light": "death note",
+    "l": "death note",
+    "ryuk": "death note",
+    "gojo": "jujutsu kaisen",
+    "yuji": "jujutsu kaisen",
+    "sukuna": "jujutsu kaisen",
+    "megumi": "jujutsu kaisen",
+    "todo": "jujutsu kaisen",
+    "denji": "chainsaw man",
+    "makima": "chainsaw man",
+    "power": "chainsaw man",
+    "aki": "chainsaw man",
+    "ichigo": "bleach",
+    "aizen": "bleach",
+    "rukia": "bleach",
+    "eren": "attack on titan",
+    "levi": "attack on titan",
+    "mikasa": "attack on titan",
+    "reiner": "attack on titan",
+    "gon": "hunter x hunter",
+    "killua": "hunter x hunter",
+    "hisoka": "hunter x hunter",
+    "meruem": "hunter x hunter",
+    "edward elric": "fullmetal alchemist",
+    "roy mustang": "fullmetal alchemist",
+    "mob": "mob psycho 100",
+    "reigen": "mob psycho 100",
+    "lelouch": "code geass",
+    "frieren": "frieren",
+    "fern": "frieren",
+    "aqua": "konosuba",
+    "subaru": "re:zero",
+    "rimuru": "that time i got reincarnated as a slime",
+    "jotaro": "jojo's bizarre adventure",
+    "dio": "jojo's bizarre adventure",
+    "yusuke": "yu yu hakusho",
+    "hiei": "yu yu hakusho",
+}
+NIGHTNIGHT_OVERUSED_CHARACTERS = {
+    "goku",
+    "gojo",
+    "light",
+    "luffy",
+    "naruto",
+    "saitama",
+    "tanjiro",
+}
+_NIGHTNIGHT_CHARACTER_PATTERNS = [
+    (name, re.compile(rf"\b{re.escape(name)}\b"))
+    for name in sorted(NIGHTNIGHT_CHARACTER_FRANCHISE, key=len, reverse=True)
+]
+NATURE_RECEIPTS_ANIMAL_ALIASES = {
+    "golden retriever": "dog",
+    "corgi": "dog",
+    "puppy": "dog",
+    "dog": "dog",
+    "baby duck": "duck",
+    "duck": "duck",
+    "bunny rabbit": "rabbit",
+    "bunny": "rabbit",
+    "rabbit": "rabbit",
+    "hamster": "hamster",
+    "guinea pig": "guinea pig",
+    "capybara": "capybara",
+    "parrot": "parrot",
+    "panda": "panda",
+    "penguin": "penguin",
+    "sloth": "sloth",
+    "turtle": "turtle",
+    "hedgehog": "hedgehog",
+    "raccoon": "raccoon",
+    "otter": "otter",
+    "squirrel": "squirrel",
+    "cat": "cat",
+    "dolphin": "dolphin",
+    "frog": "frog",
+    "snail": "snail",
+    "octopus": "octopus",
+    "electric eel": "eel",
+    "eel": "eel",
+    "mantis shrimp": "shrimp",
+    "pistol shrimp": "shrimp",
+    "shrimp": "shrimp",
+    "spider": "spider",
+    "jellyfish": "jellyfish",
+    "worm": "worm",
+    "bird": "bird",
+    "fish": "fish",
+}
+_NATURE_RECEIPTS_ANIMAL_PATTERNS = [
+    (re.compile(rf"\b{re.escape(alias)}\b"), canonical)
+    for alias, canonical in sorted(NATURE_RECEIPTS_ANIMAL_ALIASES.items(), key=lambda item: len(item[0]), reverse=True)
+]
+_NATURE_RECEIPTS_GENERIC_TARGETS = {
+    "city",
+    "downtown",
+    "grocery store",
+    "highway",
+    "shopping mall",
+    "rush hour",
+    "taxes",
+    "wall street",
+    "construction site",
+    "neighbor's yard",
+    "neighbor's fence",
+}
 
 
 def _research_niche(niche: str, max_results: int = 15, form_type: str = "short") -> str:
@@ -379,6 +780,7 @@ async def _generate_short_drafts(
             brief=brief,
             structure=structure,
             key_facts=key_facts,
+            format_strategy=pitch.get("format_strategy", "mini_story"),
         )
 
         resp2 = _strip_code_block(generate(prompt=usr2, system=sys2, model="claude-sonnet-4-6", max_tokens=4000))
@@ -728,6 +1130,7 @@ Return as a JSON array. Return ONLY valid JSON, no markdown.""",
             channel_name=channel_name, niche=niche, voice_id=voice_id,
             channel_id=channel_id, title=title, brief=brief,
             structure=structure, key_facts=key_facts,
+            format_strategy=pitch.get("format_strategy", "mini_story"),
         )
 
         resp2 = _strip_code_block(generate(prompt=usr2, system=sys2, model="claude-sonnet-4-6", max_tokens=4000))
@@ -1195,7 +1598,13 @@ async def _generate_no_narration_drafts(
         current_pending = pending.scalar()
         remaining = max(0, DRAFTS_PER_CHANNEL - current_pending)
 
-    valid = await _filter_duplicate_pitches(engine, channel_id, concepts, remaining)
+    valid = await _filter_duplicate_pitches(engine, channel_id, concepts, len(concepts))
+    if channel_id == 28:
+        valid = _diversify_nightnight_concepts(valid, past_titles, remaining)
+    elif channel_id == 25:
+        valid = _diversify_nature_receipts_concepts(valid, past_titles, remaining)
+    else:
+        valid = valid[:remaining]
 
     draft_ids = []
     for concept in valid:
@@ -1241,7 +1650,12 @@ async def _filter_duplicate_pitches(engine, channel_id, pitches, remaining) -> l
 async def _insert_draft(engine, channel_id, title, concept, brief, form_type) -> int | None:
     """Insert a concept draft and return its ID."""
     try:
+        from packages.utils.concept_formats import apply_format_strategy_defaults
+
+        concept = apply_format_strategy_defaults(concept, form_type=form_type)
         async with AsyncSession(engine) as s:
+            from packages.clients.workflow_state import ensure_concept
+
             row = await s.execute(text("""
                 INSERT INTO concept_drafts (channel_id, title, concept_json, brief, form_type)
                 VALUES (:cid, :title, :cjson, :brief, :ft)
@@ -1254,6 +1668,17 @@ async def _insert_draft(engine, channel_id, title, concept, brief, form_type) ->
                 "ft": form_type,
             })
             draft_id = row.scalar()
+            await ensure_concept(
+                channel_id=channel_id,
+                title=title,
+                concept_json=concept,
+                origin="auto",
+                status="draft",
+                form_type=form_type,
+                notes=brief,
+                draft_id=draft_id,
+                session=s,
+            )
             await s.commit()
             logger.info("concept draft created", id=draft_id, title=title, form_type=form_type)
             return draft_id

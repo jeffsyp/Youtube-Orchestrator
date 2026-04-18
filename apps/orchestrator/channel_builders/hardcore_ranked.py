@@ -10,8 +10,14 @@ import base64
 import json
 import os
 import re
+import shutil
 
 import structlog
+from packages.clients.channel_profiles import (
+    get_channel_video_model,
+    get_channel_video_provider,
+    get_channel_video_resolution,
+)
 
 from apps.orchestrator.channel_builders.shared import (
     generate_narration_with_timestamps,
@@ -66,7 +72,7 @@ EACH PROMPT MUST DESCRIBE ONLY WHAT CHANGES:
 
 async def build_hardcore_ranked(run_id: int, concept: dict, output_dir: str, _update_step, db_url: str):
     """Full Hardcore Ranked video build."""
-    from packages.clients.grok import generate_image_dalle_async, generate_video_async
+    from packages.clients.grok import generate_image_dalle_async
 
     title = concept.get("title", "Untitled")
     narration_lines = concept.get("narration", [])
@@ -144,7 +150,6 @@ Return ONLY a JSON object:
 
     # ─── STEP 4: Generate base scene → edit per liquid → animate ───
     await _update_step("generating base scene")
-    import shutil
     from openai import AsyncOpenAI
     edit_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"), timeout=120.0)
 
@@ -490,28 +495,68 @@ Return ONLY a JSON array of {n_lines} strings.""",
     anim_prompts = anim_prompts[:n_lines]
     logger.info("animation prompts generated", count=len(anim_prompts))
 
-    await _update_step("animating scenes (parallel)")
+    def _resolve_video_settings() -> tuple[str, str | None, str]:
+        provider = str(concept.get("video_provider") or get_channel_video_provider(CHANNEL_ID)).strip().lower()
+        model = concept.get("video_model") or get_channel_video_model(CHANNEL_ID)
+        resolution = concept.get("video_resolution") or get_channel_video_resolution(CHANNEL_ID)
+        return provider, model, resolution
 
-    async def animate_scene(i):
+    def _veo_duration(narr_path: str) -> int:
+        requested = get_clip_duration(narr_path)
+        if requested <= 4:
+            return 4
+        if requested <= 6:
+            return 6
+        return 8
+
+    async def animate_scene(i, provider: str, model: str | None, resolution: str):
         clip_path = os.path.join(clips_dir, f"clip_{i:02d}.mp4")
         if os.path.exists(clip_path):
             return
-        dur = get_clip_duration(os.path.join(narr_dir, f"line_{i:02d}.mp3"))
-        # Each scene uses its OWN edited image (not the base)
+        narr_path = os.path.join(narr_dir, f"line_{i:02d}.mp3")
+        scene_label = "hook" if i == 0 else f"scene {i}/{n_lines - 1}"
+        await _update_step(f"animating {scene_label} with {provider}")
         img_path = os.path.join(images_dir, f"scene_{i:02d}.png")
-        with open(img_path, "rb") as f:
-            img_b64 = f"data:image/png;base64,{base64.b64encode(f.read()).decode()}"
-        await generate_video_async(
-            prompt=anim_prompts[i],
-            output_path=clip_path, duration=dur, aspect_ratio="9:16",
-            image_url=img_b64, timeout=600,
-        )
-        logger.info("scene animated", scene=i)
+        if provider == "veo":
+            from packages.clients.veo import generate_video_async as veo_generate
 
-    await run_tasks(
-        [lambda i=i: animate_scene(i) for i in range(n_lines)],
-        parallel=True, max_concurrent=5,  # Rate limiter handles throttling
-    )
+            await veo_generate(
+                prompt=anim_prompts[i],
+                output_path=clip_path,
+                model=model or "veo-3.1-lite-generate-001",
+                duration_seconds=_veo_duration(narr_path),
+                aspect_ratio="9:16",
+                resolution=resolution or "720p",
+                image_path=img_path,
+            )
+        else:
+            from packages.clients.grok import generate_video_async as grok_generate
+
+            dur = get_clip_duration(narr_path)
+            with open(img_path, "rb") as f:
+                img_b64 = f"data:image/png;base64,{base64.b64encode(f.read()).decode()}"
+            await grok_generate(
+                prompt=anim_prompts[i],
+                output_path=clip_path,
+                duration=dur,
+                aspect_ratio="9:16",
+                image_url=img_b64,
+                timeout=600,
+            )
+        logger.info("scene animated", scene=i, provider=provider, model=model, resolution=resolution)
+
+    provider, video_model, video_resolution = _resolve_video_settings()
+    await _update_step(f"animating scenes with {provider}")
+
+    if provider == "veo":
+        for i in range(n_lines):
+            await animate_scene(i, provider, video_model, video_resolution)
+    else:
+        await run_tasks(
+            [lambda i=i: animate_scene(i, provider, video_model, video_resolution) for i in range(n_lines)],
+            parallel=True,
+            max_concurrent=5,
+        )
 
     # ─── STEPS 6-10: All shared ───
     await _update_step("building video")

@@ -45,6 +45,7 @@ async def main():
         channel_name=channel_name, niche=niche, voice_id=voice_id, channel_id=22,
         title=p["title"], brief=p["brief"], structure=p["structure"],
         key_facts=p.get("key_facts", ""),
+        format_strategy=p.get("format_strategy", "mini_story"),
     )
     resp2 = generate(prompt=usr2, system=sys2, model="claude-sonnet-4-6", max_tokens=4000)
     resp2 = resp2.strip()

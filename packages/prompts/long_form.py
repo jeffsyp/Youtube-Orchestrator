@@ -295,8 +295,9 @@ def build_longform_visual_batch_prompt(
     Called 4-6 times per long-form video. Each batch returns visuals
     keyed by line index.
     """
-    from apps.orchestrator.pipeline import CHANNEL_ART_STYLE, _DEFAULT_STYLE
-    art_style = CHANNEL_ART_STYLE.get(channel_id, _DEFAULT_STYLE)
+    from apps.orchestrator.pipeline import get_channel_art_style
+
+    art_style = get_channel_art_style(channel_id)
     aspect = "16:9 landscape" if is_long_form else "9:16 vertical portrait"
     img_style = "Cinematic style, detailed, dramatic lighting. Landscape 16:9 composition." if is_long_form else "Colorful cartoon style, bold outlines, bright colors. Vertical composition."
 
