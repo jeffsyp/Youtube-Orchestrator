@@ -641,12 +641,13 @@ async def resolve_review_task(
                 "resolution_json": json.dumps(resolution or {}, ensure_ascii=True),
             },
         )
-        await session.execute(
-            text("UPDATE content_runs SET status = 'running' WHERE id = :id AND status = 'blocked'"),
-            {"id": run_id},
-        )
-        if concept_id is not None:
-            await update_concept_status(concept_id, status="running", latest_run_id=run_id, session=session)
+        if status == "approved":
+            await session.execute(
+                text("UPDATE content_runs SET status = 'running' WHERE id = :id AND status = 'blocked'"),
+                {"id": run_id},
+            )
+            if concept_id is not None:
+                await update_concept_status(concept_id, status="running", latest_run_id=run_id, session=session)
         if owned_session:
             await session.commit()
     finally:

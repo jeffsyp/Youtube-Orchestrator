@@ -385,6 +385,21 @@ async def reject_run(run_id: int):
 
     async with async_session() as session:
         await session.execute(
+            text(
+                """
+                UPDATE review_tasks
+                SET status = 'rejected',
+                    resolution_json = :resolution_json,
+                    resolved_at = NOW()
+                WHERE run_id = :id AND status = 'pending'
+                """
+            ),
+            {
+                "id": run_id,
+                "resolution_json": json.dumps({"source": "run_reject", "reason": "run rejected by operator"}, ensure_ascii=True),
+            },
+        )
+        await session.execute(
             text("UPDATE content_runs SET status = 'rejected' WHERE id = :id"),
             {"id": run_id},
         )
