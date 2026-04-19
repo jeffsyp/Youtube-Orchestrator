@@ -64,6 +64,7 @@ WHAT MAKES A GOOD CONCEPT:
 - LEAN INTO THE PRETTY-MUCH-IMPOSSIBLE VERSION of the idea. We have AI visuals, so do not sand concepts down into mild, sheepish, low-stakes versions if the bigger version is still instantly understandable.
 - Avoid timid framing like "you didn't mean to", "you never wanted this", "somehow this happened" unless that reluctance is the actual joke. Prefer domination, escalation, spectacle, catastrophe, flexing, transformation, or absurd world-scale consequences.
 - If the concept involves power, mythology, combat, space, animals, disasters, or extreme comparisons, push it toward the wildest visually obvious version rather than the safest small one.
+- If the concept is about becoming a final boss, raid boss, dungeon lord, chosen tyrant, or world-ending threat, do NOT pitch it as cozy administration, city-building, tourism, or paperwork. Pitch escalating fights, stronger challengers, bigger powers, phase changes, summons, armies, and an undefeated ending.
 
 FORMAT STRATEGY (choose the SIMPLEST one that still makes the idea work):
 - "single_frame" = the whole premise works as one instantly legible image plus an optional tiny aftermath

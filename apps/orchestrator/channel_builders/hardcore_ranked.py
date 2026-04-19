@@ -178,6 +178,58 @@ def _display_jump_label(jump_label: str) -> str:
     return " ".join(parts) if parts else str(jump_label)
 
 
+def _normalize_viewer_subject_text(text: str) -> str:
+    """Keep Hardcore Ranked user-facing copy in second person.
+
+    The on-screen skeleton is meant to represent "you", so titles and narration
+    should not call it "the frog" or "the skeleton".
+    """
+    cleaned = str(text or "").strip()
+    if not cleaned:
+        return cleaned
+
+    patterns = [
+        (r"(?i)\bthe frog(?:-suit)?\b", "you"),
+        (r"(?i)\bfrog(?:-suit)?\b", "you"),
+        (r"(?i)\bthe skeleton athlete\b", "you"),
+        (r"(?i)\bskeleton athlete\b", "you"),
+        (r"(?i)\bthe skeleton mascot\b", "you"),
+        (r"(?i)\bskeleton mascot\b", "you"),
+        (r"(?i)\bthe skeleton\b", "you"),
+        (r"(?i)\bskeleton\b", "you"),
+    ]
+    for pattern, replacement in patterns:
+        cleaned = re.sub(pattern, replacement, cleaned)
+
+    grammar_fixes = {
+        r"(?i)\byou is\b": "you are",
+        r"(?i)\byou was\b": "you were",
+        r"(?i)\byou has\b": "you have",
+        r"(?i)\byou does\b": "you do",
+        r"(?i)\byou gets\b": "you get",
+        r"(?i)\byou jumps\b": "you jump",
+        r"(?i)\byou runs\b": "you run",
+        r"(?i)\byou swims\b": "you swim",
+        r"(?i)\byou survives\b": "you survive",
+        r"(?i)\byou melts\b": "you melt",
+        r"(?i)\byou explodes\b": "you explode",
+        r"(?i)\byou breaks\b": "you break",
+        r"(?i)\byou falls\b": "you fall",
+        r"(?i)\byou sinks\b": "you sink",
+        r"(?i)\byou flies\b": "you fly",
+        r"(?i)\byou lands\b": "you land",
+        r"(?i)\byou goes\b": "you go",
+        r"(?i)\byou turns\b": "you turn",
+    }
+    for pattern, replacement in grammar_fixes.items():
+        cleaned = re.sub(pattern, replacement, cleaned)
+
+    cleaned = re.sub(r"\s{2,}", " ", cleaned).strip()
+    if cleaned:
+        cleaned = cleaned[0].upper() + cleaned[1:]
+    return cleaned
+
+
 async def _add_native_scene_label_with_model(edit_client, image_path: str, planet: str, jump_label: str, fact_label: str) -> None:
     """Ask gpt-image to add the scene label naturally inside the image.
 
@@ -342,6 +394,40 @@ def _normalize_explicit_video_prompt(prompt: str) -> str:
     return re.sub(r"\s{2,}", " ", text).strip()
 
 
+def _is_numbered_ranking(narration_lines: list[str]) -> bool:
+    ranked_lines = [str(line).strip() for line in narration_lines[1:] if str(line).strip()]
+    if not ranked_lines:
+        return False
+    numbered = sum(1 for line in ranked_lines if re.search(r"(?i)^number\s+\d+", line))
+    return numbered >= max(2, len(ranked_lines) - 1)
+
+
+def _is_locked_test_comparison(concept: dict, scenes_meta: list[dict], narration_lines: list[str]) -> bool:
+    if concept.get("format_strategy") == "ranked_actual_planets":
+        return True
+
+    title = str(concept.get("title") or "")
+    brief = str(concept.get("brief") or "")
+    text = f"{title} {brief}".lower()
+    comparison_signals = [
+        "ranked",
+        "which",
+        "every",
+        "how hard",
+        "how fast",
+        "how high",
+        "how much",
+        "by crater size",
+        "by force",
+        "from every",
+        "same object",
+        "same test",
+    ]
+    return _is_numbered_ranking(narration_lines) and (
+        any(signal in text for signal in comparison_signals) or bool(scenes_meta)
+    )
+
+
 def _is_ranked_actual_planets(concept: dict, scenes_meta: list[dict]) -> bool:
     if concept.get("format_strategy") == "ranked_actual_planets" and scenes_meta:
         return True
@@ -351,12 +437,117 @@ def _is_ranked_actual_planets(concept: dict, scenes_meta: list[dict]) -> bool:
     return all(required_keys.issubset(set(scene.keys())) for scene in scenes_meta if isinstance(scene, dict))
 
 
-def _has_explicit_scene_plan(concept: dict, scenes_meta: list[dict]) -> bool:
+def _has_explicit_scene_plan(concept: dict, scenes_meta: list[dict], narration_lines: list[str]) -> bool:
     if concept.get("format_strategy") == "ranked_actual_planets":
+        return False
+    if _is_locked_test_comparison(concept, scenes_meta, narration_lines):
         return False
     if not scenes_meta:
         return False
     return all(isinstance(scene, dict) and scene.get("image_prompt") for scene in scenes_meta)
+
+
+def _scene_meta_for_line_index(scenes_meta: list[dict], line_index: int, n_lines: int) -> dict:
+    if not scenes_meta:
+        return {}
+    if len(scenes_meta) == n_lines:
+        idx = line_index
+    elif len(scenes_meta) == max(1, n_lines - 1):
+        idx = max(0, line_index - 1)
+    else:
+        idx = min(line_index, len(scenes_meta) - 1)
+    return scenes_meta[idx] if 0 <= idx < len(scenes_meta) else {}
+
+
+def _extract_ranked_subject_name(line: str, fallback: str = "subject") -> str:
+    text = str(line or "").strip()
+    match = re.search(r"(?i)number\s+\d+\s*:\s*([^.\n]+)", text)
+    if match:
+        return match.group(1).strip()
+    first_sentence = text.split(".")[0].strip()
+    return first_sentence or fallback
+
+
+def _impact_mode_for_comparison(title: str, brief: str, narration_lines: list[str], scenes_meta: list[dict]) -> bool:
+    blob = " ".join(
+        [
+            title,
+            brief,
+            *[str(line) for line in narration_lines],
+            *[
+                f"{scene.get('image_prompt', '')} {scene.get('video_prompt', '')}"
+                for scene in scenes_meta
+                if isinstance(scene, dict)
+            ],
+        ]
+    ).lower()
+    impact_terms = [
+        "hit",
+        "hits",
+        "hardest",
+        "impact",
+        "bite force",
+        "tail club",
+        "tail whip",
+        "slam",
+        "slams",
+        "smash",
+        "smashes",
+        "charge",
+        "ram",
+        "crater",
+        "force",
+        "shockwave",
+        "shatter",
+        "drops",
+        "dropping",
+        "stomp",
+        "kick",
+        "punch",
+    ]
+    return _is_locked_test_comparison({"title": title, "brief": brief}, scenes_meta, narration_lines) and any(
+        term in blob for term in impact_terms
+    )
+
+
+def _impact_action_details(line: str, scene_meta: dict) -> tuple[str, str, str]:
+    hint_blob = f"{line} {scene_meta.get('image_prompt', '')} {scene_meta.get('video_prompt', '')}".lower()
+    if any(term in hint_blob for term in ["bite force", "bite", "jaw", "jaws"]):
+        return (
+            "lunging forward and clamping its jaws shut on the reinforced strike block",
+            "the metal block caves inward under the bite and shock dust bursts out around the teeth",
+            "lunges, bites down hard, keeps pressure on the plate, metal buckles and debris spits outward",
+        )
+    if any(term in hint_blob for term in ["tail club", "tail whip", "tail"]):
+        return (
+            "whipping its tail sideways into the force plate",
+            "the plate caves in and a circular shockwave kicks rubble and dust across the arena floor",
+            "winds the hips, swings the tail through the plate, the impact ring blooms outward, chunks of concrete spray",
+        )
+    if any(term in hint_blob for term in ["horn", "charge", "ram"]):
+        return (
+            "dropping its head and charging horn-first into the impact wall",
+            "the wall folds inward, sparks and debris explode out, and the test lane fills with dust",
+            "backs up, paws the ground, charges full speed, slams head-first into the wall, then skids through the debris cloud",
+        )
+    if any(term in hint_blob for term in ["stomp", "foot", "kick", "leg"]):
+        return (
+            "rearing up and hammering the test plate with one brutal stomp",
+            "the floor crater deepens instantly and the blast of dust ripples away from the point of contact",
+            "rears, slams a foot straight down into the plate, dust erupts, the crater widens, fragments bounce across frame",
+        )
+    return (
+        "slamming its full body weight into the impact plate",
+        "the plate buckles and a thick dust ring tears across the same test lane",
+        "surges forward and crashes into the plate, the whole rig recoils, dust and fragments explode into the air",
+    )
+
+
+def _impact_result_text(line: str) -> str:
+    parts = [part.strip() for part in str(line or "").split(".") if part.strip()]
+    if len(parts) <= 1:
+        return ""
+    return ". ".join(parts[1:3]).strip()
 
 
 async def build_hardcore_ranked(run_id: int, concept: dict, output_dir: str, _update_step, db_url: str):
@@ -367,7 +558,6 @@ async def build_hardcore_ranked(run_id: int, concept: dict, output_dir: str, _up
     narration_lines = concept.get("narration", [])
     scenes_meta = concept.get("scenes") if isinstance(concept.get("scenes"), list) else []
     is_planet_jump_format = _is_ranked_actual_planets(concept, scenes_meta)
-    has_explicit_scene_plan = _has_explicit_scene_plan(concept, scenes_meta)
     video_provider = str(concept.get("video_provider") or get_channel_video_provider(CHANNEL_ID)).strip().lower()
     video_model = concept.get("video_model") or get_channel_video_model(CHANNEL_ID)
     video_resolution = concept.get("video_resolution") or get_channel_video_resolution(CHANNEL_ID)
@@ -398,7 +588,7 @@ KEY FACTS: {key_facts}
 
 THE FORMAT:
 - Line 1 MUST state the topic as a neutral question: "How fast can you swim across a pool in every liquid?" or "How long does each material take to melt in the sun?" — this IS the title. Shorts viewers don't see video titles.
-- NEVER name the test-subject character — no nickname, mascot name, or goofy label. If a subject is needed, refer to generic "you" / "a person" / "the test subject".
+- NEVER name the test-subject character — no frog, no skeleton, no mascot name, no goofy label. If a subject is needed, say "you" / "a person" / "the test subject".
 - Line 2 onwards: NUMBERED ranked list. Each line starts with the rank number. Example:
   - "Number 1: Water. Four seconds. Built for this."
   - "Number 2: Honey. Three hours. Basically a statue."
@@ -430,7 +620,13 @@ Return ONLY a JSON object:
         if not narration_lines:
             raise ValueError("Failed to generate narration script")
 
+    title = _normalize_viewer_subject_text(title)
+    narration_lines = [_normalize_viewer_subject_text(line) for line in narration_lines]
+
     n_lines = len(narration_lines)
+    is_locked_test_comparison = _is_locked_test_comparison(concept, scenes_meta, narration_lines)
+    is_impact_comparison = _impact_mode_for_comparison(title, concept.get("brief", ""), narration_lines, scenes_meta)
+    has_explicit_scene_plan = _has_explicit_scene_plan(concept, scenes_meta, narration_lines)
 
     explicit_image_prompts: list[str] = []
     explicit_video_prompts: list[str] = []
@@ -553,6 +749,8 @@ Return ONLY a JSON object:
 
         # Determine concept type so we pick the right base scene + scene-change strategy
         concept_type = "MOTION" if is_planet_jump_format else None
+        if not concept_type and is_impact_comparison:
+            concept_type = "IMPACT"
         if not concept_type:
             from packages.clients.claude import generate as claude_gen_base
             concept_type_resp = claude_gen_base(
@@ -564,6 +762,7 @@ CATEGORIES:
 - "MOTION" — comparing terrain/condition where character physically moves (run, swim, roll, jump, race). The SETTING is the constant, the SURFACE/MEDIUM changes per scene.
 - "EQUIPMENT" — comparing tools/methods (cook with X, build with Y, cut with Z). The CHARACTER ACTION stays similar, the TOOL changes per scene.
 - "CONDITION" — comparing extreme environments or states (survive at X temperature, perform at Y pressure). The CHARACTER is in varying environments.
+- "IMPACT" — comparing how hard different subjects hit, bite, smash, crash, stomp, drop, or create damage. The TEST RIG is constant, the striker changes.
 - "QUANTITY" — comparing amounts/scales (how many X can fit in Y, how much Z is too much).
 
 Return ONLY the category name, nothing else.""",
@@ -589,6 +788,17 @@ Return ONLY the category name, nothing else.""",
             "Keep the mast and lander visible in the same frame for scale. "
             "This is a static scientific measurement setup before the jump begins. NO text anywhere."
             )
+        elif concept_type == "IMPACT":
+            variant_traits = "; ".join(character_variant.get("traits") or [])
+            base_prompt = (
+            "Photorealistic. SINGLE IMAGE only — NOT a comic panel, NOT a cartoon poster, NOT a game splash screen. "
+            "Locked scientific impact-test arena. Same side three-quarter camera on a reinforced strike wall and pressure plate in the center of frame. "
+            "A protected blast-shield booth sits at the left edge with the human-sized googly-eyed skeleton host visible for scale, wearing "
+            f"{variant_traits or 'simple protective observer gear'}. "
+            "The lane markings, dust lane, debris berm, and test rig never change. "
+            "This is a neutral pre-impact setup waiting for the ranked subject to hit the exact same target. "
+            "Paleo-accurate / physically believable if a creature appears. No chibi faces, no cartoon game-art exaggeration, no stadium crowd, no text anywhere."
+            )
         elif brief:
             _base_text = brief
             for _marker in ['For edits', 'For every edit', 'For animation', 'For each edit']:
@@ -600,6 +810,11 @@ Return ONLY the category name, nothing else.""",
             )
             if concept_type == "MOTION":
                 _camera = "CAMERA: Behind-view, looking over the character's shoulder down the path/slope/track ahead. Like a TV camera behind a starting line."
+            elif concept_type == "IMPACT":
+                _camera = (
+                    "CAMERA: Locked side three-quarter scientific test-arena view. Same strike wall or pressure plate centered in frame, "
+                    "same protected observation booth with the googly-eyed skeleton host off to one side for scale, same floor markings, same dust lane."
+                )
             elif concept_type == "EQUIPMENT":
                 _camera = "CAMERA: Side or three-quarter view showing the character interacting with the equipment/tool and the subject of the experiment clearly visible. The setting should match the activity (kitchen, workbench, outdoors, etc.)."
             elif concept_type == "CONDITION":
@@ -619,11 +834,12 @@ CONCEPT-SPECIFIC VARIANT TRAITS: {'; '.join(character_variant.get("traits") or [
 
 CAMERA + SETTING based on concept type:
 - MOTION (races, jumps, rolls): Camera BEHIND character, looking down a track/path/slope. Starting-line energy.
+- IMPACT (hits, smashes, bites, drops): Locked side or three-quarter arena test-rig shot. Same strike wall/pressure plate every time. Same observation area. Same frame.
 - EQUIPMENT (cooking, building, testing tools): Side or three-quarter view. Setting matches the activity (kitchen for cooking, workbench for building, lab for testing). Tools/equipment clearly visible.
 - CONDITION (surviving extremes, temperatures): Character IN the environment, wide/medium shot. Environmental cues visible.
 - QUANTITY (how much fits, how many): Wide shot showing scale clearly.
 
-ACTION: The character must be MID-ACTION performing the specific activity from the title. Not standing still.
+ACTION: The scene must show the test about to happen or already happening. Not a static portrait.
 
 Start with "Photorealistic." End with "NO text anywhere."
 Return ONLY the prompt.""",
@@ -706,6 +922,13 @@ Return ONLY the prompt.""",
 - The SUBJECT of the experiment (egg, soup, whatever is being cooked/built/tested) is clearly visible
 - Show the RESULT becoming visible — egg cooking, smoke rising, water boiling, etc.
 - The character's expression/posture should match the effort level required (straining for a slow method, relaxed for an easy one)"""
+    elif not has_explicit_scene_plan and concept_type == "IMPACT":
+        _edit_guidance = """IMPACT concept guidance:
+- Treat the scene as a LOCKED test rig. Same strike wall or pressure plate, same arena, same floor markings, same observation booth, same camera.
+- ONLY the striking subject and the style of impact change between scenes.
+- Use physically believable anatomy and motion. No chibi faces, no crowd, no arcade-game splash-art posing.
+- The force difference must be visually obvious: light hits dent the plate a little, mid-tier hits crack it, top-tier hits blast the rig apart.
+- Bake the exact impact moment or immediate aftermath into the frame — not a portrait of the subject roaring for the camera."""
     elif not has_explicit_scene_plan and concept_type == "CONDITION":
         _edit_guidance = """CONDITION concept guidance:
 - The ENVIRONMENT is the variable — each scene should clearly show the character IN that specific extreme condition
@@ -724,6 +947,27 @@ Return ONLY the prompt.""",
         edit_prompts = ["No changes — grounded baseline Earth hook."]
         for scene in scenes_meta:
             edit_prompts.append(f"Use approved grounded {scene.get('planet', scene.get('slug', 'planet'))} reference.")
+        while len(edit_prompts) < n_lines:
+            edit_prompts.append(edit_prompts[-1])
+        edit_prompts = edit_prompts[:n_lines]
+    elif concept_type == "IMPACT":
+        edit_prompts = [
+            "No changes — use the locked impact-test arena and skeleton observer booth as the hook frame."
+        ]
+        for i in range(1, n_lines):
+            line = narration_lines[i]
+            scene_hint = _scene_meta_for_line_index(scenes_meta, i, n_lines)
+            subject = _extract_ranked_subject_name(line, "ranked subject")
+            strike_pose, visible_result, _ = _impact_action_details(line, scene_hint)
+            result_text = _impact_result_text(line)
+            edit_prompts.append(
+                f"Same exact impact-test arena, same strike wall, same observation booth, same camera. "
+                f"Replace the subject with {subject}, shown {strike_pose}. "
+                f"Make the anatomy physically believable and species-correct. "
+                f"Show {visible_result}. "
+                f"The visual damage must match this narration: {result_text or 'the hit lands harder than the previous subject'}. "
+                "No crowd, no stylized aura, no cartoon expression, no text anywhere."
+            )
         while len(edit_prompts) < n_lines:
             edit_prompts.append(edit_prompts[-1])
         edit_prompts = edit_prompts[:n_lines]
@@ -803,6 +1047,13 @@ Return ONLY a JSON array of {n_lines} strings. Line 0 should be "No changes — 
                             "Keep the striped mast and silver lander visible in the exact same relative positions and scale. "
                             f"{edit_prompts[i]} NO text anywhere."
                         )
+                    elif concept_type == "IMPACT":
+                        edit_instruction = (
+                            "Treat the input image as a LOCKED scientific impact-test template. "
+                            "Preserve the exact same camera angle, crop, strike wall position, floor markings, debris lane, and skeleton observation booth placement. "
+                            "Do not change the environment or convert it into poster art. "
+                            f"{edit_prompts[i]}"
+                        )
                     else:
                         edit_instruction = (
                             f"The character must look IDENTICAL to the input image — same suit, same helmet, same body proportions, same colors. "
@@ -847,6 +1098,13 @@ Return ONLY a JSON array of {n_lines} strings. Line 0 should be "No changes — 
                             "PASS only if ALL of these are true: same side-view camera, same crop, same skeleton character size, same body pose, both boots touching the ground, "
                             "striped mast visible, silver lander visible, and the image is clearly a pre-jump start frame. "
                             "FAIL if the skeleton is airborne, floating, landing, crouching deeply, framed differently, missing the mast, or missing the lander. "
+                            "Answer PASS or FAIL with one short reason."
+                        )
+                    elif concept_type == "IMPACT":
+                        review_prompt = (
+                            "Image 1 is the locked impact-test arena template. Image 2 should preserve the SAME arena, strike wall, observation booth, camera angle, crop, and floor layout. "
+                            "PASS if the test rig clearly stays the same and only the ranked subject plus the amount of impact damage changes. "
+                            "FAIL if Image 2 turns into poster art, a different environment, a close-up that loses the rig, or a generic action splash with no consistent test setup. "
                             "Answer PASS or FAIL with one short reason."
                         )
                     else:
@@ -1013,6 +1271,25 @@ Return ONLY a JSON array of {n_lines} strings. Line 0 should be "No changes — 
         anim_prompts = explicit_video_prompts_for_lines[:]
         while len(anim_prompts) < n_lines:
             anim_prompts.append(anim_prompts[-1] if anim_prompts else "Subtle motion.")
+    elif concept_type == "IMPACT":
+        anim_prompts = [
+            "Locked impact-test arena. The skeleton host braces behind the blast shield and points toward the untouched strike wall while dust hangs in the air. Keep the camera fixed on the full rig. No scene cuts."
+        ]
+        for i in range(1, n_lines):
+            line = narration_lines[i]
+            scene_hint = _scene_meta_for_line_index(scenes_meta, i, n_lines)
+            subject = _extract_ranked_subject_name(line, "ranked subject")
+            _, visible_result, motion_prompt = _impact_action_details(line, scene_hint)
+            result_text = _impact_result_text(line)
+            anim_prompts.append(
+                f"Same exact impact-test arena and same camera. {subject} is fully committed to the hit: {motion_prompt}. "
+                f"Show {visible_result}. "
+                f"The damage escalation must match this line: {result_text or 'harder than the previous subject'}. "
+                "Keep the strike wall and observation booth visible so the comparison stays constant. "
+                "Make the motion violent and decisive, not a slow zoom or idle pose. No scene cuts."
+            )
+        while len(anim_prompts) < n_lines:
+            anim_prompts.append(anim_prompts[-1])
     elif is_planet_jump_format:
         jump_inches_by_scene = [
             _parse_jump_label_inches(scene.get("jump_label", "1 ft 8 in"))

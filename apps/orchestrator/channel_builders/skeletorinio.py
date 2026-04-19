@@ -129,6 +129,16 @@ THE FORMAT:
 - We have AI visuals. Use them. Favor huge powers, impossible consequences, warped cities, divine flexes, monsters, castles, collapsing reality, accidental empires, giant status shifts, and absurd new normals over mild shrug-comedy.
 - If the concept gives you a mythic job, divine title, or control over a domain (Zeus, Poseidon, sun god, storms, tides, weather, fire, time, etc.), at least 3 post-hook lines must show you visibly USING or MISUSING that exact power in the world.
 - Bureaucracy can appear, but it cannot dominate those concepts. One complaint/help-desk line is enough. The rest should show the sky, sea, light, weather, or world physically reacting to your bad decisions.
+- If the concept is about becoming a FINAL BOSS, RAID BOSS, DUNGEON LORD, DARK KING, SERVER ENDGAME THREAT, or any other combat-power-fantasy role, DO NOT pivot into management, tourism, construction, urban planning, or cozy civilization jokes.
+- For boss/raid concepts, the story should escalate through COMBAT PRESSURE:
+  1. weak party/first challengers get wiped instantly,
+  2. a bigger organized raid forces you to reveal more power,
+  3. elite heroes / best players / legendary hunters show up,
+  4. you answer with minions, a second phase, a signature spell, or a terrifying final form,
+  5. you remain undefeated and the world accepts that this is your dungeon now.
+- In those boss/raid concepts, at least 3 post-hook lines must contain visible battle actions: blasts, spells, minions, raid wipes, shields breaking, arenas cracking, phase changes, loot explosions, health bars melting, armies charging, or bosses laughing through the damage.
+- BAD final-boss version: you improve the dungeon, open a shop, collect fees, or become a landlord.
+- GOOD final-boss version: the first raid explodes, the second raid nearly kills you, then the strongest players on the server arrive and you summon an army.
 - Bad Zeus version: gods hand you scrolls for three lines in a row.
 - Good Zeus version: you grab the lightning, the sky obeys, storms hit the wrong places, tides move wrong, sunlight patches keep shifting, THEN Olympus opens a ridiculous help desk.
 - GREAT accidental-Zeus version: the powers visibly LEVEL UP over time. Start with little shocks on touch, then command lightning, then use it for something funny/useful in public, then ride clouds/control weather, then end on a giant god-of-lightning flex with a concrete story consequence.
@@ -527,6 +537,109 @@ Return ONLY JSON:
     return fallback
 
 
+def _is_boss_raid_concept(title: str, brief: str) -> bool:
+    text = f"{title} {brief}".lower()
+    keywords = [
+        "final boss", "raid boss", "dungeon", "dark lord", "demon king",
+        "server", "raid", "party", "parties", "guild", "guilds",
+        "heroes coming", "heroes come", "boss fight", "endgame boss",
+    ]
+    return any(word in text for word in keywords)
+
+
+def _needs_boss_raid_rewrite(title: str, brief: str, narration_lines: list[str]) -> bool:
+    if not narration_lines or not _is_boss_raid_concept(title, brief):
+        return False
+
+    combat_words = [
+        "spell", "blast", "minion", "minions", "raid", "party", "wipe", "wipes",
+        "charge", "charges", "swing", "swings", "summon", "summons", "phase",
+        "shield", "shields", "armor", "army", "armies", "boss", "health bar",
+        "knight", "heroes", "hero", "survive", "barely", "fireball", "meteor",
+        "lightning", "portal", "explodes", "erupts", "cracks", "collapses",
+    ]
+    admin_words = [
+        "tourist", "tourists", "gift shop", "shop", "shops", "collect fees", "fee",
+        "fees", "construction", "build", "builds", "builder", "renovate", "renovates",
+        "improve", "improves", "organize", "organizes", "landlord", "rent", "bakery",
+        "business", "booth", "ledger", "coin chest", "treasurer",
+    ]
+
+    joined = " ".join(narration_lines[1:]).lower()
+    combat_lines = sum(1 for line in narration_lines[1:] if any(word in line.lower() for word in combat_words))
+    admin_lines = sum(1 for line in narration_lines[1:] if any(word in line.lower() for word in admin_words))
+    has_escalation = any(
+        marker in joined
+        for marker in ["first party", "first raid", "next raid", "full raid", "best players", "strongest heroes", "second phase"]
+    )
+
+    return combat_lines < 3 or admin_lines > 0 or not has_escalation
+
+
+def _fallback_boss_raid_rewrite(title: str, narration_lines: list[str]) -> list[str]:
+    hook = narration_lines[0] if narration_lines else f"What if {title.lower()}?"
+    return [
+        hook,
+        "Day 1: The first party enters, and one spell wipes them instantly.",
+        "Week 1: A full raid reaches your throne room, and you barely survive.",
+        "Month 1: The best players on the server storm the dungeon together.",
+        "You hit phase two, summon minions, and turn the whole arena into hell.",
+        "By sunrise, every top guild is gone, and nobody has touched your crown.",
+    ]
+
+
+def _maybe_strengthen_boss_raid_narration(title: str, brief: str, narration_lines: list[str]) -> list[str]:
+    if not narration_lines or not _is_boss_raid_concept(title, brief):
+        return narration_lines
+
+    if not _needs_boss_raid_rewrite(title, brief, narration_lines):
+        return narration_lines
+
+    try:
+        from packages.clients.claude import generate as claude_generate
+
+        resp = claude_generate(
+            prompt=f"""Rewrite this Skeletorinio narration so it commits fully to a FINAL-BOSS / RAID escalation story instead of drifting into management or civilization comedy.
+
+TITLE: {title}
+BRIEF: {brief}
+CURRENT NARRATION:
+{json.dumps(narration_lines, ensure_ascii=False)}
+
+RULES:
+- Keep the same core premise and comedic tone.
+- Keep 6-8 lines total.
+- Every line under 15 words.
+- Keep the hook as a clear "What if..." line naming the concept.
+- After the hook, escalate through combat pressure:
+  1. weak party or first challengers,
+  2. bigger raid or army,
+  3. elite heroes / best players / top guild,
+  4. your second phase, special spell, or summoned minions,
+  5. undefeated ending.
+- At least 3 post-hook lines must show visible battle actions or powers.
+- Do NOT include gift shops, tourism, fees, construction, renovation, landlord jokes, or cozy civilization outcomes.
+- The ending should feel like total domination, not bureaucracy.
+
+Return ONLY JSON:
+{{"narration": ["line 1", "line 2", "..."]}}""",
+            max_tokens=400,
+        )
+        match = re.search(r"\{.*\}", resp, re.DOTALL)
+        if match:
+            parsed = json.loads(match.group())
+            candidate = parsed.get("narration") or []
+            if candidate and not _needs_boss_raid_rewrite(title, brief, candidate):
+                logger.info("strengthened boss raid narration", title=title, before=narration_lines, after=candidate)
+                return candidate
+    except Exception as e:
+        logger.warning("boss raid narration rewrite fallback", title=title, error=str(e)[:120])
+
+    fallback = _fallback_boss_raid_rewrite(title, narration_lines)
+    logger.info("using fallback boss raid narration", title=title, fallback=fallback)
+    return fallback
+
+
 async def build_skeletorinio(run_id: int, concept: dict, output_dir: str, _update_step, db_url: str):
     """Full Skeletorinio video build using unified pipeline."""
     title = concept.get("title", "Untitled")
@@ -557,6 +670,7 @@ async def build_skeletorinio(run_id: int, concept: dict, output_dir: str, _updat
             raise ValueError("Failed to generate narration script")
 
     narration_lines = _maybe_strengthen_power_narration(title, brief, narration_lines)
+    narration_lines = _maybe_strengthen_boss_raid_narration(title, brief, narration_lines)
     concept["narration"] = narration_lines
 
     n_lines = len(narration_lines)

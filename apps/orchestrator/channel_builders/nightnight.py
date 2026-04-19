@@ -320,6 +320,19 @@ REACTION_ONLY_MARKERS = (
     "side eyes", "jaw drops", "freezes up", "goes silent",
 )
 
+PASSIVE_PREMISE_MARKERS = (
+    "refuses to",
+    "won't",
+    "will not",
+    "doesn't",
+    "does not",
+    "just stands there",
+    "stands there",
+    "does nothing",
+    "won't move",
+    "refuses to move",
+)
+
 
 def _has_strong_action(line: str) -> bool:
     lowered = line.lower()
@@ -329,6 +342,11 @@ def _has_strong_action(line: str) -> bool:
 def _is_reaction_only_line(line: str) -> bool:
     lowered = line.lower()
     return any(marker in lowered for marker in REACTION_ONLY_MARKERS) and not _has_strong_action(line)
+
+
+def _is_passive_premise(title: str, brief: str) -> bool:
+    lowered = f"{title} {brief}".lower()
+    return any(marker in lowered for marker in PASSIVE_PREMISE_MARKERS)
 
 
 def _validate_nightnight_script_text(narration_lines: list[str], format_strategy: str | None = None) -> None:
@@ -424,7 +442,13 @@ async def build_nightnight(run_id: int, concept: dict, output_dir: str, _update_
     # ─── STEP 1: Write script if not provided ───
     from packages.clients.claude import generate as claude_generate
 
-    def _generate_script(rewrite_reason: str | None = None) -> tuple[list[str], str]:
+    passive_premise = _is_passive_premise(title, brief)
+
+    def _generate_script(
+        rewrite_reason: str | None = None,
+        previous_lines: list[str] | None = None,
+        rewrite_attempt: int = 0,
+    ) -> tuple[list[str], str]:
         prompt = SCRIPT_PROMPT.format(
             title=title,
             brief=brief,
@@ -434,12 +458,34 @@ async def build_nightnight(run_id: int, concept: dict, output_dir: str, _update_
             max_lines=int(format_spec["max_lines"]),
             max_duration=float(format_spec["max_duration"]),
         )
+        if passive_premise:
+            prompt += (
+                "\n\nPassive-premise rule:\n"
+                "- This premise sounds passive, stubborn, or unmoving.\n"
+                "- Do NOT waste lines on the visitor merely refusing and everyone reacting.\n"
+                "- Keep the refusal, but make the world force ACTION around it: tests, attacks, school rules, counters, or punishments slam into the visitor and visibly fail.\n"
+                "- At least three post-hook lines must show distinct physical consequences while the visitor barely moves.\n"
+                "- The humor should come from overwhelming collisions, busted rules, and embarrassed opponents — not from silence alone.\n"
+            )
         if rewrite_reason:
             prompt += (
                 "\n\nRewrite requirement:\n"
                 f"- The last draft failed for this reason: {rewrite_reason}\n"
                 "- Fix that problem while keeping the title idea and canon event the same.\n"
                 "- Make the script more engaging, more power-heavy, and more visually literal.\n"
+            )
+        if previous_lines:
+            prompt += (
+                "\nPrevious failed draft:\n"
+                + "\n".join(f"- {line}" for line in previous_lines)
+                + "\n- Rewrite it into a stronger version instead of repeating the same structure.\n"
+            )
+        if rewrite_attempt >= 1:
+            prompt += (
+                "\nSecond-pass correction:\n"
+                "- Be shorter and sharper than the previous draft.\n"
+                "- No line may exceed 15 words.\n"
+                "- Every post-hook line should contain a distinct visible move, blast, counter, aura burst, collapse, or impact.\n"
             )
         resp = claude_generate(
             prompt=prompt,
@@ -469,14 +515,22 @@ async def build_nightnight(run_id: int, concept: dict, output_dir: str, _update_
         await _update_step("writing script")
         narration_lines, title = _generate_script()
 
-    try:
-        _validate_nightnight_script_text(narration_lines, format_strategy)
-    except ValueError as exc:
-        if concept.get("script_locked"):
-            raise
-        await _update_step("rewriting script")
-        narration_lines, title = _generate_script(rewrite_reason=str(exc))
-        _validate_nightnight_script_text(narration_lines, format_strategy)
+    rewrite_attempt = 0
+    max_rewrite_attempts = 3
+    while True:
+        try:
+            _validate_nightnight_script_text(narration_lines, format_strategy)
+            break
+        except ValueError as exc:
+            if concept.get("script_locked") or rewrite_attempt >= max_rewrite_attempts:
+                raise
+            rewrite_attempt += 1
+            await _update_step("rewriting script")
+            narration_lines, title = _generate_script(
+                rewrite_reason=str(exc),
+                previous_lines=narration_lines,
+                rewrite_attempt=rewrite_attempt,
+            )
 
     n_lines = len(narration_lines)
 
