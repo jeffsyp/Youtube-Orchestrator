@@ -48,6 +48,15 @@ def get_clip_duration(narr_path: str) -> int:
     return min(math.ceil(narr_dur + 0.5), 10)
 
 
+def get_veo_duration(seconds: int | float) -> int:
+    """Clamp requested duration to Veo's supported image-to-video lengths."""
+    if seconds <= 4:
+        return 4
+    if seconds <= 6:
+        return 6
+    return 8
+
+
 async def run_tasks(coroutines: list, parallel: bool = True, max_concurrent: int = 5):
     """Run async coroutine-generating functions in parallel or sequentially.
 
@@ -884,11 +893,12 @@ Answer PASS or FAIL with specific reason."""},
 
         # Animate
         if video_provider == "veo":
+            veo_duration = get_veo_duration(duration)
             await veo_generate_video_async(
                 prompt=anim_prompt,
                 output_path=clip_path,
                 model=video_model or "veo-3.1-lite-generate-001",
-                duration_seconds=duration,
+                duration_seconds=veo_duration,
                 aspect_ratio="9:16",
                 resolution=video_resolution or "720p",
                 image_path=img_path,
