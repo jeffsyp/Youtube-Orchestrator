@@ -319,7 +319,9 @@ async def _generate_item(item: dict):
         data={"bank_id": bank_id, "concept_id": concept_id, "channel_id": channel_id},
     )
 
-    # Reuse files from previous failed attempt if they exist
+    # Reuse ONLY narration from previous failed attempts.
+    # Visual artifacts from failed runs are too often stale after prompt/model/builder
+    # changes and can silently poison a "fresh" retry.
     prev_run_ids = []
     async with AsyncSession(engine) as s:
         r = await s.execute(text("""
@@ -342,26 +344,22 @@ async def _generate_item(item: dict):
                     break
             if not prev_dir:
                 continue
-            # Skip runs with no useful content
-            has_content = any(
-                os.path.isdir(os.path.join(prev_dir, sub)) and os.listdir(os.path.join(prev_dir, sub))
-                for sub in ["narration", "images", "clips"]
+            # Skip runs with no useful reusable narration
+            has_content = (
+                os.path.isdir(os.path.join(prev_dir, "narration"))
+                and bool(os.listdir(os.path.join(prev_dir, "narration")))
             )
             if not has_content:
                 continue  # try older run
 
-            # Copy narration, images, and clips from previous run
-            # Files that must NOT be reused (stale plans cause bad clip coverage / wrong scenes)
-            STALE_FILES = {"plan.json", "visual_plan.json"}
+            # Only narration is safe to reuse across failed retries.
             copied_something = False
-            # Note: "segments" excluded — they're built from clips + plan, and old segments
-            # from a different plan cause the compositor to skip lines (only 2/8 segments built).
-            for subdir in ["narration", "images", "clips", "character_refs"]:
+            for subdir in ["narration"]:
                 src = os.path.join(prev_dir, subdir)
                 dst = os.path.join(new_dir, subdir)
                 if os.path.isdir(src) and not os.path.isdir(dst):
                     try:
-                        shutil.copytree(src, dst, ignore=lambda d, files: [f for f in files if f in STALE_FILES])
+                        shutil.copytree(src, dst)
                         logger.info("reused files from previous run", prev_run=prev_id, subdir=subdir)
                         copied_something = True
                     except Exception as copy_err:
@@ -376,14 +374,6 @@ async def _generate_item(item: dict):
                         logger.info("reused file from previous run", prev_run=prev_id, file=fname)
                     except Exception:
                         pass
-            # If previous run had images approved (user clicked approve but subprocess
-            # died before animation), carry the approval forward so user isn't asked again.
-            prev_approval = os.path.join(prev_dir, ".images_approved")
-            if os.path.exists(prev_approval):
-                dst_approval = os.path.join(new_dir, ".images_approved")
-                if not os.path.exists(dst_approval):
-                    shutil.copy2(prev_approval, dst_approval)
-                    logger.info("carried forward image approval from previous run", prev_run=prev_id)
             if copied_something:
                 break  # found a good run to copy from
 
