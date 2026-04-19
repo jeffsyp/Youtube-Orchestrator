@@ -954,10 +954,20 @@ Return ONLY a JSON array of {n_lines} strings. Line 0 should be "No changes — 
     # ─── STEP 5: Animation prompts — concept-specific movement per scene ───
     await _update_step("planning animations")
     if is_planet_jump_format:
+        jump_inches_by_scene = [
+            _parse_jump_label_inches(scene.get("jump_label", "1 ft 8 in"))
+            for scene in scenes_meta
+        ]
+        ranked_scene_indices = sorted(
+            range(len(jump_inches_by_scene)),
+            key=lambda idx: jump_inches_by_scene[idx],
+            reverse=True,
+        )
+        top_two_scene_indices = set(ranked_scene_indices[:2])
         anim_prompts = [
             "Start on the ground beside the striped mast. The frog athlete does one tiny anticipatory bend and settles back down. Keep the full body, mast, lander, and native measurement card visible. No camera movement."
         ]
-        for scene in scenes_meta:
+        for scene_idx, scene in enumerate(scenes_meta):
             jump_label = scene.get("jump_label", "1 ft 8 in")
             jump_inches = _parse_jump_label_inches(jump_label)
             framing_note = "Keep the full body, mast, lander, and native label card visible with the usual side-view framing."
@@ -981,10 +991,18 @@ Return ONLY a JSON array of {n_lines} strings. Line 0 should be "No changes — 
                 framing_note = "Start very wide and low, then track upward aggressively so the jumper becomes tiny against the sky before following the fall back down."
             else:
                 jump_action = (
-                    "The jumper blasts skyward with completely impossible low-gravity power, shooting so high that the ground, mast, and lander shrink tiny below, "
-                    "nearly reaching cloud level before a huge delayed fall back to the same landing spot."
+                    "The jumper blasts skyward with completely impossible low-gravity power, shooting out of the original ground frame and leaving only sky for a long beat, "
+                    "while the mast and lander shrink into tiny dots far below before a huge delayed fall carries the jumper back down to the same landing spot."
                 )
-                framing_note = "Start extremely wide with massive headroom and chase the jumper hard upward so the jump feels wildly, hilariously taller than every previous world."
+                framing_note = "Start extremely wide with massive headroom, let the jumper leave the original ground frame entirely, and keep following upward until the jump feels wildly, hilariously taller than every previous world."
+            if scene_idx in top_two_scene_indices:
+                jump_action += (
+                    " The airtime must feel absurdly long: the jumper becomes a tiny speck high in the sky, hangs there for a beat, "
+                    "and only much later re-enters from far above."
+                )
+                framing_note += (
+                    " Treat this as an extreme-world hero shot, not a normal comparison jump. The viewer should feel like the jumper nearly escaped the scene."
+                )
             anim_prompts.append(
                 f"{jump_action} Show the FULL motion cycle in one shot: start on ground, takeoff, apex, and landing. "
                 f"Visually overexaggerate the height difference compared with the previous worlds so each new jump is unmistakably bigger or smaller at a glance. "
@@ -1039,7 +1057,13 @@ Return ONLY a JSON array of {n_lines} strings.""",
         anim_prompts = anim_prompts[:n_lines]
     logger.info("animation prompts generated", count=len(anim_prompts))
 
-    def _veo_duration(narr_path: str) -> int:
+    def _veo_duration(narr_path: str, line_index: int | None = None) -> int:
+        if is_planet_jump_format and line_index is not None and line_index > 0:
+            scene_idx = line_index - 1
+            if scene_idx in top_two_scene_indices:
+                return 8
+            if 0 <= scene_idx < len(jump_inches_by_scene) and jump_inches_by_scene[scene_idx] >= 120:
+                return 6
         requested = get_clip_duration(narr_path)
         if requested <= 4:
             return 4
@@ -1063,7 +1087,7 @@ Return ONLY a JSON array of {n_lines} strings.""",
                 prompt=anim_prompts[i],
                 output_path=clip_path,
                 model=primary_model,
-                duration_seconds=_veo_duration(narr_path),
+                duration_seconds=_veo_duration(narr_path, i),
                 aspect_ratio="9:16",
                 resolution=resolution or "720p",
                 image_path=img_path,
