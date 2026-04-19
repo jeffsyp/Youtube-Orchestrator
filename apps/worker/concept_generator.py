@@ -11,6 +11,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 from dotenv import load_dotenv
 from packages.clients.db import get_engine
+from packages.utils.hardcore_ranked_language import normalize_hardcore_ranked_concept, normalize_hardcore_ranked_viewer_text
 
 load_dotenv(override=True)
 logger = structlog.get_logger()
@@ -1653,6 +1654,9 @@ async def _insert_draft(engine, channel_id, title, concept, brief, form_type) ->
         from packages.utils.concept_formats import apply_format_strategy_defaults
 
         concept = apply_format_strategy_defaults(concept, form_type=form_type)
+        concept = normalize_hardcore_ranked_concept(concept, channel_id=channel_id)
+        title = normalize_hardcore_ranked_viewer_text(concept.get("title") or title)
+        brief = normalize_hardcore_ranked_viewer_text(concept.get("brief") or brief)
         async with AsyncSession(engine) as s:
             from packages.clients.workflow_state import ensure_concept
 

@@ -18,6 +18,7 @@ from packages.clients.channel_profiles import (
     get_channel_video_provider,
     get_channel_video_resolution,
 )
+from packages.utils.hardcore_ranked_language import normalize_hardcore_ranked_viewer_text
 
 from apps.orchestrator.channel_builders.shared import (
     generate_narration_with_timestamps,
@@ -179,55 +180,8 @@ def _display_jump_label(jump_label: str) -> str:
 
 
 def _normalize_viewer_subject_text(text: str) -> str:
-    """Keep Hardcore Ranked user-facing copy in second person.
-
-    The on-screen skeleton is meant to represent "you", so titles and narration
-    should not call it "the frog" or "the skeleton".
-    """
-    cleaned = str(text or "").strip()
-    if not cleaned:
-        return cleaned
-
-    patterns = [
-        (r"(?i)\bthe frog(?:-suit)?\b", "you"),
-        (r"(?i)\bfrog(?:-suit)?\b", "you"),
-        (r"(?i)\bthe skeleton athlete\b", "you"),
-        (r"(?i)\bskeleton athlete\b", "you"),
-        (r"(?i)\bthe skeleton mascot\b", "you"),
-        (r"(?i)\bskeleton mascot\b", "you"),
-        (r"(?i)\bthe skeleton\b", "you"),
-        (r"(?i)\bskeleton\b", "you"),
-    ]
-    for pattern, replacement in patterns:
-        cleaned = re.sub(pattern, replacement, cleaned)
-
-    grammar_fixes = {
-        r"(?i)\byou is\b": "you are",
-        r"(?i)\byou was\b": "you were",
-        r"(?i)\byou has\b": "you have",
-        r"(?i)\byou does\b": "you do",
-        r"(?i)\byou gets\b": "you get",
-        r"(?i)\byou jumps\b": "you jump",
-        r"(?i)\byou runs\b": "you run",
-        r"(?i)\byou swims\b": "you swim",
-        r"(?i)\byou survives\b": "you survive",
-        r"(?i)\byou melts\b": "you melt",
-        r"(?i)\byou explodes\b": "you explode",
-        r"(?i)\byou breaks\b": "you break",
-        r"(?i)\byou falls\b": "you fall",
-        r"(?i)\byou sinks\b": "you sink",
-        r"(?i)\byou flies\b": "you fly",
-        r"(?i)\byou lands\b": "you land",
-        r"(?i)\byou goes\b": "you go",
-        r"(?i)\byou turns\b": "you turn",
-    }
-    for pattern, replacement in grammar_fixes.items():
-        cleaned = re.sub(pattern, replacement, cleaned)
-
-    cleaned = re.sub(r"\s{2,}", " ", cleaned).strip()
-    if cleaned:
-        cleaned = cleaned[0].upper() + cleaned[1:]
-    return cleaned
+    """Keep Hardcore Ranked user-facing copy in second person."""
+    return normalize_hardcore_ranked_viewer_text(text)
 
 
 async def _add_native_scene_label_with_model(edit_client, image_path: str, planet: str, jump_label: str, fact_label: str) -> None:

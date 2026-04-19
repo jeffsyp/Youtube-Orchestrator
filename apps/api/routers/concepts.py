@@ -11,6 +11,7 @@ from sqlalchemy import text
 from packages.clients.db import async_session
 from packages.clients.workflow_state import ensure_concept, update_concept_status
 from packages.utils.concept_formats import apply_format_strategy_defaults
+from packages.utils.hardcore_ranked_language import normalize_hardcore_ranked_concept, normalize_hardcore_ranked_viewer_text
 
 router = APIRouter(prefix="/api", tags=["concepts"])
 
@@ -34,6 +35,8 @@ def _normalize_concept_payload(raw_concept, *, channel_id: int, title: str, form
     concept.setdefault("channel_id", channel_id)
     concept.setdefault("title", title)
     concept.setdefault("form_type", form_type)
+    concept = normalize_hardcore_ranked_concept(concept, channel_id=channel_id)
+    concept["title"] = normalize_hardcore_ranked_viewer_text(concept.get("title") or title)
     return concept
 
 

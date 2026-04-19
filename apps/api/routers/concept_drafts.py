@@ -8,6 +8,7 @@ from sqlalchemy import text
 
 from packages.clients.db import async_session
 from packages.clients.workflow_state import ensure_concept, update_concept_status
+from packages.utils.hardcore_ranked_language import normalize_hardcore_ranked_concept, normalize_hardcore_ranked_viewer_text
 
 router = APIRouter(prefix="/api", tags=["concept-drafts"])
 
@@ -116,6 +117,13 @@ async def approve_draft(draft_id: int, bg: BackgroundTasks):
         raise HTTPException(400, f"Draft is {row[3]}, not pending")
 
     channel_id, title, concept_json, form_type = row[0], row[1], row[2], row[4] or "short"
+    try:
+        concept = json.loads(concept_json) if isinstance(concept_json, str) else (concept_json or {})
+    except Exception:
+        concept = {}
+    concept = normalize_hardcore_ranked_concept(concept, channel_id=channel_id)
+    title = normalize_hardcore_ranked_viewer_text(concept.get("title") or title)
+    concept_json = json.dumps(concept)
 
     async with async_session() as s:
         concept_id = await ensure_concept(
