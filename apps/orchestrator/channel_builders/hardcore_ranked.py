@@ -802,12 +802,13 @@ Return ONLY the category name, nothing else.""",
             _base_text = brief or title
             base_prompt = (
             "Photorealistic. SINGLE IMAGE only — NOT a poster, NOT a montage, NOT multiple panels. "
-            "Locked scientific comparison rig for one impossible destination or challenge. "
-            "Use a fixed side-view or cutaway so the viewer can understand progress in one glance. "
+            "Scientific comparison setup for one impossible destination or challenge. "
+            "Establish one clear starting point or entry point that every attempt begins from. "
             f"The human-sized googly-eyed skeleton host stays at the same observation position for scale, wearing {variant_traits or 'simple test gear'}. "
             f"The concept is: {_base_text.strip()}. "
-            "The rig must be something that can remain the same in every scene while only the method or machine changes. "
+            "The world and challenge stay the same in every scene, but later scenes are allowed to follow the machine or method farther into the challenge. "
             "Examples: a giant vertical cutaway drill shaft, a deep-ocean pressure chamber lane, a furnace tunnel, a vacuum chamber, or a controlled survival rig. "
+            "The hook frame should clearly show the surface starting point or experiment entrance where every attempt begins. "
             "This base frame is the neutral setup before any ranked method starts. No text anywhere."
             )
         elif brief:
@@ -823,9 +824,9 @@ Return ONLY the category name, nothing else.""",
                 _camera = "CAMERA: Behind-view, looking over the character's shoulder down the path/slope/track ahead. Like a TV camera behind a starting line."
             elif concept_type == "LOCKED_TEST":
                 _camera = (
-                    "CAMERA: Locked side-view or cutaway science-comparison shot. "
-                    "One fixed experimental rig fills the frame, with the skeleton host at a marked observation position for scale. "
-                    "The same destination, chamber, shaft, furnace, vacuum rig, or test lane stays consistent in every scene."
+                    "CAMERA: Side-view or cutaway science-comparison shot anchored to one clear starting point. "
+                    "The same destination, chamber, shaft, furnace, vacuum rig, or test lane stays consistent in every scene, "
+                    "but later scenes may follow the method deeper while still showing that it began from the same place."
                 )
             elif concept_type == "IMPACT":
                 _camera = (
@@ -942,11 +943,12 @@ Return ONLY the prompt.""",
 - The character's expression/posture should match the effort level required (straining for a slow method, relaxed for an easy one)"""
     elif not has_explicit_scene_plan and concept_type == "LOCKED_TEST":
         _edit_guidance = """LOCKED_TEST concept guidance:
-- Treat the scene as one repeated scientific experiment. The rig, camera angle, observation platform, and destination remain the same.
-- ONLY the method/tool/vehicle/machine changes from scene to scene.
+- Treat the scene as one repeated scientific experiment. The destination and starting point remain the same.
+- Every attempt begins from the same visible origin, but the scene may follow the method deeper or farther into the challenge.
+- ONLY the method/tool/vehicle/machine and the amount of progress change from scene to scene.
 - Each new method must visibly get farther, last longer, or survive a harsher stage of the same challenge.
 - The failure point must be obvious in-frame: melting, crushing, stalling, exploding, buckling, boiling, or stopping.
-- Never turn the concept into unrelated scenery changes or a generic character portrait. The comparison rig is the point."""
+- Never turn the concept into unrelated scenery changes or a generic character portrait. The comparison is about how far each method gets from the same start."""
     elif not has_explicit_scene_plan and concept_type == "IMPACT":
         _edit_guidance = """IMPACT concept guidance:
 - Treat the scene as a LOCKED test rig. Same strike wall or pressure plate, same arena, same floor markings, same observation booth, same camera.
@@ -1004,10 +1006,11 @@ Return ONLY the prompt.""",
             line = narration_lines[i]
             method, outcome = _method_ladder_line_payload(line)
             edit_prompts.append(
-                f"Same exact experimental rig, same camera, same destination, same skeleton host position. "
+                f"Same destination, same experiment world, same starting point, same skeleton host identity. "
                 f"Change only the active method or machine to: {method}. "
                 f"Show it getting farther into the challenge than the previous attempt, while clearly failing or succeeding like this: {outcome or 'it gets farther before failing'}. "
-                "Make the progress measurable and visually obvious inside the same rig. No text anywhere."
+                "The scene may uniquely follow this method deeper into the challenge, but it must still clearly feel like it began from the same surface entry point or experiment origin as the other scenes. "
+                "Make the progress measurable and visually obvious. No text anywhere."
             )
         while len(edit_prompts) < n_lines:
             edit_prompts.append(edit_prompts[-1])
@@ -1090,9 +1093,10 @@ Return ONLY a JSON array of {n_lines} strings. Line 0 should be "No changes — 
                         )
                     elif concept_type == "LOCKED_TEST":
                         edit_instruction = (
-                            "Treat the input image as a LOCKED scientific experiment template. "
-                            "Preserve the exact same camera angle, crop, rig layout, destination/chamber/shaft shape, and skeleton host position. "
-                            "Do not convert it into a poster or a new environment. "
+                            "Treat the input image as the SAME scientific experiment world and same starting point. "
+                            "Preserve the same destination/challenge, same surface entry point or experiment origin, same overall visual identity, and the same skeleton host identity. "
+                            "The camera is allowed to follow this attempt deeper or farther than the hook frame, as long as it still clearly belongs to the same experiment and started from the same place. "
+                            "Do not convert it into a poster or unrelated environment. "
                             f"{edit_prompts[i]}"
                         )
                     elif concept_type == "IMPACT":
@@ -1150,9 +1154,9 @@ Return ONLY a JSON array of {n_lines} strings. Line 0 should be "No changes — 
                         )
                     elif concept_type == "LOCKED_TEST":
                         review_prompt = (
-                            "Image 1 is the locked base experiment rig. Image 2 should preserve the SAME rig, same camera angle, same crop, same host position, and same destination/challenge layout. "
-                            "PASS if only the method/machine/progress changes. "
-                            "FAIL if Image 2 changes to a different environment, loses the rig, changes the camera drastically, or becomes a generic portrait/splash image. "
+                            "Image 1 is the base experiment setup. Image 2 should preserve the SAME challenge and the SAME starting point, but it may follow the method deeper or farther into the challenge. "
+                            "PASS if Image 2 still clearly feels like the same experiment and same origin, while showing a distinct deeper progress scene for that method. "
+                            "FAIL if Image 2 changes to a different environment, loses the sense of the shared starting point, or becomes a generic portrait/splash image with no clear experiment. "
                             "Answer PASS or FAIL with one short reason."
                         )
                     elif concept_type == "IMPACT":
@@ -1328,16 +1332,17 @@ Return ONLY a JSON array of {n_lines} strings. Line 0 should be "No changes — 
             anim_prompts.append(anim_prompts[-1] if anim_prompts else "Subtle motion.")
     elif concept_type == "LOCKED_TEST":
         anim_prompts = [
-            "Same locked experiment rig. The skeleton host points at the untouched setup like a science-show intro while the machine is idle. Keep the camera fixed. No scene cuts."
+            "Same experiment starting point. The skeleton host points at the untouched setup like a science-show intro while the machine is idle. Keep the opening centered on the origin of the experiment. No scene cuts."
         ]
         for i in range(1, n_lines):
             line = narration_lines[i]
             method, outcome = _method_ladder_line_payload(line)
             anim_prompts.append(
-                f"Same exact experiment rig and same fixed camera. Show {method} actively attempting the challenge. "
+                f"Same challenge and same starting point. Show {method} actively attempting the challenge. "
+                "Begin by clearly showing the same origin point as the other attempts, then let the camera follow this method deeper or farther as it progresses. "
                 f"The machine should visibly get farther or last longer than the previous attempt, then fail or succeed like this: {outcome or 'it gets farther before failing'}. "
                 "Make the motion intense and physical: drilling, descending, burning, buckling, melting, crushing, or breaking through. "
-                "Keep the rig visible so the comparison stays obvious. No scene cuts."
+                "Keep the viewer oriented so it still feels like one shared experiment, not a random unrelated scene. No scene cuts."
             )
         while len(anim_prompts) < n_lines:
             anim_prompts.append(anim_prompts[-1])
