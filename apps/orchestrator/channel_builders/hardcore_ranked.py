@@ -714,20 +714,26 @@ Return ONLY a JSON array of {n_lines} strings. Line 0 should be "No changes — 
         for scene in scenes_meta:
             jump_label = scene.get("jump_label", "1 ft 8 in")
             jump_inches = _parse_jump_label_inches(jump_label)
+            framing_note = "Keep the full body, mast, and lander visible with the usual locked side-view framing."
             if jump_inches <= 10:
                 jump_action = "The jumper bends deeply, tries to explode upward, barely rises a few inches beside the mast, then lands back down fast and heavy."
+                framing_note = "Keep the camera locked and close so the failed jump feels heavy and cramped."
             elif jump_inches <= 24:
                 jump_action = f"The jumper starts grounded, performs a normal athletic jump to about {jump_label}, then lands back in the same place."
+                framing_note = "Keep the classic side-view comparison framing locked in place."
             elif jump_inches <= 72:
                 jump_action = f"The jumper starts on the ground, crouches, launches high beside the mast to roughly {jump_label}, hangs in the air for a beat, then lands back on the same spot."
+                framing_note = "Start slightly wider than the Earth shot so the full jump arc fits cleanly, with a very subtle upward tilt only if needed."
             elif jump_inches <= 240:
                 jump_action = f"The jumper explodes upward from the ground, rockets far above the mast to around {jump_label}, briefly leaves the upper part of frame, then drops back in and lands."
+                framing_note = "Start noticeably wider with much more sky above the mast, then let the camera tilt upward to follow the leap before easing back down for the landing."
             else:
                 jump_action = f"The jumper blasts off from the ground with absurd low-gravity power, shoots completely past the mast toward roughly {jump_label}, disappears upward for a long hang, then falls back down and lands."
+                framing_note = "Start very wide and lower in the frame with a lot of extra vertical space, then clearly track upward with the jumper so the insane height reads before following the fall back down."
             anim_prompts.append(
                 f"{jump_action} Show the FULL motion cycle in one shot: start on ground, takeoff, apex, and landing. "
                 f"Keep the {scene.get('planet', 'planet')} environment stable, with the mast and lander visible for scale. "
-                "No camera movement, no scene cuts, no text."
+                f"{framing_note} No scene cuts, no text."
             )
         while len(anim_prompts) < n_lines:
             anim_prompts.append(anim_prompts[-1])
