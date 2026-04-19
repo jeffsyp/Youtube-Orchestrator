@@ -9,6 +9,7 @@ import base64
 import json
 import math
 import os
+import re
 import subprocess
 import wave
 
@@ -1138,29 +1139,65 @@ def build_silent_segments(
 
 
 def build_intro_teasers(
-    n_lines: int, narr_dir: str, clips_dir: str, segments_dir: str,
+    n_lines: int,
+    narr_dir: str,
+    clips_dir: str,
+    segments_dir: str,
+    line_clip_map: dict[int, list[str]] | None = None,
 ) -> float:
-    """Build intro teaser clips — ONE teaser per scene (one shutter per scene).
+    """Build intro teasers from distinct scenes, not every raw clip in order.
 
-    If there are fewer scenes than needed to fill narration duration, pause on
-    the last teaser until narration finishes.
+    For channels that generate multiple sub-clips per narration line, use one
+    representative clip per line so the intro doesn't look like it repeated or
+    lagged on the same beat.
     """
     title_narr_dur = get_duration(os.path.join(narr_dir, "line_00.mp3"))
     teaser_clip_dur = 0.6  # matches shutter sfx interval
 
-    # Pick ONE teaser per scene (exclude scene 0 which is the hook itself)
-    all_clips = sorted([f for f in os.listdir(clips_dir) if f.endswith('.mp4') and not f.startswith('.')])
-    if not all_clips:
+    teaser_sources: list[str] = []
+
+    if line_clip_map:
+        # Prefer one distinct teaser per narrated scene. Skip the hook line when
+        # possible so the intro previews future beats instead of replaying the opener.
+        ordered_line_indices = [idx for idx in range(1, n_lines) if line_clip_map.get(idx)]
+        if not ordered_line_indices:
+            ordered_line_indices = [idx for idx in range(n_lines) if line_clip_map.get(idx)]
+
+        for line_idx in ordered_line_indices:
+            clip_names = [name for name in line_clip_map.get(line_idx, []) if name]
+            if not clip_names:
+                continue
+            teaser_sources.append(os.path.join(clips_dir, clip_names[0]))
+
+    if not teaser_sources:
+        all_clips = sorted([f for f in os.listdir(clips_dir) if f.endswith('.mp4') and not f.startswith('.')])
+        if not all_clips:
+            raise RuntimeError(f"No clips found in {clips_dir}")
+
+        numbered_clips = [f for f in all_clips if re.match(r"clip_\d+\.mp4$", f)]
+        if numbered_clips:
+            # Skip clip_00 when possible so the intro doesn't immediately replay
+            # the same shot as the first real scene after the hook narration.
+            preferred = [f for f in numbered_clips if f != "clip_00.mp4"]
+            teaser_sources = [os.path.join(clips_dir, f) for f in (preferred or numbered_clips)]
+        else:
+            teaser_sources = [os.path.join(clips_dir, f) for f in all_clips]
+
+    if not teaser_sources:
         raise RuntimeError(f"No clips found in {clips_dir}")
 
-    # One teaser per scene (use every clip, one per)
-    n_teasers = len(all_clips)
+    n_teasers = len(teaser_sources)
 
     for j in range(n_teasers):
         tp = os.path.join(segments_dir, f"teaser_{j:02d}.mp4")
-        clip_path = os.path.join(clips_dir, all_clips[j])
+        clip_path = teaser_sources[j]
+        try:
+            clip_dur = get_duration(clip_path)
+        except Exception:
+            clip_dur = teaser_clip_dur + 0.4
+        sample_offset = max(0.15, min(0.7, max(0.0, clip_dur - teaser_clip_dur - 0.1) * 0.35))
         subprocess.run([
-            "ffmpeg", "-y", "-ss", "0.4",  # grab a mid-clip moment
+            "ffmpeg", "-y", "-ss", str(sample_offset),
             "-i", clip_path,
             "-t", str(teaser_clip_dur),
             "-vf", f"scale={WIDTH}:{HEIGHT}:force_original_aspect_ratio=decrease,pad={WIDTH}:{HEIGHT}:(ow-iw)/2:(oh-ih)/2",

@@ -125,7 +125,7 @@ async def build_schmoney_facts(run_id: int, concept: dict, output_dir: str, _upd
 
     # ─── STEP 5: Intro, audio, subtitles ───
     await _update_step("building intro")
-    actual_teaser_dur = build_intro_teasers(n_lines, narr_dir, clips_dir, segments_dir)
+    actual_teaser_dur = build_intro_teasers(n_lines, narr_dir, clips_dir, segments_dir, line_clip_map)
 
     await _update_step("concatenating")
     teasers_path = os.path.join(segments_dir, "teasers.mp4")
