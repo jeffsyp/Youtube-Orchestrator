@@ -54,6 +54,9 @@ HARDCORE RANKED CONCEPT RULES (CRITICAL):
   - obvious escalation from survivable to impossible
   - a clean answer the viewer wants to know
 - Favor concepts about time, depth, pressure, speed, force, temperature, survival, falling, distance, escape, or destruction.
+- A very strong Hardcore Ranked pattern is: ONE impossible destination or challenge, then rank the methods/tools/vehicles/strategies by how far they actually get before failing.
+  - Example: "How long would it take to reach the center of the Earth?" should become shovel → drill rig → magma-proof machine → absurd sci-fi tunnel rig, with each method getting farther.
+  - Example: "How far down before the ocean crushes you?" should become swimsuit → diving suit → submarine → research bathysphere.
 - The viewer should instantly understand the experiment from the title alone.
 - Avoid concepts that mostly depend on fandom jokes, prison logic, doctor jokes, HR jokes, or “what if X in real life” social commentary.
 - Avoid concepts that require totally different settings or rules every beat. If the same test rig cannot stay mostly consistent, it is probably the wrong Hardcore Ranked concept.
@@ -239,19 +242,22 @@ VS CHANNEL RULES (CRITICAL — shorts viewers do NOT see the title):
 - Final line: declare a CLEAR WINNER. No cop-outs, no "it depends." Pick a side and commit.
 - Structure: VS announcement → Fighter A breakdown → Fighter B breakdown → verdict."""
 
-    # Ranking channel override — strict numbered countdown
+    # Ranking channel override — numbered countdown / method ladder
     ranking_block = ""
     if channel_id in RANKING_CHANNELS:
         ranking_block = """
-RANKING CHANNEL RULES (STRICT FORMAT — each number gets TWO lines):
-- Line 1: Announce the list. "Top 5 video game abilities so broken they had to be deleted."
-- Then for EACH number, write TWO lines:
-  - Line A: JUST the number. "Number 5." That's it. ~1.5 seconds. This gets a bold number card visual.
-  - Line B: The name + one punchy sentence why. "Akuma in Street Fighter II had an instant kill move so broken, Capcom cut him from the arcade release." This gets an action scene visual.
-- So the full structure is: Title → "Number 5." → explanation → "Number 4." → explanation → ... → "Number 1." → explanation → optional punchline
-- This creates a punchy rhythm: NUMBER CARD → SCENE → NUMBER CARD → SCENE
-- Number 1 gets the biggest reaction — save the most surprising/controversial pick for last.
-- Total: ~12 lines for a Top 5 (title + 5×2 + optional punchline). This is fine for shorts up to 45 seconds."""
+RANKING CHANNEL RULES (STRICT FORMAT):
+- Hardcore Ranked still uses numbers, but the numbers can represent ONE of TWO valid structures:
+  1. A normal ranked list: different items ranked by the same measurable outcome.
+  2. A METHOD LADDER: one impossible destination/challenge, then each number is a different method or machine that gets farther before failing. Number 1 can be the insane contraption that finally does it.
+- Line 1: Announce the experiment or list clearly.
+- Then for EACH number, give:
+  - Line A: the number only. "Number 5."
+  - Line B: the method/item + one punchy outcome. "A shovel gets you through dirt... then the heat cooks you alive."
+- For method-ladder concepts, every number must feel like a genuine upgrade over the previous attempt.
+- Number 1 should be the craziest but still instantly understandable solution.
+- The full structure is: title → number card → explanation → number card → explanation...
+- Keep the answer concrete. The viewer should understand exactly why each method fails or succeeds."""
 
     # Comedy channel override — humor over analysis
     comedy_block = ""
