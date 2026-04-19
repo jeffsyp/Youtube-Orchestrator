@@ -367,10 +367,15 @@ def _is_locked_test_comparison(concept: dict, scenes_meta: list[dict], narration
         "ranked",
         "which",
         "every",
+        "how long",
         "how hard",
+        "how far",
         "how fast",
         "how high",
+        "how deep",
         "how much",
+        "how hot",
+        "how cold",
         "by crater size",
         "by force",
         "from every",
@@ -462,6 +467,42 @@ def _impact_mode_for_comparison(title: str, brief: str, narration_lines: list[st
     return _is_locked_test_comparison({"title": title, "brief": brief}, scenes_meta, narration_lines) and any(
         term in blob for term in impact_terms
     )
+
+
+def _method_ladder_mode_for_comparison(title: str, brief: str, narration_lines: list[str], scenes_meta: list[dict]) -> bool:
+    blob = " ".join([title, brief, *[str(line) for line in narration_lines]]).lower()
+    method_terms = [
+        "shovel",
+        "drill",
+        "rig",
+        "machine",
+        "vehicle",
+        "contraption",
+        "submarine",
+        "suit",
+        "rocket",
+        "heat source",
+        "boil",
+        "reach",
+        "center of the earth",
+        "ocean crush",
+        "survive in",
+        "last in",
+        "get to",
+    ]
+    return _is_locked_test_comparison({"title": title, "brief": brief}, scenes_meta, narration_lines) and any(
+        term in blob for term in method_terms
+    )
+
+
+def _method_ladder_line_payload(line: str) -> tuple[str, str]:
+    text = str(line or "").strip()
+    parts = [part.strip() for part in text.split(".") if part.strip()]
+    if not parts:
+        return ("method", "")
+    method = parts[1] if len(parts) > 1 and re.search(r"(?i)^number\s+\d+\s*$", parts[0]) else parts[0]
+    outcome = ". ".join(parts[2:] if len(parts) > 2 and re.search(r"(?i)^number\s+\d+\s*$", parts[0]) else parts[1:])
+    return method.strip(), outcome.strip()
 
 
 def _impact_action_details(line: str, scene_meta: dict) -> tuple[str, str, str]:
@@ -580,6 +621,7 @@ Return ONLY a JSON object:
     n_lines = len(narration_lines)
     is_locked_test_comparison = _is_locked_test_comparison(concept, scenes_meta, narration_lines)
     is_impact_comparison = _impact_mode_for_comparison(title, concept.get("brief", ""), narration_lines, scenes_meta)
+    is_method_ladder = _method_ladder_mode_for_comparison(title, concept.get("brief", ""), narration_lines, scenes_meta)
     has_explicit_scene_plan = _has_explicit_scene_plan(concept, scenes_meta, narration_lines)
 
     explicit_image_prompts: list[str] = []
@@ -705,6 +747,8 @@ Return ONLY a JSON object:
         concept_type = "MOTION" if is_planet_jump_format else None
         if not concept_type and is_impact_comparison:
             concept_type = "IMPACT"
+        if not concept_type and is_method_ladder:
+            concept_type = "LOCKED_TEST"
         if not concept_type:
             from packages.clients.claude import generate as claude_gen_base
             concept_type_resp = claude_gen_base(
@@ -753,6 +797,19 @@ Return ONLY the category name, nothing else.""",
             "This is a neutral pre-impact setup waiting for the ranked subject to hit the exact same target. "
             "Paleo-accurate / physically believable if a creature appears. No chibi faces, no cartoon game-art exaggeration, no stadium crowd, no text anywhere."
             )
+        elif concept_type == "LOCKED_TEST":
+            variant_traits = "; ".join(character_variant.get("traits") or [])
+            _base_text = brief or title
+            base_prompt = (
+            "Photorealistic. SINGLE IMAGE only — NOT a poster, NOT a montage, NOT multiple panels. "
+            "Locked scientific comparison rig for one impossible destination or challenge. "
+            "Use a fixed side-view or cutaway so the viewer can understand progress in one glance. "
+            f"The human-sized googly-eyed skeleton host stays at the same observation position for scale, wearing {variant_traits or 'simple test gear'}. "
+            f"The concept is: {_base_text.strip()}. "
+            "The rig must be something that can remain the same in every scene while only the method or machine changes. "
+            "Examples: a giant vertical cutaway drill shaft, a deep-ocean pressure chamber lane, a furnace tunnel, a vacuum chamber, or a controlled survival rig. "
+            "This base frame is the neutral setup before any ranked method starts. No text anywhere."
+            )
         elif brief:
             _base_text = brief
             for _marker in ['For edits', 'For every edit', 'For animation', 'For each edit']:
@@ -764,6 +821,12 @@ Return ONLY the category name, nothing else.""",
             )
             if concept_type == "MOTION":
                 _camera = "CAMERA: Behind-view, looking over the character's shoulder down the path/slope/track ahead. Like a TV camera behind a starting line."
+            elif concept_type == "LOCKED_TEST":
+                _camera = (
+                    "CAMERA: Locked side-view or cutaway science-comparison shot. "
+                    "One fixed experimental rig fills the frame, with the skeleton host at a marked observation position for scale. "
+                    "The same destination, chamber, shaft, furnace, vacuum rig, or test lane stays consistent in every scene."
+                )
             elif concept_type == "IMPACT":
                 _camera = (
                     "CAMERA: Locked side three-quarter scientific test-arena view. Same strike wall or pressure plate centered in frame, "
@@ -788,6 +851,7 @@ CONCEPT-SPECIFIC VARIANT TRAITS: {'; '.join(character_variant.get("traits") or [
 
 CAMERA + SETTING based on concept type:
 - MOTION (races, jumps, rolls): Camera BEHIND character, looking down a track/path/slope. Starting-line energy.
+- LOCKED_TEST (one impossible destination/challenge, different methods): fixed side-view or cutaway experiment rig. Same destination, same chamber/shaft/lane, same camera. Only the method/tool changes.
 - IMPACT (hits, smashes, bites, drops): Locked side or three-quarter arena test-rig shot. Same strike wall/pressure plate every time. Same observation area. Same frame.
 - EQUIPMENT (cooking, building, testing tools): Side or three-quarter view. Setting matches the activity (kitchen for cooking, workbench for building, lab for testing). Tools/equipment clearly visible.
 - CONDITION (surviving extremes, temperatures): Character IN the environment, wide/medium shot. Environmental cues visible.
@@ -876,6 +940,13 @@ Return ONLY the prompt.""",
 - The SUBJECT of the experiment (egg, soup, whatever is being cooked/built/tested) is clearly visible
 - Show the RESULT becoming visible — egg cooking, smoke rising, water boiling, etc.
 - The character's expression/posture should match the effort level required (straining for a slow method, relaxed for an easy one)"""
+    elif not has_explicit_scene_plan and concept_type == "LOCKED_TEST":
+        _edit_guidance = """LOCKED_TEST concept guidance:
+- Treat the scene as one repeated scientific experiment. The rig, camera angle, observation platform, and destination remain the same.
+- ONLY the method/tool/vehicle/machine changes from scene to scene.
+- Each new method must visibly get farther, last longer, or survive a harsher stage of the same challenge.
+- The failure point must be obvious in-frame: melting, crushing, stalling, exploding, buckling, boiling, or stopping.
+- Never turn the concept into unrelated scenery changes or a generic character portrait. The comparison rig is the point."""
     elif not has_explicit_scene_plan and concept_type == "IMPACT":
         _edit_guidance = """IMPACT concept guidance:
 - Treat the scene as a LOCKED test rig. Same strike wall or pressure plate, same arena, same floor markings, same observation booth, same camera.
@@ -921,6 +992,22 @@ Return ONLY the prompt.""",
                 f"Show {visible_result}. "
                 f"The visual damage must match this narration: {result_text or 'the hit lands harder than the previous subject'}. "
                 "No crowd, no stylized aura, no cartoon expression, no text anywhere."
+            )
+        while len(edit_prompts) < n_lines:
+            edit_prompts.append(edit_prompts[-1])
+        edit_prompts = edit_prompts[:n_lines]
+    elif concept_type == "LOCKED_TEST":
+        edit_prompts = [
+            "No changes — use the locked experiment rig as the hook frame."
+        ]
+        for i in range(1, n_lines):
+            line = narration_lines[i]
+            method, outcome = _method_ladder_line_payload(line)
+            edit_prompts.append(
+                f"Same exact experimental rig, same camera, same destination, same skeleton host position. "
+                f"Change only the active method or machine to: {method}. "
+                f"Show it getting farther into the challenge than the previous attempt, while clearly failing or succeeding like this: {outcome or 'it gets farther before failing'}. "
+                "Make the progress measurable and visually obvious inside the same rig. No text anywhere."
             )
         while len(edit_prompts) < n_lines:
             edit_prompts.append(edit_prompts[-1])
@@ -1001,6 +1088,13 @@ Return ONLY a JSON array of {n_lines} strings. Line 0 should be "No changes — 
                             "Keep the striped mast and silver lander visible in the exact same relative positions and scale. "
                             f"{edit_prompts[i]} NO text anywhere."
                         )
+                    elif concept_type == "LOCKED_TEST":
+                        edit_instruction = (
+                            "Treat the input image as a LOCKED scientific experiment template. "
+                            "Preserve the exact same camera angle, crop, rig layout, destination/chamber/shaft shape, and skeleton host position. "
+                            "Do not convert it into a poster or a new environment. "
+                            f"{edit_prompts[i]}"
+                        )
                     elif concept_type == "IMPACT":
                         edit_instruction = (
                             "Treat the input image as a LOCKED scientific impact-test template. "
@@ -1052,6 +1146,13 @@ Return ONLY a JSON array of {n_lines} strings. Line 0 should be "No changes — 
                             "PASS only if ALL of these are true: same side-view camera, same crop, same skeleton character size, same body pose, both boots touching the ground, "
                             "striped mast visible, silver lander visible, and the image is clearly a pre-jump start frame. "
                             "FAIL if the skeleton is airborne, floating, landing, crouching deeply, framed differently, missing the mast, or missing the lander. "
+                            "Answer PASS or FAIL with one short reason."
+                        )
+                    elif concept_type == "LOCKED_TEST":
+                        review_prompt = (
+                            "Image 1 is the locked base experiment rig. Image 2 should preserve the SAME rig, same camera angle, same crop, same host position, and same destination/challenge layout. "
+                            "PASS if only the method/machine/progress changes. "
+                            "FAIL if Image 2 changes to a different environment, loses the rig, changes the camera drastically, or becomes a generic portrait/splash image. "
                             "Answer PASS or FAIL with one short reason."
                         )
                     elif concept_type == "IMPACT":
@@ -1225,6 +1326,21 @@ Return ONLY a JSON array of {n_lines} strings. Line 0 should be "No changes — 
         anim_prompts = explicit_video_prompts_for_lines[:]
         while len(anim_prompts) < n_lines:
             anim_prompts.append(anim_prompts[-1] if anim_prompts else "Subtle motion.")
+    elif concept_type == "LOCKED_TEST":
+        anim_prompts = [
+            "Same locked experiment rig. The skeleton host points at the untouched setup like a science-show intro while the machine is idle. Keep the camera fixed. No scene cuts."
+        ]
+        for i in range(1, n_lines):
+            line = narration_lines[i]
+            method, outcome = _method_ladder_line_payload(line)
+            anim_prompts.append(
+                f"Same exact experiment rig and same fixed camera. Show {method} actively attempting the challenge. "
+                f"The machine should visibly get farther or last longer than the previous attempt, then fail or succeed like this: {outcome or 'it gets farther before failing'}. "
+                "Make the motion intense and physical: drilling, descending, burning, buckling, melting, crushing, or breaking through. "
+                "Keep the rig visible so the comparison stays obvious. No scene cuts."
+            )
+        while len(anim_prompts) < n_lines:
+            anim_prompts.append(anim_prompts[-1])
     elif concept_type == "IMPACT":
         anim_prompts = [
             "Locked impact-test arena. The skeleton host braces behind the blast shield and points toward the untouched strike wall while dust hangs in the air. Keep the camera fixed on the full rig. No scene cuts."
