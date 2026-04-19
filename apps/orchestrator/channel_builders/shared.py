@@ -402,6 +402,12 @@ CRITICAL — CLIP COVERAGE: The total duration of sub-action clips for each narr
 
 CRITICAL — SHOT VARIETY: Across the full set of image_prompts, vary camera angle, distance, and composition aggressively. Never more than 2 consecutive scenes with the same framing. Mix: close-up, medium, wide, bird's-eye, low-angle, over-the-shoulder, dutch-angle. Mix tight/loose framing. Vary lighting when the scene changes (golden hour, overcast, night, torchlit). Repeating "wide shot at eye level" across most scenes is a FAIL — the video will look static and boring.
 
+CRITICAL — STORY BEAT VARIETY: Unless the concept is EXPLICITLY a repeated-comparison format (same test, different variable), each narration line should feel like a genuinely NEW beat with a new visual purpose. Do NOT solve escalation by reusing the same anchor composition with a slightly bigger crowd, slightly bigger threat, or slightly louder aftermath.
+- BAD: same throne, same hallway, same desk, same doorway, or same stage over and over with only more people added
+- GOOD: rotate through distinct beat types like arrival, wipe, chase, summon, reaction, aftermath, loot reveal, gate breach, duel, collapse, escape, crowd panic, or final domination
+- If multiple consecutive lines happen in the same overall location, move to a DIFFERENT part of that location and a DIFFERENT visual function: corridor, staircase, rooftop, gate, battlefield floor, loot chamber, balcony, close-up aftermath, etc.
+- The only time a repeated setup is desirable is when the whole concept is a deliberate consistency experiment or ranking comparison. Otherwise, repeated composition is a FAIL.
+
 CRITICAL — NO STATIC ANIMATION PROMPTS: Every animation_prompt must describe CONTINUOUS VISIBLE motion. Banned words: "motionless", "still", "sits", "stands", "peaceful", "calm", "slowly blinks", "half-closed", "unchanging". If the beat is inherently quiet, describe subject motion or environmental motion (twitching, breathing hard, shifting weight, dust drifting, papers flying). Never solve a weak beat with camera language.
 
 CRITICAL — CAMERA LANGUAGE IS BANNED IN animation_prompt:
@@ -499,6 +505,7 @@ Before writing any image_prompt, reduce the beat to ONE visual sentence a strang
 - GOOD: "Killua alone cratered into rubble, smoke bursting from impact"
 - BAD: "Zoro hits Killua while rubble explodes, lightning crackles, and the crowd reacts"
 - BAD: "Gojo jogs backward while Satotz leads and Gon points and Killua stumbles in the same first frame"
+- BAD: "Same throne room again, but now with more raiders" or "same desk again, but more paperwork"
 
 CRITICAL — IMAGE PROMPT ORDER:
 Write image_prompt details in this order so the model gets the readable idea first:

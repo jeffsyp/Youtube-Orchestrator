@@ -81,6 +81,22 @@ POWER / DOMAIN CONCEPTS:
 - When narration mentions approvals for storms, tides, sunlight, weather, or other divine systems, depict the actual sky, sea, light, clouds, waves, or environment reacting on screen.
 - For Zeus / storm-king concepts specifically, show lightning, storm bands, broken weather patterns, sunlight patches, or sky control in at least half the scenes. Do not let the whole video become "people handing him scrolls."
 - For accidental god-power concepts, the fun should come from visible POWER PROGRESSION: a small accidental glitch first, then a controlled trick, then a useful/funny public use, then a huge world-scale flex. Do not spend multiple scenes on throne-room complaints.
+
+BOSS / RAID VISUAL DIVERSITY:
+- For final-boss / raid-boss / dungeon-lord concepts, DO NOT keep returning to the same seated throne composition. A seated-throne image may appear at most TWICE total across the entire video, usually hook and final domination beat.
+- Post-hook scenes must rotate through DISTINCT visual categories. Across the video, use at least four of these:
+  1. weak party getting wiped,
+  2. larger raid breaching a gate, corridor, or staircase,
+  3. Skeletorinio standing or moving off the throne to cast, slash, or dodge,
+  4. summoned minions swarming in motion,
+  5. elite heroes / best players in a focused showdown,
+  6. legendary loot, broken weapons, or glowing drops scattered after a wipe,
+  7. a massive army or server-wide force outside the dungeon gate,
+  8. a phase-two transformation or giant signature spell.
+- If the narration mentions a raid, party, guild, heroes, or players, Skeletorinio cannot just sit tiny in the background. He must be actively casting, summoning, laughing through hits, dodging, standing over the aftermath, or otherwise dominating the frame.
+- At least one post-hook scene must happen AWAY from the throne itself: a corridor, gate, staircase, battlefield floor, collapsed arena, loot chamber, or dungeon entrance.
+- At least one post-hook scene must show minions in motion.
+- At least one post-hook scene must show loot or legendary gear dropped after a wipe.
 """
 
 STYLIZED_IMAGE_RULES = """RULES — FOLLOW THESE EXACTLY:
@@ -108,6 +124,22 @@ HOOK / LINE 0 — PAYOFF VISUAL:
 POWER / DOMAIN CONCEPTS:
 - If the premise gives the skeletorinio a mythic job, divine title, or control over a domain (lightning, storms, sea, sun, fire, time, weather, etc.), the visuals must show that power visibly affecting the world.
 - Do NOT reduce these concepts to meetings, paperwork, or reaction poses. The dominant image must still be the power misfiring, being used badly, or changing the environment.
+
+BOSS / RAID VISUAL DIVERSITY:
+- For final-boss / raid-boss / dungeon-lord concepts, DO NOT keep returning to the same seated throne composition. A seated-throne image may appear at most TWICE total across the entire video, usually hook and final domination beat.
+- Post-hook scenes must rotate through DISTINCT visual categories. Across the video, use at least four of these:
+  1. weak party getting wiped,
+  2. larger raid breaching a gate, corridor, or staircase,
+  3. Skeletorinio standing or moving off the throne to cast, slash, or dodge,
+  4. summoned minions swarming in motion,
+  5. elite heroes / best players in a focused showdown,
+  6. legendary loot, broken weapons, or glowing drops scattered after a wipe,
+  7. a massive army or server-wide force outside the dungeon gate,
+  8. a phase-two transformation or giant signature spell.
+- If the narration mentions a raid, party, guild, heroes, or players, Skeletorinio cannot just sit tiny in the background. He must be actively casting, summoning, laughing through hits, dodging, standing over the aftermath, or otherwise dominating the frame.
+- At least one post-hook scene must happen AWAY from the throne itself: a corridor, gate, staircase, battlefield floor, collapsed arena, loot chamber, or dungeon entrance.
+- At least one post-hook scene must show minions in motion.
+- At least one post-hook scene must show loot or legendary gear dropped after a wipe.
 """
 
 SCRIPT_PROMPT = """Write a narration script for a Skeletorinio YouTube video.
@@ -127,6 +159,9 @@ THE FORMAT:
 - The story is about the SITUATION — but once the premise starts, push it HARD. Do not write the protagonist as a passive bystander for six lines straight.
 - Avoid timid underreactions like "you did not want this" / "you did not ask for this" / "you still don't know what it does" unless that exact anticlimax is the entire punchline. In most cases, those lines make the concept feel smaller than it should.
 - We have AI visuals. Use them. Favor huge powers, impossible consequences, warped cities, divine flexes, monsters, castles, collapsing reality, accidental empires, giant status shifts, and absurd new normals over mild shrug-comedy.
+- Every post-hook line should imply a DISTINCT visual beat. Do not write six lines that all naturally map to the same room, same pose, or same composition with slightly bigger stakes.
+- If the story stays in one overall place, the beats should still move to different parts/functions of that place: entrance, corridor, staircase, battlefield floor, balcony, treasure room, gate, rooftop, crowd, aftermath, etc.
+- Escalation should create NEW visual situations, not just "more people in the same shot."
 - If the concept gives you a mythic job, divine title, or control over a domain (Zeus, Poseidon, sun god, storms, tides, weather, fire, time, etc.), at least 3 post-hook lines must show you visibly USING or MISUSING that exact power in the world.
 - Bureaucracy can appear, but it cannot dominate those concepts. One complaint/help-desk line is enough. The rest should show the sky, sea, light, weather, or world physically reacting to your bad decisions.
 - If the concept is about becoming a FINAL BOSS, RAID BOSS, DUNGEON LORD, DARK KING, SERVER ENDGAME THREAT, or any other combat-power-fantasy role, DO NOT pivot into management, tourism, construction, urban planning, or cozy civilization jokes.
@@ -137,8 +172,17 @@ THE FORMAT:
   4. you answer with minions, a second phase, a signature spell, or a terrifying final form,
   5. you remain undefeated and the world accepts that this is your dungeon now.
 - In those boss/raid concepts, at least 3 post-hook lines must contain visible battle actions: blasts, spells, minions, raid wipes, shields breaking, arenas cracking, phase changes, loot explosions, health bars melting, armies charging, or bosses laughing through the damage.
+- Boss/raid concepts also need VISUAL CATEGORY VARIETY, not just bigger crowds in the same throne room. Across the post-hook lines, force at least 4 distinct beat types such as:
+  - weak party wipe,
+  - corridor or gate breach,
+  - elite showdown,
+  - minion flood,
+  - phase-two transformation,
+  - loot explosion / dropped legendary gear aftermath,
+  - giant army outside the dungeon.
+- A seated-throne tableau may appear at most twice in the entire script's implied visuals, usually hook and final beat.
 - BAD final-boss version: you improve the dungeon, open a shop, collect fees, or become a landlord.
-- GOOD final-boss version: the first raid explodes, the second raid nearly kills you, then the strongest players on the server arrive and you summon an army.
+- GOOD final-boss version: the first raid explodes, the second raid nearly kills you, then the strongest players on the server arrive, you summon an army, and their legendary gear ends up on the floor.
 - Bad Zeus version: gods hand you scrolls for three lines in a row.
 - Good Zeus version: you grab the lightning, the sky obeys, storms hit the wrong places, tides move wrong, sunlight patches keep shifting, THEN Olympus opens a ridiculous help desk.
 - GREAT accidental-Zeus version: the powers visibly LEVEL UP over time. Start with little shocks on touch, then command lightning, then use it for something funny/useful in public, then ride clouds/control weather, then end on a giant god-of-lightning flex with a concrete story consequence.
@@ -572,19 +616,38 @@ def _needs_boss_raid_rewrite(title: str, brief: str, narration_lines: list[str])
         marker in joined
         for marker in ["first party", "first raid", "next raid", "full raid", "best players", "strongest heroes", "second phase"]
     )
+    has_minion_or_phase = any(
+        marker in joined
+        for marker in ["minion", "minions", "summon", "summons", "phase two", "second phase", "final form"]
+    )
+    has_loot_aftermath = any(
+        marker in joined
+        for marker in ["loot", "legendary gear", "gear", "drops", "dropped", "weapons piled", "relic", "treasure"]
+    )
+    has_struggle_then_win = any(
+        marker in joined
+        for marker in ["barely survive", "barely lives", "almost dies", "nearly kills you", "second health bar", "phase two"]
+    )
 
-    return combat_lines < 3 or admin_lines > 0 or not has_escalation
+    return (
+        combat_lines < 3
+        or admin_lines > 0
+        or not has_escalation
+        or not has_minion_or_phase
+        or not has_loot_aftermath
+        or not has_struggle_then_win
+    )
 
 
 def _fallback_boss_raid_rewrite(title: str, narration_lines: list[str]) -> list[str]:
     hook = narration_lines[0] if narration_lines else f"What if {title.lower()}?"
     return [
         hook,
-        "Day 1: The first party enters, and one spell wipes them instantly.",
-        "Week 1: A full raid reaches your throne room, and you barely survive.",
-        "Month 1: The best players on the server storm the dungeon together.",
-        "You hit phase two, summon minions, and turn the whole arena into hell.",
-        "By sunrise, every top guild is gone, and nobody has touched your crown.",
+        "Day 1: One spell wipes the first party, and loot bursts across the floor.",
+        "Week 1: A full raid breaks your gates, and you barely keep phase one alive.",
+        "Month 1: The top guild dives in while your minions flood every staircase.",
+        "You hit phase two, split the dungeon open, and start raining boss magic.",
+        "By sunrise, legendary gear is piled at your feet, and nobody queues again.",
     ]
 
 
