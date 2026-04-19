@@ -1,8 +1,7 @@
 """Hardcore Ranked channel builder — visual comparison/ranking videos.
 
-Frog character in astronaut helmet as the test subject.
+Uses a consistent humanlike frog protagonist with concept-specific accessories.
 Same visual anchor (camera angle, location) for every comparison.
-gpt-4o edit to place frog into consistent scenes using reference images.
 Uses shared functions for narration, intro, audio, subtitles.
 """
 import asyncio
@@ -12,10 +11,8 @@ import os
 import re
 import shutil
 import subprocess
-from pathlib import Path
 
 import structlog
-from PIL import Image, ImageDraw, ImageFont
 from packages.clients.channel_profiles import (
     get_channel_video_model,
     get_channel_video_provider,
@@ -43,7 +40,8 @@ logger = structlog.get_logger()
 CHANNEL_ID = 26
 VOICE_ID = "TX3LPaxmHKxFdv7VOQHJ"  # Liam
 MUSIC_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "..", "assets", "music", "dark", "rising.mp3")
-FROG_REF = os.path.join(os.path.dirname(__file__), "..", "..", "..", "assets", "character_cache", "hardcore_ranked_frog_v3.png")
+FROG_BASE_REF = os.path.join(os.path.dirname(__file__), "..", "..", "..", "assets", "character_cache", "hardcore_ranked_frog_base.png")
+FROG_LEGACY_REF = os.path.join(os.path.dirname(__file__), "..", "..", "..", "assets", "character_cache", "hardcore_ranked_frog_v3.png")
 MANUAL_PLANET_REF_DIR = os.path.join(
     os.path.dirname(__file__),
     "..",
@@ -54,12 +52,18 @@ MANUAL_PLANET_REF_DIR = os.path.join(
     "hardcore_ranked_worlds",
 )
 TAGS = ["hardcore ranked", "comparison", "ranked", "shorts", "viral"]
-LABEL_FONT_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "..", "assets", "fonts", "Inter-ExtraBold.ttf")
-LABEL_FACT_FONT_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "..", "assets", "fonts", "Inter-Bold.ttf")
+
+BASE_CHARACTER_IDENTITY = (
+    "The core Hardcore Ranked identity never changes: a human-sized athletic green frog person with glossy smooth skin, "
+    "big expressive orange-and-black frog eyes, a friendly confident face, long frog feet, upright human posture, and a stylized but believable 3D character look. "
+    "He is not a person in a frog suit and not a literal small animal. "
+    "He stays the same character in every scene; only video-specific accessories or gear may change."
+)
 
 # Channel-specific image prompt rules
 IMAGE_RULES = """RULES:
-- The main character is a HUMAN-SIZED PERSON wearing a green frog-themed astronaut suit with a frog-shaped helmet — NOT an actual frog. He is a human that looks like a frog because of his suit. Think of a human diver in a frog costume.
+- The main character is a HUMAN-SIZED ATHLETIC GREEN FROG PERSON with big expressive frog eyes, upright human posture, long frog feet, and glossy stylized 3D skin. NOT a person in a frog suit. NOT a tiny frog.
+- The core identity stays the same in every scene. Only concept-specific accessories or gear can change.
 - PHOTOREALISTIC world, the character is a 3D animated character in a real world
 
 THE SETTING DEPENDS ON THE CONCEPT — NOT ALWAYS A ROAD:
@@ -84,6 +88,69 @@ EACH PROMPT MUST DESCRIBE ONLY WHAT CHANGES:
 - CONSISTENCY IS KEY — same camera angle, same frog, same environment, ONLY the variable changes"""
 
 
+def _heuristic_character_variant(title: str, brief: str) -> dict:
+    text = f"{title} {brief}".lower()
+    variant_name = "default athlete"
+    traits: list[str]
+
+    if any(term in text for term in ["planet", "space", "moon", "mars", "jupiter", "pluto", "ceres", "uranus", "neptune", "saturn", "mercury"]):
+        variant_name = "space athlete"
+        traits = [
+            "a glossy black astronaut helmet framing the frog head",
+            "clean athletic tank top and fitted training shorts",
+            "very light space-training styling only, while keeping the frog body fully recognizable",
+        ]
+    elif any(term in text for term in ["swim", "pool", "ocean", "water", "underwater"]):
+        variant_name = "swim athlete"
+        traits = [
+            "sleek swim goggles or a swim cap suited to a frog athlete",
+            "minimal competitive swim gear",
+        ]
+    elif any(term in text for term in ["cook", "kitchen", "grill", "bake", "oven", "chef"]):
+        variant_name = "kitchen tester"
+        traits = [
+            "a simple apron or chef accessory",
+            "practical kitchen-safe outfit details",
+        ]
+    elif any(term in text for term in ["bike", "cycle", "motorcycle", "vehicle", "racecar", "car"]):
+        variant_name = "racer"
+        traits = [
+            "streamlined racing helmet or goggles",
+            "light performance gear matched to a racing test",
+        ]
+    else:
+        traits = [
+            "simple athletic outfit matched to the test",
+            "no unnecessary accessories unless the concept needs them",
+        ]
+
+    return {
+        "variant_name": variant_name,
+        "must_keep": BASE_CHARACTER_IDENTITY,
+        "traits": traits,
+        "negative_traits": [
+            "do not turn him into a person in a frog costume",
+            "do not change the head shape or eye style",
+            "do not replace the frog body with generic human skin",
+            "do not add logos, patches, printed words, backpacks, or bulky sci-fi gadgets unless the concept truly requires them",
+        ],
+    }
+
+
+def _variant_rules_text(character_variant: dict) -> str:
+    traits = character_variant.get("traits") or []
+    negatives = character_variant.get("negative_traits") or []
+    traits_text = "; ".join(traits) if traits else "no extra accessories"
+    negatives_text = "; ".join(negatives) if negatives else "no off-model redesigns"
+    return (
+        "\n\nCONCEPT-SPECIFIC FROG VARIANT:\n"
+        f"- {character_variant.get('must_keep', BASE_CHARACTER_IDENTITY)}\n"
+        f"- For THIS video, add these consistent variant traits: {traits_text}.\n"
+        f"- Forbidden drift: {negatives_text}.\n"
+        "- Every image prompt must keep this exact variant consistent across the entire video.\n"
+    )
+
+
 def _manual_planet_ref(slug: str) -> str | None:
     path = os.path.join(MANUAL_PLANET_REF_DIR, f"{slug}_grounded.png")
     return path if os.path.exists(path) else None
@@ -101,16 +168,6 @@ def _parse_jump_label_inches(jump_label: str) -> int:
     return int(num_match.group(1)) if num_match else 20
 
 
-def _escape_drawtext(text: str) -> str:
-    return (
-        str(text)
-        .replace("\\", "\\\\")
-        .replace(":", r"\:")
-        .replace("'", r"\'")
-        .upper()
-    )
-
-
 def _display_jump_label(jump_label: str) -> str:
     total_inches = _parse_jump_label_inches(jump_label)
     feet, inches = divmod(total_inches, 12)
@@ -122,90 +179,170 @@ def _display_jump_label(jump_label: str) -> str:
     return " ".join(parts) if parts else str(jump_label)
 
 
-def _overlay_scene_label(clip_path: str, planet: str, jump_label: str, fact_label: str) -> None:
-    """Burn a compact scene label onto a rendered clip."""
-    tmp_path = clip_path.replace(".mp4", "_labeled.mp4")
-    title_text = _escape_drawtext(f"{planet}  {_display_jump_label(jump_label)}")
-    fact_text = _escape_drawtext(fact_label)
-    filter_str = ",".join(
-        [
-            "drawbox=x=34:y=34:w=620:h=180:color=black@0.42:t=fill",
-            (
-                f"drawtext=fontfile='{LABEL_FONT_PATH}':text='{title_text}':"
-                "x=56:y=58:fontsize=62:fontcolor=white"
-            ),
-            (
-                f"drawtext=fontfile='{LABEL_FACT_FONT_PATH}':text='{fact_text}':"
-                "x=58:y=132:fontsize=34:fontcolor=#D7E2F2"
-            ),
-        ]
-    )
-    subprocess.run(
-        [
-            "ffmpeg",
-            "-y",
-            "-i",
-            clip_path,
-            "-vf",
-            filter_str,
-            "-c:v",
-            "libx264",
-            "-preset",
-            "fast",
-            "-crf",
-            "20",
-            "-pix_fmt",
-            "yuv420p",
-            "-c:a",
-            "copy",
-            tmp_path,
-        ],
-        capture_output=True,
-        check=True,
-        timeout=300,
-    )
-    os.replace(tmp_path, clip_path)
+async def _add_native_scene_label_with_model(edit_client, image_path: str, planet: str, jump_label: str, fact_label: str) -> None:
+    """Ask gpt-image to add the scene label naturally inside the image.
 
-
-def _burn_scene_label_on_image(image_path: str, planet: str, jump_label: str, fact_label: str) -> None:
-    """Bake the measurement label into the source still before animation."""
-    path = Path(image_path)
-    img = Image.open(path).convert("RGBA")
-    draw = ImageDraw.Draw(img, "RGBA")
-
-    title_text = f"{str(planet).upper()}  {_display_jump_label(jump_label).upper()}"
+    This avoids the obviously post-edited overlay look from PIL/ffmpeg text burns.
+    """
+    title_text = f"{str(planet).upper()} {_display_jump_label(jump_label).upper()}"
     fact_text = str(fact_label).upper()
-
-    title_font = ImageFont.truetype(LABEL_FONT_PATH, 54)
-    fact_font = ImageFont.truetype(LABEL_FACT_FONT_PATH, 30)
-
-    pad_x = 24
-    pad_y = 20
-    gap = 8
-    box_x = 34
-    box_y = 34
-
-    title_bbox = draw.textbbox((0, 0), title_text, font=title_font)
-    fact_bbox = draw.textbbox((0, 0), fact_text, font=fact_font)
-    text_w = max(title_bbox[2] - title_bbox[0], fact_bbox[2] - fact_bbox[0])
-    title_h = title_bbox[3] - title_bbox[1]
-    fact_h = fact_bbox[3] - fact_bbox[1]
-    box_w = text_w + pad_x * 2
-    box_h = title_h + fact_h + gap + pad_y * 2
-
-    draw.rounded_rectangle(
-        [box_x, box_y, box_x + box_w, box_y + box_h],
-        radius=24,
-        fill=(11, 15, 23, 180),
-        outline=(235, 242, 255, 80),
-        width=2,
+    prompt = (
+        "Keep this image composition almost identical. Do NOT move the subject, mast, lander, horizon, or camera angle. "
+        "Add a clean broadcast-style measurement card in the upper-left corner that looks like it belongs in the original shot, not pasted on afterward. "
+        "The card should be a sleek dark rounded rectangle with crisp modern typography and subtle professional styling. "
+        f"Exact main line text: {title_text}. "
+        f"Exact smaller line text: {fact_text}. "
+        "The text must be perfectly legible, correctly spelled, and integrated naturally into the image. Preserve everything else."
     )
-    title_y = box_y + pad_y - title_bbox[1]
-    fact_y = title_y + title_h + gap - fact_bbox[1]
-    draw.text((box_x + pad_x, title_y), title_text, font=title_font, fill=(255, 255, 255, 255))
-    draw.text((box_x + pad_x, fact_y), fact_text, font=fact_font, fill=(215, 226, 242, 255))
 
-    img.convert("RGB").save(path, quality=95)
+    for attempt in range(3):
+        img_file = open(image_path, "rb")
+        try:
+            resp = await edit_client.images.edit(
+                model="gpt-image-1.5",
+                image=img_file,
+                prompt=prompt,
+                size="1024x1536",
+                quality="medium",
+                input_fidelity="high",
+            )
+        finally:
+            img_file.close()
+
+        if resp.data and resp.data[0].b64_json:
+            with open(image_path, "wb") as f:
+                f.write(base64.b64decode(resp.data[0].b64_json))
+            logger.info("scene label added natively by image model", image=image_path, attempt=attempt + 1)
+            return
+        await asyncio.sleep(1.5)
+
+    raise RuntimeError(f"Failed to add native scene label for {planet} after retries")
+
+
+async def _ensure_base_frog_reference(edit_client) -> str:
+    """Create the neutral Hardcore Ranked frog base asset if it doesn't exist yet."""
+    if os.path.exists(FROG_BASE_REF):
+        return FROG_BASE_REF
+
+    os.makedirs(os.path.dirname(FROG_BASE_REF), exist_ok=True)
+    source_ref = FROG_LEGACY_REF if os.path.exists(FROG_LEGACY_REF) else None
+    if not source_ref:
+        raise RuntimeError("Missing Hardcore Ranked frog reference image")
+
+    prompt = (
+        "Create a clean neutral base-character reference on a plain white background. "
+        "Keep the exact same core frog identity and proportions, but remove the astronaut helmet and any concept-specific props. "
+        "The result should be a human-sized athletic green frog person with the same expressive eyes, same face, same body proportions, "
+        "wearing only a simple white athletic tank top and black training shorts. "
+        "Full body, centered, facing forward, no extra accessories."
+    )
+
+    source_file = open(source_ref, "rb")
+    try:
+        resp = await edit_client.images.edit(
+            model="gpt-image-1.5",
+            image=source_file,
+            prompt=prompt,
+            size="1024x1536",
+            quality="medium",
+            input_fidelity="high",
+        )
+    finally:
+        source_file.close()
+
+    if not (resp.data and resp.data[0].b64_json):
+        raise RuntimeError("Failed to create Hardcore Ranked base frog reference")
+
+    with open(FROG_BASE_REF, "wb") as f:
+        f.write(base64.b64decode(resp.data[0].b64_json))
+    logger.info("created hardcore ranked base frog reference", path=FROG_BASE_REF)
+    return FROG_BASE_REF
+
+
+async def _build_character_variant_ref(edit_client, base_ref_path: str, variant: dict, output_path: str, title: str) -> str:
+    """Generate a concept-specific variant ref from the neutral frog base."""
+    if os.path.exists(output_path):
+        return output_path
+
+    traits = "; ".join(variant.get("traits") or [])
+    negatives = "; ".join(variant.get("negative_traits") or [])
+    prompt = (
+        f"Transform this exact Hardcore Ranked frog base character into the concept-specific variant for {title}. "
+        f"{variant.get('must_keep', BASE_CHARACTER_IDENTITY)} "
+        f"Add these consistent variant traits: {traits}. "
+        f"Forbidden drift: {negatives}. "
+        "Keep the same frog face, same eyes, same body proportions, and same full-body white-background reference image. "
+        "Do not change the pose or camera. Do not add any logos, patches, words, badges, backpacks, or extra gear beyond what the prompt explicitly calls for."
+    )
+
+    base_file = open(base_ref_path, "rb")
+    try:
+        resp = await edit_client.images.edit(
+            model="gpt-image-1.5",
+            image=base_file,
+            prompt=prompt,
+            size="1024x1536",
+            quality="medium",
+            input_fidelity="high",
+        )
+    finally:
+        base_file.close()
+
+    if not (resp.data and resp.data[0].b64_json):
+        shutil.copy2(base_ref_path, output_path)
+        return output_path
+
+    with open(output_path, "wb") as f:
+        f.write(base64.b64decode(resp.data[0].b64_json))
+    logger.info("created hardcore ranked concept variant ref", path=output_path, variant=variant.get("variant_name"))
+    return output_path
+
+
+async def _adapt_manual_world_ref_for_variant(
+    edit_client,
+    source_path: str,
+    variant: dict,
+    output_path: str,
+    planet: str,
+) -> str:
+    """Preserve the approved world composition while updating the frog to the active per-video variant."""
+    if os.path.exists(output_path):
+        return output_path
+
+    traits = "; ".join(variant.get("traits") or [])
+    negatives = "; ".join(variant.get("negative_traits") or [])
+    prompt = (
+        "Keep this image composition almost identical. Preserve the exact planet surface, sky, horizon, mast, lander, "
+        "camera angle, crop, lighting, and grounded pre-jump stance. "
+        f"Update the frog character so it matches the active Hardcore Ranked variant for {planet}. "
+        f"Core identity to preserve: {variant.get('must_keep', BASE_CHARACTER_IDENTITY)} "
+        f"Required variant traits: {traits}. "
+        f"Forbidden drift: {negatives}. "
+        "Both feet must stay planted on the ground in the same place. "
+        "Keep the character clean and simple: no extra props, no logos, no printed text, no badges, and no unnecessary gadgets."
+    )
+
+    source_file = open(source_path, "rb")
+    try:
+        resp = await edit_client.images.edit(
+            model="gpt-image-1.5",
+            image=source_file,
+            prompt=prompt,
+            size="1024x1536",
+            quality="medium",
+            input_fidelity="high",
+        )
+    finally:
+        source_file.close()
+
+    if not (resp.data and resp.data[0].b64_json):
+        shutil.copy2(source_path, output_path)
+        return output_path
+
+    with open(output_path, "wb") as f:
+        f.write(base64.b64decode(resp.data[0].b64_json))
+    logger.info("adapted approved world ref to active frog variant", path=output_path, planet=planet)
+    return output_path
 
 
 def _is_ranked_actual_planets(concept: dict, scenes_meta: list[dict]) -> bool:
@@ -295,13 +432,39 @@ Return ONLY a JSON object:
         narration_lines, narr_dir, output_dir, VOICE_ID, _update_step,
     )
 
-    # ─── STEP 3: Image prompts (shared + channel rules) ───
+    from openai import AsyncOpenAI
+    edit_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"), timeout=120.0)
+
+    # ─── STEP 3: Build concept-specific frog variant ───
     brief = concept.get("brief", "")
+    character_variant = concept.get("character_variant") if isinstance(concept.get("character_variant"), dict) else None
+    if not character_variant:
+        await _update_step("designing character variant")
+        character_variant = _heuristic_character_variant(title, brief)
+    concept["character_variant"] = character_variant
+    variant_path = os.path.join(output_dir, "character_variant.json")
+    with open(variant_path, "w") as vf:
+        json.dump(character_variant, vf, indent=2)
+
+    base_character_ref = await _ensure_base_frog_reference(edit_client)
+    character_ref_path = await _build_character_variant_ref(
+        edit_client,
+        base_character_ref,
+        character_variant,
+        os.path.join(output_dir, "character_variant_ref.png"),
+        title,
+    )
+
+    # ─── STEP 4: Image prompts (shared + channel rules) ───
     extra_rules = f"\n\nCONCEPT-SPECIFIC INSTRUCTIONS:\n{brief}" if brief else ""
     if is_planet_jump_format:
         image_prompts = []
     else:
-        image_prompts = await generate_image_prompts(narration_lines, IMAGE_RULES + extra_rules, _update_step)
+        image_prompts = await generate_image_prompts(
+            narration_lines,
+            IMAGE_RULES + _variant_rules_text(character_variant) + extra_rules,
+            _update_step,
+        )
 
     manual_planet_refs: dict[str, str] = {}
     if is_planet_jump_format:
@@ -317,11 +480,28 @@ Return ONLY a JSON object:
             expected=[str(scene.get("slug")) for scene in scenes_meta],
         )
     use_manual_planet_refs = is_planet_jump_format and len(manual_planet_refs) == len(scenes_meta)
+    if use_manual_planet_refs:
+        variant_ref_dir = os.path.join(output_dir, "variant_world_refs")
+        os.makedirs(variant_ref_dir, exist_ok=True)
+        adapted_refs: dict[str, str] = {}
+        for scene in scenes_meta:
+            slug = str(scene.get("slug") or "").strip().lower()
+            source_ref = manual_planet_refs.get(slug)
+            if not source_ref:
+                continue
+            adapted_refs[slug] = await _adapt_manual_world_ref_for_variant(
+                edit_client,
+                source_ref,
+                character_variant,
+                os.path.join(variant_ref_dir, f"{slug}_variant.png"),
+                scene.get("planet", slug.title()),
+            )
+        if len(adapted_refs) == len(scenes_meta):
+            manual_planet_refs = adapted_refs
+            logger.info("using variant-adapted approved world refs", slugs=sorted(adapted_refs.keys()))
 
-    # ─── STEP 4: Generate base scene → edit per liquid → animate ───
+    # ─── STEP 5: Generate base scene → edit per liquid → animate ───
     await _update_step("generating base scene")
-    from openai import AsyncOpenAI
-    edit_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"), timeout=120.0)
 
     # Determine concept type so we pick the right base scene + scene-change strategy
     concept_type = "MOTION" if is_planet_jump_format else None
@@ -349,11 +529,13 @@ Return ONLY the category name, nothing else.""",
         base_prompt = "Approved manual Earth grounded reference."
     elif is_planet_jump_format:
         first_scene = scenes_meta[0]
+        variant_traits = "; ".join(character_variant.get("traits") or [])
         base_prompt = (
             "Photorealistic. SINGLE IMAGE only — NOT a comic panel, NOT a chart, NOT multiple panels. "
-            "Strict side-view full-body comparison shot. The human-sized person in the green frog-themed astronaut suit stands ON THE GROUND "
+            "Strict side-view full-body comparison shot. The human-sized athletic green frog character stands ON THE GROUND "
             "with both feet planted flat beside a striped measurement mast and a silver research lander used for scale. "
             "The body pose is neutral and grounded, with no crouch, no leap, no floating, and no hero-angle exaggeration. "
+            f"Keep these concept-specific accessories consistent: {variant_traits}. "
             f"Actual {first_scene.get('planet', 'Earth')} environment: {first_scene.get('environment', 'open rocky plain')}. "
             "The character is in a grounded pre-jump stance, ready to jump but NOT airborne. "
             "Keep the mast and lander visible in the same frame for scale. "
@@ -363,7 +545,11 @@ Return ONLY the category name, nothing else.""",
         _base_text = brief
         for _marker in ['For edits', 'For every edit', 'For animation', 'For each edit']:
             _base_text = _base_text.split(_marker)[0]
-        _character_desc = "The character is a HUMAN-SIZED PERSON in a green frog-themed astronaut suit with a frog-shaped helmet — NOT an actual frog, NOT a cartoon frog, a HUMAN wearing a frog costume."
+        _character_desc = (
+            "The character is a HUMAN-SIZED athletic green frog person with glossy skin, big expressive frog eyes, upright human posture, "
+            "and the same core face/body from the reference image. "
+            f"Add these consistent variant traits: {'; '.join(character_variant.get('traits') or [])}."
+        )
         if concept_type == "MOTION":
             _camera = "CAMERA: Behind-view, looking over the character's shoulder down the path/slope/track ahead. Like a TV camera behind a starting line."
         elif concept_type == "EQUIPMENT":
@@ -380,7 +566,8 @@ Return ONLY the category name, nothing else.""",
 CONCEPT: {title}
 CONCEPT TYPE: {concept_type}
 
-THE CHARACTER: A HUMAN-SIZED PERSON wearing a green frog-themed astronaut suit with a frog-shaped helmet. NOT an actual frog. A human in a frog costume.
+THE CHARACTER: A human-sized athletic green frog person with glossy skin, big expressive frog eyes, upright human posture, and the same core face/body from the reference image.
+CONCEPT-SPECIFIC VARIANT TRAITS: {'; '.join(character_variant.get("traits") or [])}
 
 CAMERA + SETTING based on concept type:
 - MOTION (races, jumps, rolls): Camera BEHIND character, looking down a track/path/slope. Starting-line energy.
@@ -406,8 +593,8 @@ Return ONLY the prompt.""",
         logger.info("using approved manual grounded Earth reference as base scene", path=earth_ref)
     elif not os.path.exists(base_scene_path):
         # Use frog reference image as input for consistent character
-        if os.path.exists(FROG_REF):
-            frog_file = open(FROG_REF, "rb")
+        if os.path.exists(character_ref_path):
+            frog_file = open(character_ref_path, "rb")
             try:
                 resp = await edit_client.images.edit(
                     model="gpt-image-1.5",
@@ -443,7 +630,8 @@ Return ONLY the prompt.""",
         shutil.copy2(base_scene_path, scene_00)
     if use_manual_planet_refs and scenes_meta:
         first_scene = scenes_meta[0]
-        _burn_scene_label_on_image(
+        await _add_native_scene_label_with_model(
+            edit_client,
             scene_00,
             first_scene.get("planet", "Earth"),
             first_scene.get("jump_label", "1 ft 8 in"),
@@ -494,7 +682,7 @@ Return ONLY the prompt.""",
         for scene in scenes_meta:
             edit_prompts.append(
                 f"Only change the planet environment to {scene.get('environment', scene.get('planet', 'planet surface'))}. "
-                "Treat the input image as a LOCKED TEMPLATE. Preserve the exact same side-view camera, crop, frog-suit character size, body pose, foot placement, "
+                "Treat the input image as a LOCKED TEMPLATE. Preserve the exact same side-view camera, crop, frog character size, body pose, foot placement, "
                 "striped mast position, and silver lander position. "
                 "The jumper must remain ON THE GROUND beside the mast with both boots fully touching the surface in a pre-jump stance. "
                 "Do NOT show the jumper crouching deeply, airborne, floating, landing, or at the apex. "
@@ -516,7 +704,7 @@ NARRATION:
 {_edit_guidance}
 
 KEY RULES:
-- The CHARACTER (frog-suit) must stay visually consistent across scenes — same suit, same proportions
+- The CHARACTER must stay visually consistent across scenes — same frog face, same body proportions, same variant accessories
 - For MOTION concepts: keep the same camera angle and setting, only change the surface/opponent
 - For EQUIPMENT/CONDITION concepts: the BACKGROUND CAN CHANGE to match the tool/environment. Don't force the base scene's setting if it doesn't fit the variable.
 - Each scene should be VISUALLY DISTINCT from the others — not all same background if the concept doesn't require it
@@ -543,7 +731,8 @@ Return ONLY a JSON array of {n_lines} strings. Line 0 should be "No changes — 
             if not ref_path:
                 raise RuntimeError(f"Missing approved grounded reference for scene {i} slug={slug}")
             shutil.copy2(ref_path, img_path)
-            _burn_scene_label_on_image(
+            await _add_native_scene_label_with_model(
+                edit_client,
                 img_path,
                 scene_meta.get("planet", "Planet"),
                 scene_meta.get("jump_label", "1 ft 8 in"),
@@ -766,12 +955,12 @@ Return ONLY a JSON array of {n_lines} strings. Line 0 should be "No changes — 
     await _update_step("planning animations")
     if is_planet_jump_format:
         anim_prompts = [
-            "Start on the ground beside the striped mast. The frog-suit jumper does one tiny anticipatory bend and settles back down. Keep the full body, mast, and lander visible. No camera movement."
+            "Start on the ground beside the striped mast. The frog athlete does one tiny anticipatory bend and settles back down. Keep the full body, mast, lander, and native measurement card visible. No camera movement."
         ]
         for scene in scenes_meta:
             jump_label = scene.get("jump_label", "1 ft 8 in")
             jump_inches = _parse_jump_label_inches(jump_label)
-            framing_note = "Keep the full body, mast, and lander visible with the usual locked side-view framing."
+            framing_note = "Keep the full body, mast, lander, and native label card visible with the usual side-view framing."
             if jump_inches <= 10:
                 jump_action = "The jumper bends deeply, pushes upward with effort, barely rises a few inches beside the mast, then lands back down fast and heavy."
                 framing_note = "Keep the camera locked and close so the failed jump feels heavy and cramped."
@@ -779,18 +968,28 @@ Return ONLY a JSON array of {n_lines} strings. Line 0 should be "No changes — 
                 jump_action = f"The jumper starts grounded, performs a normal athletic jump to about {jump_label}, then lands back in the same place."
                 framing_note = "Keep the classic side-view comparison framing locked in place."
             elif jump_inches <= 72:
-                jump_action = f"The jumper starts on the ground, crouches, launches high beside the mast to roughly {jump_label}, hangs in the air for a beat, then lands back on the same spot."
-                framing_note = "Start slightly wider than the Earth shot so the full jump arc fits cleanly, with a very subtle upward tilt only if needed."
+                jump_action = (
+                    "The jumper crouches and launches obviously higher than Earth, soaring several mast-heights upward in one clean arc, "
+                    "hanging long enough that the height difference is unmistakable before dropping back to the same landing spot."
+                )
+                framing_note = "Start wider than the Earth shot with a lot more sky, and let the camera visibly track up so the height looks dramatically bigger than Earth."
             elif jump_inches <= 240:
-                jump_action = f"The jumper surges upward from the ground, rises far above the mast to around {jump_label}, briefly leaves the upper part of frame, then drops back in and lands."
-                framing_note = "Start noticeably wider with much more sky above the mast, then let the camera tilt upward to follow the leap before easing back down for the landing."
+                jump_action = (
+                    "The jumper rockets upward with absurd low gravity, climbing far beyond the mast until the mast and lander look small below, "
+                    "then falls all the way back down to the same landing point."
+                )
+                framing_note = "Start very wide and low, then track upward aggressively so the jumper becomes tiny against the sky before following the fall back down."
             else:
-                jump_action = f"The jumper springs off the ground with absurd low-gravity power, sails completely past the mast toward roughly {jump_label}, disappears upward for a long hang, then falls back down and lands."
-                framing_note = "Start very wide and lower in the frame with a lot of extra vertical space, then clearly track upward with the jumper so the insane height reads before following the fall back down."
+                jump_action = (
+                    "The jumper blasts skyward with completely impossible low-gravity power, shooting so high that the ground, mast, and lander shrink tiny below, "
+                    "nearly reaching cloud level before a huge delayed fall back to the same landing spot."
+                )
+                framing_note = "Start extremely wide with massive headroom and chase the jumper hard upward so the jump feels wildly, hilariously taller than every previous world."
             anim_prompts.append(
                 f"{jump_action} Show the FULL motion cycle in one shot: start on ground, takeoff, apex, and landing. "
+                f"Visually overexaggerate the height difference compared with the previous worlds so each new jump is unmistakably bigger or smaller at a glance. "
                 f"Keep the {scene.get('planet', 'planet')} environment stable, with the mast and lander visible for scale. "
-                f"{framing_note} No scene cuts, no text."
+                f"Keep the native measurement card intact in the frame. {framing_note} No scene cuts."
             )
         while len(anim_prompts) < n_lines:
             anim_prompts.append(anim_prompts[-1])
