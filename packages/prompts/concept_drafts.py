@@ -36,6 +36,31 @@ ALREADY MADE OR REJECTED (do NOT repeat these or anything too similar):
 Study these titles. They went viral as shorts. Ask yourself WHY each one worked — what made someone click, watch the whole thing, and share it. Use that understanding to create concepts that tap into the same psychology. Do NOT copy these titles. Create original concepts INSPIRED by what's working.
 """
 
+    hardcore_ranked_pitch_block = ""
+    if channel_name.lower() == "hardcore ranked":
+        hardcore_ranked_pitch_block = """
+
+HARDCORE RANKED CONCEPT RULES (CRITICAL):
+- Prefer BIG, measurable experiment questions that feel like something viewers have secretly wondered forever.
+- Strong examples:
+  - "HOW LONG WOULD IT TAKE TO REACH THE CENTER OF THE EARTH?"
+  - "HOW FAR DOWN BEFORE THE OCEAN CRUSHES YOU?"
+  - "HOW LONG COULD YOU SURVIVE ON EVERY PLANET?"
+  - "EVERY SUPERHERO RANKED BY HOW LONG THEY SURVIVE IN SPACE WITH NO SUIT"
+  - "EVERY MATERIAL RANKED BY HOW LONG IT LASTS INSIDE A VOLCANO"
+- The best Hardcore Ranked ideas feel like:
+  - one repeated scientific test
+  - one variable changing each beat
+  - obvious escalation from survivable to impossible
+  - a clean answer the viewer wants to know
+- Favor concepts about time, depth, pressure, speed, force, temperature, survival, falling, distance, escape, or destruction.
+- The viewer should instantly understand the experiment from the title alone.
+- Avoid concepts that mostly depend on fandom jokes, prison logic, doctor jokes, HR jokes, or “what if X in real life” social commentary.
+- Avoid concepts that require totally different settings or rules every beat. If the same test rig cannot stay mostly consistent, it is probably the wrong Hardcore Ranked concept.
+- Avoid weak mascot framing. Never pitch titles or briefs around "frog suit guy", "frog mascot", or "skeleton mascot". The viewer-facing subject is always "you".
+- If a concept can be reframed as a bigger, more universal, more physics-driven question, do that.
+"""
+
     system = f"""You pitch YouTube Shorts concepts for "{channel_name}" — a channel about {niche}.
 
 YOUR GOAL: Maximum watch time. The #1 metric is Average View Duration (AVD%). Over 100% means viewers are looping. Every concept must keep viewers watching until the end AND wanting to rewatch.
@@ -65,6 +90,7 @@ WHAT MAKES A GOOD CONCEPT:
 - Avoid timid framing like "you didn't mean to", "you never wanted this", "somehow this happened" unless that reluctance is the actual joke. Prefer domination, escalation, spectacle, catastrophe, flexing, transformation, or absurd world-scale consequences.
 - If the concept involves power, mythology, combat, space, animals, disasters, or extreme comparisons, push it toward the wildest visually obvious version rather than the safest small one.
 - If the concept is about becoming a final boss, raid boss, dungeon lord, chosen tyrant, or world-ending threat, do NOT pitch it as cozy administration, city-building, tourism, or paperwork. Pitch escalating fights, stronger challengers, bigger powers, phase changes, summons, armies, and an undefeated ending.
+{hardcore_ranked_pitch_block}
 
 FORMAT STRATEGY (choose the SIMPLEST one that still makes the idea work):
 - "single_frame" = the whole premise works as one instantly legible image plus an optional tiny aftermath
