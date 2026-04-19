@@ -1231,6 +1231,7 @@ def concat_silent_video(
     XFADE_DUR = 0.4
     XFADE_INTO_CONTENT = XFADE_DUR  # xfade entirely over real content, no freeze extension
     EXT_DUR = XFADE_DUR - XFADE_INTO_CONTENT  # 0 — no freeze extension
+    END_HOLD_DUR = 0.5  # give the last spoken beat room to finish cleanly
 
     all_video_path = os.path.join(output_dir, "all_video_silent.mp4")
 
@@ -1308,6 +1309,17 @@ def concat_silent_video(
         "-c:v", "libx264", "-preset", "fast", "-crf", "23", "-pix_fmt", "yuv420p", "-an",
         all_video_path,
     ], capture_output=True, timeout=300)
+
+    if END_HOLD_DUR > 0 and os.path.exists(all_video_path):
+        padded_path = os.path.join(output_dir, "_all_video_silent_padded.mp4")
+        subprocess.run([
+            "ffmpeg", "-y", "-i", all_video_path,
+            "-vf", f"tpad=stop_mode=clone:stop_duration={END_HOLD_DUR}",
+            "-c:v", "libx264", "-preset", "fast", "-crf", "23", "-pix_fmt", "yuv420p", "-an",
+            padded_path,
+        ], capture_output=True, timeout=180)
+        if os.path.exists(padded_path):
+            os.replace(padded_path, all_video_path)
 
     # Cleanup temps
     for p in extended_segs:

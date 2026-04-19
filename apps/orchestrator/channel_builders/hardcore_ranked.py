@@ -86,6 +86,15 @@ def _manual_planet_ref(slug: str) -> str | None:
     return path if os.path.exists(path) else None
 
 
+def _is_ranked_actual_planets(concept: dict, scenes_meta: list[dict]) -> bool:
+    if concept.get("format_strategy") == "ranked_actual_planets" and scenes_meta:
+        return True
+    if not scenes_meta:
+        return False
+    required_keys = {"planet", "jump_label", "fact_label", "slug"}
+    return all(required_keys.issubset(set(scene.keys())) for scene in scenes_meta if isinstance(scene, dict))
+
+
 async def build_hardcore_ranked(run_id: int, concept: dict, output_dir: str, _update_step, db_url: str):
     """Full Hardcore Ranked video build."""
     from packages.clients.grok import generate_image_dalle_async
@@ -93,7 +102,7 @@ async def build_hardcore_ranked(run_id: int, concept: dict, output_dir: str, _up
     title = concept.get("title", "Untitled")
     narration_lines = concept.get("narration", [])
     scenes_meta = concept.get("scenes") if isinstance(concept.get("scenes"), list) else []
-    is_planet_jump_format = concept.get("format_strategy") == "ranked_actual_planets" and bool(scenes_meta)
+    is_planet_jump_format = _is_ranked_actual_planets(concept, scenes_meta)
     video_provider = str(concept.get("video_provider") or get_channel_video_provider(CHANNEL_ID)).strip().lower()
     video_model = concept.get("video_model") or get_channel_video_model(CHANNEL_ID)
     video_resolution = concept.get("video_resolution") or get_channel_video_resolution(CHANNEL_ID)

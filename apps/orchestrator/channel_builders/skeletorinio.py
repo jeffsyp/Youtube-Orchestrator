@@ -80,6 +80,7 @@ POWER / DOMAIN CONCEPTS:
 - Do NOT reduce these concepts to meetings, paperwork, or reaction poses. Bureaucracy can support the joke, but the dominant image must still be the power misfiring, being used badly, or changing the environment.
 - When narration mentions approvals for storms, tides, sunlight, weather, or other divine systems, depict the actual sky, sea, light, clouds, waves, or environment reacting on screen.
 - For Zeus / storm-king concepts specifically, show lightning, storm bands, broken weather patterns, sunlight patches, or sky control in at least half the scenes. Do not let the whole video become "people handing him scrolls."
+- For accidental god-power concepts, the fun should come from visible POWER PROGRESSION: a small accidental glitch first, then a controlled trick, then a useful/funny public use, then a huge world-scale flex. Do not spend multiple scenes on throne-room complaints.
 """
 
 SCRIPT_PROMPT = """Write a narration script for a Skeletorinio YouTube video.
@@ -101,6 +102,8 @@ THE FORMAT:
 - Bureaucracy can appear, but it cannot dominate those concepts. One complaint/help-desk line is enough. The rest should show the sky, sea, light, weather, or world physically reacting to your bad decisions.
 - Bad Zeus version: gods hand you scrolls for three lines in a row.
 - Good Zeus version: you grab the lightning, the sky obeys, storms hit the wrong places, tides move wrong, sunlight patches keep shifting, THEN Olympus opens a ridiculous help desk.
+- GREAT accidental-Zeus version: the powers visibly LEVEL UP over time. Start with little shocks on touch, then command lightning, then use it for something funny/useful in public, then ride clouds/control weather, then end on a giant god-of-lightning flex with a concrete story consequence.
+- For accidental god-power concepts, at least one line must show SMALL accidental power, one line must show USEFUL or EMBARRASSING everyday use, and one line must show huge WORLD-SCALE control.
 - CHOOSE THE RIGHT STRUCTURE for the concept:
   A) DAY-BY-DAY ESCALATION — use when the concept spans time (arriving somewhere new, starting a job, entering a new world):
      - Lines include "Day 1:", "Day 2:", "Week 2:", "Month 3:" as part of the narration
@@ -302,6 +305,8 @@ def _count_domain_effect_lines(narration_lines: list[str]) -> int:
         "lightning", "storm", "storms", "weather", "sky", "cloud", "clouds",
         "rain", "sun", "sunlight", "tide", "tides", "ocean", "sea",
         "wave", "waves", "wind", "winds", "fire", "moon", "thunder",
+        "shock", "shocks", "bolt", "bolts", "cook", "cooks", "cooking",
+        "cloudride", "ride", "rides", "split", "splits",
     ]
     count = 0
     for line in narration_lines[1:]:
@@ -311,8 +316,61 @@ def _count_domain_effect_lines(narration_lines: list[str]) -> int:
     return count
 
 
+def _is_power_progression_concept(title: str, brief: str) -> bool:
+    text = f"{title} {brief}".lower()
+    return _is_domain_power_concept(title, brief) and any(
+        phrase in text
+        for phrase in [
+            "accidentally became",
+            "became the new",
+            "new zeus",
+            "new poseidon",
+            "new apollo",
+            "new hades",
+            "new god",
+        ]
+    )
+
+
+def _needs_power_progression_rewrite(title: str, brief: str, narration_lines: list[str]) -> bool:
+    if not narration_lines or not _is_power_progression_concept(title, brief):
+        return False
+
+    admin_words = [
+        "help desk", "complaint", "complaints", "approve", "approval",
+        "reporting", "meeting", "scroll", "throne", "paperwork",
+    ]
+    milestone_markers = ("day ", "week ", "month ", "year ")
+    progression_words = [
+        "shock", "lightning", "bolt", "cook", "cloud", "ride",
+        "storm", "weather", "split", "sky", "rain", "sun",
+    ]
+
+    progress_lines = 0
+    admin_lines = 0
+    for line in narration_lines[1:]:
+        lower = line.lower()
+        if any(lower.startswith(marker) for marker in milestone_markers):
+            progress_lines += 1
+        if any(word in lower for word in admin_words):
+            admin_lines += 1
+
+    return progress_lines < 4 or _count_domain_effect_lines(narration_lines) < 4 or admin_lines > 1 or not any(
+        word in " ".join(narration_lines[1:]).lower() for word in progression_words
+    )
+
+
 def _fallback_power_rewrite(title: str, narration_lines: list[str]) -> list[str]:
     hook = narration_lines[0] if narration_lines else f"What if {title.lower()}?"
+    if "zeus" in title.lower():
+        return [
+            hook,
+            "Day 1: Tiny shocks jump out whenever you touch metal.",
+            "Week 1: You call lightning on command and sear every dinner perfectly.",
+            "Month 2: You ride a cloud, then ruin three weddings with perfect weather.",
+            "Year 1: Farmers beg for rain while sailors beg you to stop the storms.",
+            "Year 2: One finger splits the sky open, and Olympus already calls you Zeus.",
+        ]
     return [
         hook,
         "Day 1: You grab one loose lightning bolt and the sky obeys.",
@@ -328,7 +386,7 @@ def _maybe_strengthen_power_narration(title: str, brief: str, narration_lines: l
         return narration_lines
 
     min_effect_lines = min(3, max(1, len(narration_lines) - 1))
-    if _count_domain_effect_lines(narration_lines) >= min_effect_lines:
+    if _count_domain_effect_lines(narration_lines) >= min_effect_lines and not _needs_power_progression_rewrite(title, brief, narration_lines):
         return narration_lines
 
     try:
@@ -350,6 +408,12 @@ RULES:
 - At least 3 post-hook lines must show visible environment effects from the power/domain.
 - Bureaucracy/help-desk/complaint beats can appear at most once.
 - For Zeus/weather concepts, physically show lightning, storms, tides, sunlight, clouds, or sky behavior.
+- If this is an accidental new-god concept, make it feel like POWER PROGRESSION over time:
+  1. small accidental glitch,
+  2. controlled trick,
+  3. useful or embarrassing public use,
+  4. huge world-scale mastery/payoff.
+- For Zeus specifically, prefer shocks-on-touch, called lightning, cloud-riding, cooking/helping people, weather chaos, and a final god-of-lightning flex over throne-room admin.
 
 Return ONLY JSON:
 {{"narration": ["line 1", "line 2", "..."]}}""",
