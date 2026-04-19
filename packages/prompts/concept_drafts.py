@@ -55,7 +55,8 @@ HARDCORE RANKED CONCEPT RULES (CRITICAL):
   - a clean answer the viewer wants to know
 - Favor concepts about time, depth, pressure, speed, force, temperature, survival, falling, distance, escape, or destruction.
 - A very strong Hardcore Ranked pattern is: ONE impossible destination or challenge, then rank the methods/tools/vehicles/strategies by how far they actually get before failing.
-  - Example: "How long would it take to reach the center of the Earth?" should become shovel → drill rig → magma-proof machine → absurd sci-fi tunnel rig, with each method getting farther.
+  - Example: "How long would it take to reach the center of the Earth using different machines?" should climb in SMALL, intuitive upgrades: shovel → handheld drill → mining drill → mega-bore → absurd sci-fi tunnel rig.
+  - Do not skip too fast from primitive tool to giant sci-fi machine. The fun is feeling each upgrade earn a little more depth before the next one takes over.
   - Example: "How far down before the ocean crushes you?" should become swimsuit → diving suit → submarine → research bathysphere.
 - The viewer should instantly understand the experiment from the title alone.
 - Avoid concepts that mostly depend on fandom jokes, prison logic, doctor jokes, HR jokes, or “what if X in real life” social commentary.
@@ -255,6 +256,7 @@ RANKING CHANNEL RULES (STRICT FORMAT):
   - Line A: the number only. "Number 5."
   - Line B: the method/item + one punchy outcome. "A shovel gets you through dirt... then the heat cooks you alive."
 - For method-ladder concepts, every number must feel like a genuine upgrade over the previous attempt.
+- For method-ladder concepts, upgrades should usually be ADJACENT and intuitive, not giant jumps. Viewers should feel "okay, that is the obvious next thing to try."
 - Number 1 should be the craziest but still instantly understandable solution.
 - The full structure is: title → number card → explanation → number card → explanation...
 - Keep the answer concrete. The viewer should understand exactly why each method fails or succeeds."""
