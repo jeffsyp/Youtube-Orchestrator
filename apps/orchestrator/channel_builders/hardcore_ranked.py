@@ -354,6 +354,14 @@ def _is_ranked_actual_planets(concept: dict, scenes_meta: list[dict]) -> bool:
     return all(required_keys.issubset(set(scene.keys())) for scene in scenes_meta if isinstance(scene, dict))
 
 
+def _has_explicit_scene_plan(concept: dict, scenes_meta: list[dict]) -> bool:
+    if concept.get("format_strategy") == "ranked_actual_planets":
+        return False
+    if not scenes_meta:
+        return False
+    return all(isinstance(scene, dict) and scene.get("image_prompt") for scene in scenes_meta)
+
+
 async def build_hardcore_ranked(run_id: int, concept: dict, output_dir: str, _update_step, db_url: str):
     """Full Hardcore Ranked video build."""
     from packages.clients.grok import generate_image_dalle_async
@@ -362,6 +370,7 @@ async def build_hardcore_ranked(run_id: int, concept: dict, output_dir: str, _up
     narration_lines = concept.get("narration", [])
     scenes_meta = concept.get("scenes") if isinstance(concept.get("scenes"), list) else []
     is_planet_jump_format = _is_ranked_actual_planets(concept, scenes_meta)
+    has_explicit_scene_plan = _has_explicit_scene_plan(concept, scenes_meta)
     video_provider = str(concept.get("video_provider") or get_channel_video_provider(CHANNEL_ID)).strip().lower()
     video_model = concept.get("video_model") or get_channel_video_model(CHANNEL_ID)
     video_resolution = concept.get("video_resolution") or get_channel_video_resolution(CHANNEL_ID)
@@ -426,9 +435,30 @@ Return ONLY a JSON object:
 
     n_lines = len(narration_lines)
 
+    explicit_image_prompts: list[str] = []
+    explicit_video_prompts: list[str] = []
+    explicit_scene_prompts_for_lines: list[str] = []
+    explicit_video_prompts_for_lines: list[str] = []
+    if has_explicit_scene_plan:
+        explicit_image_prompts = [str(scene.get("image_prompt", "")).strip() for scene in scenes_meta]
+        explicit_video_prompts = [str(scene.get("video_prompt", "")).strip() for scene in scenes_meta]
+        if len(explicit_image_prompts) == n_lines:
+            explicit_scene_prompts_for_lines = explicit_image_prompts[:]
+            explicit_video_prompts_for_lines = explicit_video_prompts[:]
+        elif len(explicit_image_prompts) == max(1, n_lines - 1):
+            explicit_scene_prompts_for_lines = [explicit_image_prompts[0], *explicit_image_prompts]
+            explicit_video_prompts_for_lines = [explicit_video_prompts[0], *explicit_video_prompts]
+        else:
+            explicit_scene_prompts_for_lines = explicit_image_prompts[:n_lines]
+            explicit_video_prompts_for_lines = explicit_video_prompts[:n_lines]
+        while len(explicit_scene_prompts_for_lines) < n_lines and explicit_scene_prompts_for_lines:
+            explicit_scene_prompts_for_lines.append(explicit_scene_prompts_for_lines[-1])
+        while len(explicit_video_prompts_for_lines) < n_lines and explicit_video_prompts_for_lines:
+            explicit_video_prompts_for_lines.append(explicit_video_prompts_for_lines[-1])
+
     # ─── STEP 2: Narration (shared) ───
     await _update_step("generating narration")
-    all_word_data = await generate_narration_with_timestamps(
+    await generate_narration_with_timestamps(
         narration_lines, narr_dir, output_dir, VOICE_ID, _update_step,
     )
 
@@ -438,26 +468,28 @@ Return ONLY a JSON object:
     # ─── STEP 3: Build concept-specific frog variant ───
     brief = concept.get("brief", "")
     character_variant = concept.get("character_variant") if isinstance(concept.get("character_variant"), dict) else None
-    if not character_variant:
-        await _update_step("designing character variant")
-        character_variant = _heuristic_character_variant(title, brief)
-    concept["character_variant"] = character_variant
-    variant_path = os.path.join(output_dir, "character_variant.json")
-    with open(variant_path, "w") as vf:
-        json.dump(character_variant, vf, indent=2)
+    character_ref_path = ""
+    if not has_explicit_scene_plan:
+        if not character_variant:
+            await _update_step("designing character variant")
+            character_variant = _heuristic_character_variant(title, brief)
+        concept["character_variant"] = character_variant
+        variant_path = os.path.join(output_dir, "character_variant.json")
+        with open(variant_path, "w") as vf:
+            json.dump(character_variant, vf, indent=2)
 
-    base_character_ref = await _ensure_base_frog_reference(edit_client)
-    character_ref_path = await _build_character_variant_ref(
-        edit_client,
-        base_character_ref,
-        character_variant,
-        os.path.join(output_dir, "character_variant_ref.png"),
-        title,
-    )
+        base_character_ref = await _ensure_base_frog_reference(edit_client)
+        character_ref_path = await _build_character_variant_ref(
+            edit_client,
+            base_character_ref,
+            character_variant,
+            os.path.join(output_dir, "character_variant_ref.png"),
+            title,
+        )
 
     # ─── STEP 4: Image prompts (shared + channel rules) ───
     extra_rules = f"\n\nCONCEPT-SPECIFIC INSTRUCTIONS:\n{brief}" if brief else ""
-    if is_planet_jump_format:
+    if has_explicit_scene_plan or is_planet_jump_format:
         image_prompts = []
     else:
         image_prompts = await generate_image_prompts(
@@ -501,13 +533,30 @@ Return ONLY a JSON object:
             logger.info("using variant-adapted approved world refs", slugs=sorted(adapted_refs.keys()))
 
     # ─── STEP 5: Generate base scene → edit per liquid → animate ───
-    await _update_step("generating base scene")
+    if has_explicit_scene_plan:
+        await _update_step("generating scene images")
+        for i in range(n_lines):
+            img_path = os.path.join(images_dir, f"scene_{i:02d}.png")
+            if os.path.exists(img_path):
+                continue
+            prompt = explicit_scene_prompts_for_lines[i]
+            await generate_image_dalle_async(
+                prompt=prompt,
+                output_path=img_path,
+                size="1024x1536",
+            )
+            logger.info("explicit scene image generated", scene=i, prompt=prompt[:120])
+        base_scene_path = os.path.join(images_dir, "scene_00.png")
+        edit_prompts = explicit_scene_prompts_for_lines
+        concept_type = "EXPLICIT"
+    else:
+        await _update_step("generating base scene")
 
-    # Determine concept type so we pick the right base scene + scene-change strategy
-    concept_type = "MOTION" if is_planet_jump_format else None
-    if not concept_type:
-        from packages.clients.claude import generate as claude_gen_base
-        concept_type_resp = claude_gen_base(
+        # Determine concept type so we pick the right base scene + scene-change strategy
+        concept_type = "MOTION" if is_planet_jump_format else None
+        if not concept_type:
+            from packages.clients.claude import generate as claude_gen_base
+            concept_type_resp = claude_gen_base(
             prompt=f"""Classify this Hardcore Ranked concept into ONE category:
 
 CONCEPT: {title}
@@ -520,17 +569,17 @@ CATEGORIES:
 
 Return ONLY the category name, nothing else.""",
             max_tokens=20,
-        )
-        concept_type = concept_type_resp.strip().upper().strip('"').split()[0] if concept_type_resp else "MOTION"
-    logger.info("concept type classified", type=concept_type)
+            )
+            concept_type = concept_type_resp.strip().upper().strip('"').split()[0] if concept_type_resp else "MOTION"
+        logger.info("concept type classified", type=concept_type)
 
-    brief = concept.get("brief", "")
-    if use_manual_planet_refs:
-        base_prompt = "Approved manual Earth grounded reference."
-    elif is_planet_jump_format:
-        first_scene = scenes_meta[0]
-        variant_traits = "; ".join(character_variant.get("traits") or [])
-        base_prompt = (
+        brief = concept.get("brief", "")
+        if use_manual_planet_refs:
+            base_prompt = "Approved manual Earth grounded reference."
+        elif is_planet_jump_format:
+            first_scene = scenes_meta[0]
+            variant_traits = "; ".join(character_variant.get("traits") or [])
+            base_prompt = (
             "Photorealistic. SINGLE IMAGE only — NOT a comic panel, NOT a chart, NOT multiple panels. "
             "Strict side-view full-body comparison shot. The human-sized athletic green frog character stands ON THE GROUND "
             "with both feet planted flat beside a striped measurement mast and a silver research lander used for scale. "
@@ -540,27 +589,27 @@ Return ONLY the category name, nothing else.""",
             "The character is in a grounded pre-jump stance, ready to jump but NOT airborne. "
             "Keep the mast and lander visible in the same frame for scale. "
             "This is a static scientific measurement setup before the jump begins. NO text anywhere."
-        )
-    elif brief:
-        _base_text = brief
-        for _marker in ['For edits', 'For every edit', 'For animation', 'For each edit']:
-            _base_text = _base_text.split(_marker)[0]
-        _character_desc = (
+            )
+        elif brief:
+            _base_text = brief
+            for _marker in ['For edits', 'For every edit', 'For animation', 'For each edit']:
+                _base_text = _base_text.split(_marker)[0]
+            _character_desc = (
             "The character is a HUMAN-SIZED athletic green frog person with glossy skin, big expressive frog eyes, upright human posture, "
             "and the same core face/body from the reference image. "
             f"Add these consistent variant traits: {'; '.join(character_variant.get('traits') or [])}."
-        )
-        if concept_type == "MOTION":
-            _camera = "CAMERA: Behind-view, looking over the character's shoulder down the path/slope/track ahead. Like a TV camera behind a starting line."
-        elif concept_type == "EQUIPMENT":
-            _camera = "CAMERA: Side or three-quarter view showing the character interacting with the equipment/tool and the subject of the experiment clearly visible. The setting should match the activity (kitchen, workbench, outdoors, etc.)."
-        elif concept_type == "CONDITION":
-            _camera = "CAMERA: Wide or medium shot showing the character IN the extreme environment, with clear visual cues of the condition (temperature extremes, pressure, etc.)."
+            )
+            if concept_type == "MOTION":
+                _camera = "CAMERA: Behind-view, looking over the character's shoulder down the path/slope/track ahead. Like a TV camera behind a starting line."
+            elif concept_type == "EQUIPMENT":
+                _camera = "CAMERA: Side or three-quarter view showing the character interacting with the equipment/tool and the subject of the experiment clearly visible. The setting should match the activity (kitchen, workbench, outdoors, etc.)."
+            elif concept_type == "CONDITION":
+                _camera = "CAMERA: Wide or medium shot showing the character IN the extreme environment, with clear visual cues of the condition (temperature extremes, pressure, etc.)."
+            else:
+                _camera = "CAMERA: Wide shot showing the character and the quantity/scale being measured clearly."
+            base_prompt = f"Photorealistic. SINGLE IMAGE only — NOT a comic panel layout, NOT multiple panels, NOT a grid. One continuous scene. {_camera} {_character_desc} {_base_text.strip()} NO text anywhere. ONE single frame only."
         else:
-            _camera = "CAMERA: Wide shot showing the character and the quantity/scale being measured clearly."
-        base_prompt = f"Photorealistic. SINGLE IMAGE only — NOT a comic panel layout, NOT multiple panels, NOT a grid. One continuous scene. {_camera} {_character_desc} {_base_text.strip()} NO text anywhere. ONE single frame only."
-    else:
-        base_prompt_resp = claude_gen_base(
+            base_prompt_resp = claude_gen_base(
             prompt=f"""Based on this concept, describe the BASE SCENE for the comparison.
 
 CONCEPT: {title}
@@ -580,97 +629,99 @@ ACTION: The character must be MID-ACTION performing the specific activity from t
 Start with "Photorealistic." End with "NO text anywhere."
 Return ONLY the prompt.""",
             max_tokens=300,
-        )
-        base_prompt = base_prompt_resp.strip().strip('"')
-    logger.info("base prompt", prompt=base_prompt[:100])
+            )
+            base_prompt = base_prompt_resp.strip().strip('"')
+        logger.info("base prompt", prompt=base_prompt[:100])
 
-    base_scene_path = os.path.join(images_dir, "base_scene.png")
-    if use_manual_planet_refs:
-        earth_ref = manual_planet_refs.get("earth")
-        if not earth_ref:
-            raise RuntimeError("Missing approved manual Earth grounded reference for Hardcore Ranked planet format")
-        shutil.copy2(earth_ref, base_scene_path)
-        logger.info("using approved manual grounded Earth reference as base scene", path=earth_ref)
-    elif not os.path.exists(base_scene_path):
-        # Use frog reference image as input for consistent character
-        if os.path.exists(character_ref_path):
-            frog_file = open(character_ref_path, "rb")
-            try:
-                resp = await edit_client.images.edit(
+        base_scene_path = os.path.join(images_dir, "base_scene.png")
+        if use_manual_planet_refs:
+            earth_ref = manual_planet_refs.get("earth")
+            if not earth_ref:
+                raise RuntimeError("Missing approved manual Earth grounded reference for Hardcore Ranked planet format")
+            shutil.copy2(earth_ref, base_scene_path)
+            logger.info("using approved manual grounded Earth reference as base scene", path=earth_ref)
+        elif not os.path.exists(base_scene_path):
+            # Use frog reference image as input for consistent character
+            if os.path.exists(character_ref_path):
+                frog_file = open(character_ref_path, "rb")
+                try:
+                    resp = await edit_client.images.edit(
                     model="gpt-image-1.5",
                     image=frog_file,
                     prompt=f"Place this exact character into the scene. {base_prompt}",
                     size="1024x1536",
                     quality="medium",
                     input_fidelity="high",
-                )
-                frog_file.close()
-                if resp.data and resp.data[0].b64_json:
-                    img_data = base64.b64decode(resp.data[0].b64_json)
-                    with open(base_scene_path, "wb") as f:
-                        f.write(img_data)
-            except Exception as e:
-                try: frog_file.close()
-                except: pass
-                logger.warning("frog ref edit failed, generating fresh", error=str(e)[:80])
+                    )
+                    frog_file.close()
+                    if resp.data and resp.data[0].b64_json:
+                        img_data = base64.b64decode(resp.data[0].b64_json)
+                        with open(base_scene_path, "wb") as f:
+                            f.write(img_data)
+                except Exception as e:
+                    try: frog_file.close()
+                    except: pass
+                    logger.warning("frog ref edit failed, generating fresh", error=str(e)[:80])
+                    await generate_image_dalle_async(
+                        prompt=base_prompt,
+                        output_path=base_scene_path, size="1024x1536",
+                    )
+            else:
                 await generate_image_dalle_async(
                     prompt=base_prompt,
                     output_path=base_scene_path, size="1024x1536",
                 )
-        else:
-            await generate_image_dalle_async(
-                prompt=base_prompt,
-                output_path=base_scene_path, size="1024x1536",
-            )
-        logger.info("base scene generated", prompt=base_prompt[:100])
+            logger.info("base scene generated", prompt=base_prompt[:100])
 
-    # Scene 0 = base scene (hook/title)
-    scene_00 = os.path.join(images_dir, "scene_00.png")
-    if not os.path.exists(scene_00):
-        shutil.copy2(base_scene_path, scene_00)
-    if use_manual_planet_refs and scenes_meta:
-        first_scene = scenes_meta[0]
-        await _add_native_scene_label_with_model(
+        # Scene 0 = base scene (hook/title)
+        scene_00 = os.path.join(images_dir, "scene_00.png")
+        if not os.path.exists(scene_00):
+            shutil.copy2(base_scene_path, scene_00)
+        if use_manual_planet_refs and scenes_meta:
+            first_scene = scenes_meta[0]
+            await _add_native_scene_label_with_model(
             edit_client,
             scene_00,
             first_scene.get("planet", "Earth"),
             first_scene.get("jump_label", "1 ft 8 in"),
             first_scene.get("fact_label", "SPACE FACT"),
-        )
+            )
 
-    # Edit base scene for each liquid/variable — gpt-image-1.5 edit with input_fidelity=high
-    await _update_step("creating scene variants")
+        # Edit base scene for each liquid/variable — gpt-image-1.5 edit with input_fidelity=high
+        await _update_step("creating scene variants")
 
-    from packages.clients.claude import generate as claude_gen_edits
+        from packages.clients.claude import generate as claude_gen_edits
 
     # Build concept-aware guidance for the per-scene edits
-    if concept_type == "MOTION":
+    if not has_explicit_scene_plan and concept_type == "MOTION":
         _edit_guidance = """MOTION concept guidance:
 - The character is in the SAME setting across all scenes (same road, same pool, same arena)
 - The SURFACE/MEDIUM/OPPONENT is what changes per scene
 - Show the character performing the action (running, swimming, jumping)
 - For RACE-style comparisons: since Grok can't animate things pulling ahead, BAKE the result into the image — if the frog loses, show the opponent already far ahead with motion blur and distance. If the frog wins, show them clearly in the lead.
 - If the variable is a SURFACE (grass, ice, asphalt): show the character on that specific surface with visible differences in their traction/speed"""
-    elif concept_type == "EQUIPMENT":
+    elif not has_explicit_scene_plan and concept_type == "EQUIPMENT":
         _edit_guidance = """EQUIPMENT concept guidance:
 - The SETTING can evolve — a solar oven belongs outdoors, a microwave in a kitchen, a magnifying glass outside on a sunny day
 - Each scene should show the character actively USING the specific tool/method
 - The SUBJECT of the experiment (egg, soup, whatever is being cooked/built/tested) is clearly visible
 - Show the RESULT becoming visible — egg cooking, smoke rising, water boiling, etc.
 - The character's expression/posture should match the effort level required (straining for a slow method, relaxed for an easy one)"""
-    elif concept_type == "CONDITION":
+    elif not has_explicit_scene_plan and concept_type == "CONDITION":
         _edit_guidance = """CONDITION concept guidance:
 - The ENVIRONMENT is the variable — each scene should clearly show the character IN that specific extreme condition
 - Visual cues of the condition: ice forming (cold), sweat pouring (hot), body deformed (pressure), etc.
 - Background/setting must match the condition (frozen landscape vs molten lava)
 - The character's body reaction tells the story"""
-    else:
+    elif not has_explicit_scene_plan:
         _edit_guidance = """QUANTITY concept guidance:
 - Each scene shows a DIFFERENT amount/scale visibly
 - The character should be visible for scale reference
 - Make the scale comparison obvious — small pile vs massive mountain"""
 
-    if use_manual_planet_refs:
+    if has_explicit_scene_plan:
+        edit_prompts = explicit_scene_prompts_for_lines
+    elif use_manual_planet_refs:
         edit_prompts = ["No changes — grounded baseline Earth hook."]
         for scene in scenes_meta:
             edit_prompts.append(f"Use approved grounded {scene.get('planet', scene.get('slug', 'planet'))} reference.")
@@ -720,117 +771,118 @@ Return ONLY a JSON array of {n_lines} strings. Line 0 should be "No changes — 
             edit_prompts.append("No changes.")
         edit_prompts = edit_prompts[:n_lines]
 
-    for i in range(1, n_lines):
-        img_path = os.path.join(images_dir, f"scene_{i:02d}.png")
-        if os.path.exists(img_path):
-            continue
-        if use_manual_planet_refs:
-            scene_meta = scenes_meta[i - 1] if i - 1 < len(scenes_meta) else None
-            slug = str((scene_meta or {}).get("slug") or "").strip().lower()
-            ref_path = manual_planet_refs.get(slug)
-            if not ref_path:
-                raise RuntimeError(f"Missing approved grounded reference for scene {i} slug={slug}")
-            shutil.copy2(ref_path, img_path)
-            await _add_native_scene_label_with_model(
-                edit_client,
-                img_path,
-                scene_meta.get("planet", "Planet"),
-                scene_meta.get("jump_label", "1 ft 8 in"),
-                scene_meta.get("fact_label", "SPACE FACT"),
-            )
-            logger.info("copied approved manual grounded scene reference", scene=i, slug=slug, path=ref_path)
-            continue
-        review_text = ""
-        for attempt in range(4):
-            try:
-                base_file = open(base_scene_path, "rb")
-                if is_planet_jump_format:
-                    edit_instruction = (
-                        "TREAT THE INPUT IMAGE AS A LOCKED TEMPLATE. "
-                        "Do not change the frog's pose, height in frame, arm position, leg position, foot placement, or facial direction. "
-                        "Do not change the camera angle, crop, or framing. "
-                        "Keep the striped mast and silver lander visible in the exact same relative positions and scale. "
-                        f"{edit_prompts[i]} NO text anywhere."
-                    )
-                else:
-                    edit_instruction = (
-                        f"The character must look IDENTICAL to the input image — same suit, same helmet, same body proportions, same colors. "
-                        + ("Same camera angle, same setting — only change the surface/opponent/variable. Everything else stays pixel-identical. " if concept_type == "MOTION"
-                           else "The character stays consistent but the BACKGROUND and SETTING can change to match the variable for this scene. ")
-                        + f"Change: {edit_prompts[i]} NO text anywhere."
-                    )
-                resp = await edit_client.images.edit(
-                    model="gpt-image-1.5",
-                    image=base_file,
-                    prompt=edit_instruction,
-                    size="1024x1536",
-                    quality="medium",
-                    input_fidelity="high",
+    if not has_explicit_scene_plan:
+        for i in range(1, n_lines):
+            img_path = os.path.join(images_dir, f"scene_{i:02d}.png")
+            if os.path.exists(img_path):
+                continue
+            if use_manual_planet_refs:
+                scene_meta = scenes_meta[i - 1] if i - 1 < len(scenes_meta) else None
+                slug = str((scene_meta or {}).get("slug") or "").strip().lower()
+                ref_path = manual_planet_refs.get(slug)
+                if not ref_path:
+                    raise RuntimeError(f"Missing approved grounded reference for scene {i} slug={slug}")
+                shutil.copy2(ref_path, img_path)
+                await _add_native_scene_label_with_model(
+                    edit_client,
+                    img_path,
+                    scene_meta.get("planet", "Planet"),
+                    scene_meta.get("jump_label", "1 ft 8 in"),
+                    scene_meta.get("fact_label", "SPACE FACT"),
                 )
-                base_file.close()
-                if resp.data and resp.data[0].b64_json:
-                    img_data = base64.b64decode(resp.data[0].b64_json)
-                    with open(img_path, "wb") as f:
-                        f.write(img_data)
-                    logger.info("scene variant created", scene=i, edit=edit_prompts[i][:60])
-            except Exception as e:
-                logger.warning("edit failed", scene=i, attempt=attempt, error=str(e)[:80])
-                try: base_file.close()
-                except: pass
-                await asyncio.sleep(3)
+                logger.info("copied approved manual grounded scene reference", scene=i, slug=slug, path=ref_path)
                 continue
-            if not os.path.exists(img_path):
-                continue
+            review_text = ""
+            for attempt in range(4):
+                try:
+                    base_file = open(base_scene_path, "rb")
+                    if is_planet_jump_format:
+                        edit_instruction = (
+                            "TREAT THE INPUT IMAGE AS A LOCKED TEMPLATE. "
+                            "Do not change the frog's pose, height in frame, arm position, leg position, foot placement, or facial direction. "
+                            "Do not change the camera angle, crop, or framing. "
+                            "Keep the striped mast and silver lander visible in the exact same relative positions and scale. "
+                            f"{edit_prompts[i]} NO text anywhere."
+                        )
+                    else:
+                        edit_instruction = (
+                            f"The character must look IDENTICAL to the input image — same suit, same helmet, same body proportions, same colors. "
+                            + ("Same camera angle, same setting — only change the surface/opponent/variable. Everything else stays pixel-identical. " if concept_type == "MOTION"
+                               else "The character stays consistent but the BACKGROUND and SETTING can change to match the variable for this scene. ")
+                            + f"Change: {edit_prompts[i]} NO text anywhere."
+                        )
+                    resp = await edit_client.images.edit(
+                        model="gpt-image-1.5",
+                        image=base_file,
+                        prompt=edit_instruction,
+                        size="1024x1536",
+                        quality="medium",
+                        input_fidelity="high",
+                    )
+                    base_file.close()
+                    if resp.data and resp.data[0].b64_json:
+                        img_data = base64.b64decode(resp.data[0].b64_json)
+                        with open(img_path, "wb") as f:
+                            f.write(img_data)
+                        logger.info("scene variant created", scene=i, edit=edit_prompts[i][:60])
+                except Exception as e:
+                    logger.warning("edit failed", scene=i, attempt=attempt, error=str(e)[:80])
+                    try: base_file.close()
+                    except: pass
+                    await asyncio.sleep(3)
+                    continue
+                if not os.path.exists(img_path):
+                    continue
 
-            # Review: verify the edited image still matches the base scene
-            try:
-                import anthropic
-                review_client = anthropic.Anthropic()
-                with open(img_path, "rb") as rf:
-                    img_b64_review = base64.b64encode(rf.read()).decode()
-                with open(base_scene_path, "rb") as rf:
-                    base_b64_review = base64.b64encode(rf.read()).decode()
-                if is_planet_jump_format:
-                    review_prompt = (
-                        "Image 1 is the locked base measurement setup. Image 2 should be the SAME setup on a different planet. "
-                        "PASS only if ALL of these are true: same side-view camera, same crop, same frog character size, same body pose, both boots touching the ground, "
-                        "striped mast visible, silver lander visible, and the image is clearly a pre-jump start frame. "
-                        "FAIL if the frog is airborne, floating, landing, crouching deeply, framed differently, missing the mast, or missing the lander. "
-                        "Answer PASS or FAIL with one short reason."
+                # Review: verify the edited image still matches the base scene
+                try:
+                    import anthropic
+                    review_client = anthropic.Anthropic()
+                    with open(img_path, "rb") as rf:
+                        img_b64_review = base64.b64encode(rf.read()).decode()
+                    with open(base_scene_path, "rb") as rf:
+                        base_b64_review = base64.b64encode(rf.read()).decode()
+                    if is_planet_jump_format:
+                        review_prompt = (
+                            "Image 1 is the locked base measurement setup. Image 2 should be the SAME setup on a different planet. "
+                            "PASS only if ALL of these are true: same side-view camera, same crop, same frog character size, same body pose, both boots touching the ground, "
+                            "striped mast visible, silver lander visible, and the image is clearly a pre-jump start frame. "
+                            "FAIL if the frog is airborne, floating, landing, crouching deeply, framed differently, missing the mast, or missing the lander. "
+                            "Answer PASS or FAIL with one short reason."
+                        )
+                    else:
+                        review_prompt = (
+                            "Image 1 is the base scene. Image 2 is an edited version. Does image 2 keep the SAME camera angle, same character position, same setting as image 1? "
+                            "Only the liquid/variable should change. Answer PASS or FAIL with reason."
+                        )
+                    review = review_client.messages.create(
+                        model="claude-haiku-4-5-20251001",
+                        max_tokens=200,
+                        messages=[{
+                            "role": "user",
+                            "content": [
+                                {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": base_b64_review}},
+                                {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": img_b64_review}},
+                                {"type": "text", "text": review_prompt},
+                            ],
+                        }],
                     )
-                else:
-                    review_prompt = (
-                        "Image 1 is the base scene. Image 2 is an edited version. Does image 2 keep the SAME camera angle, same character position, same setting as image 1? "
-                        "Only the liquid/variable should change. Answer PASS or FAIL with reason."
-                    )
-                review = review_client.messages.create(
-                    model="claude-haiku-4-5-20251001",
-                    max_tokens=200,
-                    messages=[{
-                        "role": "user",
-                        "content": [
-                            {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": base_b64_review}},
-                            {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": img_b64_review}},
-                            {"type": "text", "text": review_prompt},
-                        ],
-                    }],
-                )
-                review_text = review.content[0].text
-                if "FAIL" in review_text:
-                    logger.warning("scene edit review FAILED", scene=i, reason=review_text[:100], attempt=attempt + 1)
-                    if os.path.exists(img_path):
-                        os.remove(img_path)
-                    if attempt < 3:
-                        await asyncio.sleep(2)
-                        continue
-                else:
-                    logger.info("scene edit review passed", scene=i)
-            except Exception as e:
-                logger.warning("scene edit review skipped", error=str(e)[:80])
-            break
-        if not os.path.exists(img_path):
-            reason = review_text[:120] if review_text else "review failed"
-            raise RuntimeError(f"Failed to create grounded scene {i} variant after retries: {reason}")
+                    review_text = review.content[0].text
+                    if "FAIL" in review_text:
+                        logger.warning("scene edit review FAILED", scene=i, reason=review_text[:100], attempt=attempt + 1)
+                        if os.path.exists(img_path):
+                            os.remove(img_path)
+                        if attempt < 3:
+                            await asyncio.sleep(2)
+                            continue
+                    else:
+                        logger.info("scene edit review passed", scene=i)
+                except Exception as e:
+                    logger.warning("scene edit review skipped", error=str(e)[:80])
+                break
+            if not os.path.exists(img_path):
+                reason = review_text[:120] if review_text else "review failed"
+                raise RuntimeError(f"Failed to create grounded scene {i} variant after retries: {reason}")
 
     # ─── STEP 4c: Wait for user approval via file ───
     # Skip if clips already exist (images were approved in a previous run)
@@ -895,7 +947,7 @@ Return ONLY a JSON array of {n_lines} strings. Line 0 should be "No changes — 
                                 output_path=base_scene_path, size="1024x1536",
                             )
                             shutil.copy2(base_scene_path, img_path)
-                        else:
+                        elif not has_explicit_scene_plan:
                             base_file = open(base_scene_path, "rb")
                             try:
                                 resp = await edit_client.images.edit(
@@ -916,6 +968,11 @@ Return ONLY a JSON array of {n_lines} strings. Line 0 should be "No changes — 
                                     prompt=f"{base_prompt} {edit_prompts[i]} User feedback: {fb_text}. NO text anywhere.",
                                     output_path=img_path, size="1024x1536",
                                 )
+                        else:
+                            await generate_image_dalle_async(
+                                prompt=f"{edit_prompts[i]} User feedback: {fb_text}.",
+                                output_path=img_path, size="1024x1536",
+                            )
                         os.remove(fb_path)
                         logger.info("regenerated from feedback", scene=i, feedback=fb_text[:60])
                 # Also handle base_scene feedback
@@ -953,7 +1010,11 @@ Return ONLY a JSON array of {n_lines} strings. Line 0 should be "No changes — 
 
     # ─── STEP 5: Animation prompts — concept-specific movement per scene ───
     await _update_step("planning animations")
-    if is_planet_jump_format:
+    if has_explicit_scene_plan:
+        anim_prompts = explicit_video_prompts_for_lines[:]
+        while len(anim_prompts) < n_lines:
+            anim_prompts.append(anim_prompts[-1] if anim_prompts else "Subtle motion.")
+    elif is_planet_jump_format:
         jump_inches_by_scene = [
             _parse_jump_label_inches(scene.get("jump_label", "1 ft 8 in"))
             for scene in scenes_meta
