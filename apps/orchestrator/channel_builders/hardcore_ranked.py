@@ -804,11 +804,13 @@ Return ONLY the category name, nothing else.""",
             "Photorealistic. SINGLE IMAGE only — NOT a poster, NOT a montage, NOT multiple panels. "
             "Scientific comparison setup for one impossible destination or challenge. "
             "Establish one clear starting point or entry point that every attempt begins from. "
+            "Present it as a CONTROLLED industrial test site, not a raw dangerous cliff edge or open death pit. "
+            "Use reinforced flooring, safety rails, machine housings, access ladders, warning stripes, or a sealed drill collar so the setup reads like a managed experiment. "
             f"The human-sized googly-eyed skeleton host stays at the same observation position for scale, wearing {variant_traits or 'simple test gear'}. "
             f"The concept is: {_base_text.strip()}. "
             "The world and challenge stay the same in every scene, but later scenes are allowed to follow the machine or method farther into the challenge. "
             "Examples: a giant vertical cutaway drill shaft, a deep-ocean pressure chamber lane, a furnace tunnel, a vacuum chamber, or a controlled survival rig. "
-            "The hook frame should clearly show the surface starting point or experiment entrance where every attempt begins. "
+            "The hook frame should clearly show the surface starting point or experiment entrance where every attempt begins, with the machine origin and safety structure visible. "
             "This base frame is the neutral setup before any ranked method starts. No text anywhere."
             )
         elif brief:
@@ -1332,7 +1334,7 @@ Return ONLY a JSON array of {n_lines} strings. Line 0 should be "No changes — 
             anim_prompts.append(anim_prompts[-1] if anim_prompts else "Subtle motion.")
     elif concept_type == "LOCKED_TEST":
         anim_prompts = [
-            "Same experiment starting point. The skeleton host points at the untouched setup like a science-show intro while the machine is idle. Keep the opening centered on the origin of the experiment. No scene cuts."
+            "Same experiment starting point. The skeleton host stands behind the safety rail and points at the untouched industrial setup like a science-show intro while the machine is idle inside a reinforced drill collar or protected entry rig. Keep the opening centered on the controlled origin of the experiment. No scene cuts."
         ]
         for i in range(1, n_lines):
             line = narration_lines[i]
