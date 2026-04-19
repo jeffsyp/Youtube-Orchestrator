@@ -41,6 +41,17 @@ CHANNEL_ID = 26
 VOICE_ID = "TX3LPaxmHKxFdv7VOQHJ"  # Liam
 MUSIC_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "..", "assets", "music", "dark", "rising.mp3")
 FROG_REF = os.path.join(os.path.dirname(__file__), "..", "..", "..", "assets", "character_cache", "hardcore_ranked_frog_v3.png")
+MANUAL_PLANET_REF_DIR = os.path.join(
+    os.path.dirname(__file__),
+    "..",
+    "..",
+    "..",
+    "output",
+    "manual_lab",
+    "hardcore_ranked_planets",
+    "manual_grounded_test",
+    "images",
+)
 TAGS = ["hardcore ranked", "comparison", "ranked", "shorts", "viral"]
 
 # Channel-specific image prompt rules
@@ -68,6 +79,11 @@ EACH PROMPT MUST DESCRIBE ONLY WHAT CHANGES:
 
 - Every prompt must end with "Photorealistic. NO text anywhere."
 - CONSISTENCY IS KEY — same camera angle, same frog, same environment, ONLY the variable changes"""
+
+
+def _manual_planet_ref(slug: str) -> str | None:
+    path = os.path.join(MANUAL_PLANET_REF_DIR, f"{slug}_grounded.png")
+    return path if os.path.exists(path) else None
 
 
 async def build_hardcore_ranked(run_id: int, concept: dict, output_dir: str, _update_step, db_url: str):
@@ -156,6 +172,21 @@ Return ONLY a JSON object:
     else:
         image_prompts = await generate_image_prompts(narration_lines, IMAGE_RULES + extra_rules, _update_step)
 
+    manual_planet_refs: dict[str, str] = {}
+    if is_planet_jump_format:
+        for scene in scenes_meta:
+            slug = str(scene.get("slug") or "").strip().lower()
+            if slug:
+                ref_path = _manual_planet_ref(slug)
+                if ref_path:
+                    manual_planet_refs[slug] = ref_path
+        logger.info(
+            "manual planet refs discovered",
+            found=sorted(manual_planet_refs.keys()),
+            expected=[str(scene.get("slug")) for scene in scenes_meta],
+        )
+    use_manual_planet_refs = is_planet_jump_format and len(manual_planet_refs) == len(scenes_meta)
+
     # ─── STEP 4: Generate base scene → edit per liquid → animate ───
     await _update_step("generating base scene")
     from openai import AsyncOpenAI
@@ -183,7 +214,9 @@ Return ONLY the category name, nothing else.""",
     logger.info("concept type classified", type=concept_type)
 
     brief = concept.get("brief", "")
-    if is_planet_jump_format:
+    if use_manual_planet_refs:
+        base_prompt = "Approved manual Earth grounded reference."
+    elif is_planet_jump_format:
         first_scene = scenes_meta[0]
         base_prompt = (
             "Photorealistic. SINGLE IMAGE only — NOT a comic panel, NOT a chart, NOT multiple panels. "
@@ -234,7 +267,13 @@ Return ONLY the prompt.""",
     logger.info("base prompt", prompt=base_prompt[:100])
 
     base_scene_path = os.path.join(images_dir, "base_scene.png")
-    if not os.path.exists(base_scene_path):
+    if use_manual_planet_refs:
+        earth_ref = manual_planet_refs.get("earth")
+        if not earth_ref:
+            raise RuntimeError("Missing approved manual Earth grounded reference for Hardcore Ranked planet format")
+        shutil.copy2(earth_ref, base_scene_path)
+        logger.info("using approved manual grounded Earth reference as base scene", path=earth_ref)
+    elif not os.path.exists(base_scene_path):
         # Use frog reference image as input for consistent character
         if os.path.exists(FROG_REF):
             frog_file = open(FROG_REF, "rb")
@@ -304,7 +343,14 @@ Return ONLY the prompt.""",
 - The character should be visible for scale reference
 - Make the scale comparison obvious — small pile vs massive mountain"""
 
-    if is_planet_jump_format:
+    if use_manual_planet_refs:
+        edit_prompts = ["No changes — grounded baseline Earth hook."]
+        for scene in scenes_meta:
+            edit_prompts.append(f"Use approved grounded {scene.get('planet', scene.get('slug', 'planet'))} reference.")
+        while len(edit_prompts) < n_lines:
+            edit_prompts.append(edit_prompts[-1])
+        edit_prompts = edit_prompts[:n_lines]
+    elif is_planet_jump_format:
         edit_prompts = ["No changes — grounded baseline Earth hook."]
         for scene in scenes_meta:
             edit_prompts.append(
@@ -350,6 +396,15 @@ Return ONLY a JSON array of {n_lines} strings. Line 0 should be "No changes — 
     for i in range(1, n_lines):
         img_path = os.path.join(images_dir, f"scene_{i:02d}.png")
         if os.path.exists(img_path):
+            continue
+        if use_manual_planet_refs:
+            scene_meta = scenes_meta[i - 1] if i - 1 < len(scenes_meta) else None
+            slug = str((scene_meta or {}).get("slug") or "").strip().lower()
+            ref_path = manual_planet_refs.get(slug)
+            if not ref_path:
+                raise RuntimeError(f"Missing approved grounded reference for scene {i} slug={slug}")
+            shutil.copy2(ref_path, img_path)
+            logger.info("copied approved manual grounded scene reference", scene=i, slug=slug, path=ref_path)
             continue
         review_text = ""
         for attempt in range(4):
