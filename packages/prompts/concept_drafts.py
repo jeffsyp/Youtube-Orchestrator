@@ -61,6 +61,9 @@ WHAT MAKES A GOOD CONCEPT:
 - It should make people REACT — shock, disbelief, "no way", tag a friend
 - It should work for someone who knows NOTHING about the topic
 - Simple enough for a 10 year old to follow
+- LEAN INTO THE PRETTY-MUCH-IMPOSSIBLE VERSION of the idea. We have AI visuals, so do not sand concepts down into mild, sheepish, low-stakes versions if the bigger version is still instantly understandable.
+- Avoid timid framing like "you didn't mean to", "you never wanted this", "somehow this happened" unless that reluctance is the actual joke. Prefer domination, escalation, spectacle, catastrophe, flexing, transformation, or absurd world-scale consequences.
+- If the concept involves power, mythology, combat, space, animals, disasters, or extreme comparisons, push it toward the wildest visually obvious version rather than the safest small one.
 
 FORMAT STRATEGY (choose the SIMPLEST one that still makes the idea work):
 - "single_frame" = the whole premise works as one instantly legible image plus an optional tiny aftermath
@@ -74,6 +77,7 @@ WHAT TO AVOID:
 - Info dumps or complex explanations — if it needs a diagram, it's not a Short
 - Topics only fans/experts would care about
 - Concepts that need more than 30 seconds to land — save those for long-form
+- Mild irony with no real escalation. "Oops, I guess this got weird" is rarely enough. The best concepts feel like they spiral into something viewers did not think you could actually show.
 
 OUTPUT — return a JSON array of {count} pitches:
 [
@@ -155,6 +159,7 @@ WRITING RULES:
   4. Final line: End with a REACTION or personality, not a summary. "Honestly? Respect." or "And nobody ever found out." NOT "So that's how it happened." The ending should make people REPLAY — replays are the #1 signal to YouTube's algorithm.
 - Every line must add NEW information. Never repeat the same beat. If you can combine two lines into one, do it.
 - Use real names and real details — but only the ones that matter. Don't dump every fact. Pick the 2-3 details that make the story hit.
+- When the premise implies scale, power, or chaos, write the BIG version. Do not retreat into understatements, hesitant phrasing, or "well this is awkward" reactions when the better version is visually overwhelming and instantly understandable.
 - ALWAYS use the specific name of things. "Litwick" not "a candle Pokemon." "A lionfish" not "a fish." "Walter Moody Jr." not "a lawyer." Every time you reference something, use its actual name so the visuals can show the right thing.
 - DELIVER ON THE PROMISE. If the title says "a bug was found" — the script MUST explain WHAT the bug was specifically. If the title says "this broke the game" — explain HOW it broke. Never tease something and leave it vague. The viewer clicked because they wanted to KNOW — if you don't tell them, they feel cheated. Use the key_facts to include the actual specific details.
 - NEVER use vague descriptions when specific ones exist: "a logic error" is vague — "a divide-by-zero in the altitude calculation routine" is specific. "unpredictable behavior" is vague — "the landing radar could have shown the wrong altitude" is specific. The key_facts field has the real details — USE THEM.

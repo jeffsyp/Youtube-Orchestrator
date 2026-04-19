@@ -1,6 +1,6 @@
 """Hardcore Ranked channel builder — visual comparison/ranking videos.
 
-Uses a consistent humanlike frog protagonist with concept-specific accessories.
+Uses a consistent googly-eyed skeleton protagonist with concept-specific accessories.
 Same visual anchor (camera angle, location) for every comparison.
 Uses shared functions for narration, intro, audio, subtitles.
 """
@@ -40,8 +40,7 @@ logger = structlog.get_logger()
 CHANNEL_ID = 26
 VOICE_ID = "TX3LPaxmHKxFdv7VOQHJ"  # Liam
 MUSIC_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "..", "assets", "music", "dark", "rising.mp3")
-FROG_BASE_REF = os.path.join(os.path.dirname(__file__), "..", "..", "..", "assets", "character_cache", "hardcore_ranked_frog_base.png")
-FROG_LEGACY_REF = os.path.join(os.path.dirname(__file__), "..", "..", "..", "assets", "character_cache", "hardcore_ranked_frog_v3.png")
+CHARACTER_BASE_REF = os.path.join(os.path.dirname(__file__), "..", "..", "..", "assets", "character_cache", "skeletorinio_base.png")
 MANUAL_PLANET_REF_DIR = os.path.join(
     os.path.dirname(__file__),
     "..",
@@ -54,21 +53,21 @@ MANUAL_PLANET_REF_DIR = os.path.join(
 TAGS = ["hardcore ranked", "comparison", "ranked", "shorts", "viral"]
 
 BASE_CHARACTER_IDENTITY = (
-    "The core Hardcore Ranked identity never changes: a human-sized athletic green frog person with glossy smooth skin, "
-    "big expressive orange-and-black frog eyes, a friendly confident face, long frog feet, upright human posture, and a stylized but believable 3D character look. "
-    "He is not a person in a frog suit and not a literal small animal. "
+    "The core Hardcore Ranked identity never changes: a human-sized glossy ivory-plastic skeleton with oversized googly eyes, "
+    "a grinning skull face, upright human posture, and a stylized but believable 3D character look. "
+    "He is not a real human and not a tiny toy. "
     "He stays the same character in every scene; only video-specific accessories or gear may change."
 )
 
 # Channel-specific image prompt rules
 IMAGE_RULES = """RULES:
-- The main character is a HUMAN-SIZED ATHLETIC GREEN FROG PERSON with big expressive frog eyes, upright human posture, long frog feet, and glossy stylized 3D skin. NOT a person in a frog suit. NOT a tiny frog.
+- The main character is a HUMAN-SIZED glossy ivory-plastic skeleton with oversized googly eyes, a grinning skull face, and upright human posture. NOT a real human. NOT a miniature toy.
 - The core identity stays the same in every scene. Only concept-specific accessories or gear can change.
 - PHOTOREALISTIC world, the character is a 3D animated character in a real world
 
 THE SETTING DEPENDS ON THE CONCEPT — NOT ALWAYS A ROAD:
 - Swimming comparison → BEHIND the character looking DOWN a single Olympic swimming lane, like a TV camera behind the starting blocks. You see the lane stretching away from camera so you can see how far the character swims.
-- Vehicle comparison → a long straight road from behind the frog
+- Vehicle comparison → a long straight road from behind the skeleton
 - Climbing comparison → a tall wall/cliff from the side
 - The setting should let you SEE the difference in speed/distance/progress between each item
 - Choose the setting that makes the COMPARISON most visually obvious
@@ -76,16 +75,16 @@ THE SETTING DEPENDS ON THE CONCEPT — NOT ALWAYS A ROAD:
 SAME SETUP EVERY SCENE — THIS IS THE ENTIRE POINT:
 - EVERY scene uses the EXACT SAME environment from the EXACT SAME camera angle
 - The ONLY thing that changes is the VARIABLE (different liquid, vehicle, surface)
-- The frog does the SAME action in every scene — only the variable differs
+- The skeleton does the SAME action in every scene — only the variable differs
 - Think of it like a science experiment: same test, one variable changed
 
 EACH PROMPT MUST DESCRIBE ONLY WHAT CHANGES:
 - Do NOT re-describe the entire scene in each prompt
-- Just describe what is DIFFERENT: "The pool is now filled with thick golden honey. The frog is barely moving, stuck in the viscous liquid."
-- The base scene handles everything else (setting, angle, frog position)
+- Just describe what is DIFFERENT: "The pool is now filled with thick golden honey. The skeleton is barely moving, stuck in the viscous liquid."
+- The base scene handles everything else (setting, angle, character position)
 
 - Every prompt must end with "Photorealistic. NO text anywhere."
-- CONSISTENCY IS KEY — same camera angle, same frog, same environment, ONLY the variable changes"""
+- CONSISTENCY IS KEY — same camera angle, same character, same environment, ONLY the variable changes"""
 
 
 def _heuristic_character_variant(title: str, brief: str) -> dict:
@@ -96,14 +95,14 @@ def _heuristic_character_variant(title: str, brief: str) -> dict:
     if any(term in text for term in ["planet", "space", "moon", "mars", "jupiter", "pluto", "ceres", "uranus", "neptune", "saturn", "mercury"]):
         variant_name = "space athlete"
         traits = [
-            "a glossy black astronaut helmet framing the frog head",
+            "a glossy black astronaut helmet framing the skeleton skull",
             "clean athletic tank top and fitted training shorts",
-            "very light space-training styling only, while keeping the frog body fully recognizable",
+            "very light space-training styling only, while keeping the skeleton body fully recognizable",
         ]
     elif any(term in text for term in ["swim", "pool", "ocean", "water", "underwater"]):
         variant_name = "swim athlete"
         traits = [
-            "sleek swim goggles or a swim cap suited to a frog athlete",
+            "sleek swim goggles or a swim cap suited to a skeleton athlete",
             "minimal competitive swim gear",
         ]
     elif any(term in text for term in ["cook", "kitchen", "grill", "bake", "oven", "chef"]):
@@ -129,9 +128,9 @@ def _heuristic_character_variant(title: str, brief: str) -> dict:
         "must_keep": BASE_CHARACTER_IDENTITY,
         "traits": traits,
         "negative_traits": [
-            "do not turn him into a person in a frog costume",
-            "do not change the head shape or eye style",
-            "do not replace the frog body with generic human skin",
+            "do not replace the skeleton body with generic human skin",
+            "do not remove the googly eyes or grinning skull face",
+            "do not turn him into a normal person in a costume",
             "do not add logos, patches, printed words, backpacks, or bulky sci-fi gadgets unless the concept truly requires them",
         ],
     }
@@ -143,7 +142,7 @@ def _variant_rules_text(character_variant: dict) -> str:
     traits_text = "; ".join(traits) if traits else "no extra accessories"
     negatives_text = "; ".join(negatives) if negatives else "no off-model redesigns"
     return (
-        "\n\nCONCEPT-SPECIFIC FROG VARIANT:\n"
+        "\n\nCONCEPT-SPECIFIC SKELETON VARIANT:\n"
         f"- {character_variant.get('must_keep', BASE_CHARACTER_IDENTITY)}\n"
         f"- For THIS video, add these consistent variant traits: {traits_text}.\n"
         f"- Forbidden drift: {negatives_text}.\n"
@@ -219,59 +218,26 @@ async def _add_native_scene_label_with_model(edit_client, image_path: str, plane
     raise RuntimeError(f"Failed to add native scene label for {planet} after retries")
 
 
-async def _ensure_base_frog_reference(edit_client) -> str:
-    """Create the neutral Hardcore Ranked frog base asset if it doesn't exist yet."""
-    if os.path.exists(FROG_BASE_REF):
-        return FROG_BASE_REF
-
-    os.makedirs(os.path.dirname(FROG_BASE_REF), exist_ok=True)
-    source_ref = FROG_LEGACY_REF if os.path.exists(FROG_LEGACY_REF) else None
-    if not source_ref:
-        raise RuntimeError("Missing Hardcore Ranked frog reference image")
-
-    prompt = (
-        "Create a clean neutral base-character reference on a plain white background. "
-        "Keep the exact same core frog identity and proportions, but remove the astronaut helmet and any concept-specific props. "
-        "The result should be a human-sized athletic green frog person with the same expressive eyes, same face, same body proportions, "
-        "wearing only a simple white athletic tank top and black training shorts. "
-        "Full body, centered, facing forward, no extra accessories."
-    )
-
-    source_file = open(source_ref, "rb")
-    try:
-        resp = await edit_client.images.edit(
-            model="gpt-image-1.5",
-            image=source_file,
-            prompt=prompt,
-            size="1024x1536",
-            quality="medium",
-            input_fidelity="high",
-        )
-    finally:
-        source_file.close()
-
-    if not (resp.data and resp.data[0].b64_json):
-        raise RuntimeError("Failed to create Hardcore Ranked base frog reference")
-
-    with open(FROG_BASE_REF, "wb") as f:
-        f.write(base64.b64decode(resp.data[0].b64_json))
-    logger.info("created hardcore ranked base frog reference", path=FROG_BASE_REF)
-    return FROG_BASE_REF
+async def _ensure_base_character_reference(_edit_client) -> str:
+    """Return the neutral Hardcore Ranked skeleton base asset."""
+    if not os.path.exists(CHARACTER_BASE_REF):
+        raise RuntimeError("Missing Hardcore Ranked skeleton reference image")
+    return CHARACTER_BASE_REF
 
 
 async def _build_character_variant_ref(edit_client, base_ref_path: str, variant: dict, output_path: str, title: str) -> str:
-    """Generate a concept-specific variant ref from the neutral frog base."""
+    """Generate a concept-specific variant ref from the neutral skeleton base."""
     if os.path.exists(output_path):
         return output_path
 
     traits = "; ".join(variant.get("traits") or [])
     negatives = "; ".join(variant.get("negative_traits") or [])
     prompt = (
-        f"Transform this exact Hardcore Ranked frog base character into the concept-specific variant for {title}. "
+        f"Transform this exact Hardcore Ranked skeleton base character into the concept-specific variant for {title}. "
         f"{variant.get('must_keep', BASE_CHARACTER_IDENTITY)} "
         f"Add these consistent variant traits: {traits}. "
         f"Forbidden drift: {negatives}. "
-        "Keep the same frog face, same eyes, same body proportions, and same full-body white-background reference image. "
+        "Keep the same skull face, same googly eyes, same body proportions, and same full-body white-background reference image. "
         "Do not change the pose or camera. Do not add any logos, patches, words, badges, backpacks, or extra gear beyond what the prompt explicitly calls for."
     )
 
@@ -305,7 +271,7 @@ async def _adapt_manual_world_ref_for_variant(
     output_path: str,
     planet: str,
 ) -> str:
-    """Preserve the approved world composition while updating the frog to the active per-video variant."""
+    """Preserve the approved world composition while updating the skeleton to the active per-video variant."""
     if os.path.exists(output_path):
         return output_path
 
@@ -314,7 +280,7 @@ async def _adapt_manual_world_ref_for_variant(
     prompt = (
         "Keep this image composition almost identical. Preserve the exact planet surface, sky, horizon, mast, lander, "
         "camera angle, crop, lighting, and grounded pre-jump stance. "
-        f"Update the frog character so it matches the active Hardcore Ranked variant for {planet}. "
+        f"Update the skeleton character so it matches the active Hardcore Ranked variant for {planet}. "
         f"Core identity to preserve: {variant.get('must_keep', BASE_CHARACTER_IDENTITY)} "
         f"Required variant traits: {traits}. "
         f"Forbidden drift: {negatives}. "
@@ -341,8 +307,39 @@ async def _adapt_manual_world_ref_for_variant(
 
     with open(output_path, "wb") as f:
         f.write(base64.b64decode(resp.data[0].b64_json))
-    logger.info("adapted approved world ref to active frog variant", path=output_path, planet=planet)
+    logger.info("adapted approved world ref to active skeleton variant", path=output_path, planet=planet)
     return output_path
+
+
+def _normalize_explicit_scene_prompt(prompt: str) -> str:
+    text = str(prompt or "").strip()
+    if not text:
+        return text
+    text = re.sub(r"(?i)simple crude cartoon\s*[—-][^.]*\.\s*", "", text)
+    text = re.sub(r"(?i)\bcartoon\b", "", text)
+    text = re.sub(r"(?i)\bfrog(?:-suit)?\b", "googly-eyed skeleton", text)
+    text = re.sub(r"(?i)\bfrog athlete\b", "googly-eyed skeleton athlete", text)
+    text = re.sub(r"(?i)\bfrog guy\b", "googly-eyed skeleton", text)
+    text = re.sub(r"(?i)\bfrog person\b", "googly-eyed skeleton person", text)
+    text = re.sub(r"(?i)\s{2,}", " ", text).strip()
+    if "photorealistic" not in text.lower():
+        text = (
+            "Photorealistic real-world test footage with a glossy googly-eyed skeleton mascot when a presenter appears. "
+            + text
+        )
+    if "NO text anywhere" not in text:
+        text = text.rstrip(". ") + ". NO text anywhere."
+    return text
+
+
+def _normalize_explicit_video_prompt(prompt: str) -> str:
+    text = str(prompt or "").strip()
+    if not text:
+        return text
+    text = re.sub(r"(?i)\bfrog(?:-suit)?\b", "skeleton", text)
+    text = re.sub(r"(?i)\bfrog athlete\b", "skeleton athlete", text)
+    text = re.sub(r"(?i)\bfrog guy\b", "skeleton", text)
+    return re.sub(r"\s{2,}", " ", text).strip()
 
 
 def _is_ranked_actual_planets(concept: dict, scenes_meta: list[dict]) -> bool:
@@ -401,7 +398,7 @@ KEY FACTS: {key_facts}
 
 THE FORMAT:
 - Line 1 MUST state the topic as a neutral question: "How fast can you swim across a pool in every liquid?" or "How long does each material take to melt in the sun?" — this IS the title. Shorts viewers don't see video titles.
-- NEVER name the test-subject character — no "frog", no "frog guy", no nickname. If a human subject is needed, refer to generic "you" / "a person" / "the test subject".
+- NEVER name the test-subject character — no nickname, mascot name, or goofy label. If a subject is needed, refer to generic "you" / "a person" / "the test subject".
 - Line 2 onwards: NUMBERED ranked list. Each line starts with the rank number. Example:
   - "Number 1: Water. Four seconds. Built for this."
   - "Number 2: Honey. Three hours. Basically a statue."
@@ -455,6 +452,8 @@ Return ONLY a JSON object:
             explicit_scene_prompts_for_lines.append(explicit_scene_prompts_for_lines[-1])
         while len(explicit_video_prompts_for_lines) < n_lines and explicit_video_prompts_for_lines:
             explicit_video_prompts_for_lines.append(explicit_video_prompts_for_lines[-1])
+        explicit_scene_prompts_for_lines = [_normalize_explicit_scene_prompt(p) for p in explicit_scene_prompts_for_lines]
+        explicit_video_prompts_for_lines = [_normalize_explicit_video_prompt(p) for p in explicit_video_prompts_for_lines]
 
     # ─── STEP 2: Narration (shared) ───
     await _update_step("generating narration")
@@ -465,7 +464,7 @@ Return ONLY a JSON object:
     from openai import AsyncOpenAI
     edit_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"), timeout=120.0)
 
-    # ─── STEP 3: Build concept-specific frog variant ───
+    # ─── STEP 3: Build concept-specific skeleton variant ───
     brief = concept.get("brief", "")
     character_variant = concept.get("character_variant") if isinstance(concept.get("character_variant"), dict) else None
     character_ref_path = ""
@@ -478,7 +477,7 @@ Return ONLY a JSON object:
         with open(variant_path, "w") as vf:
             json.dump(character_variant, vf, indent=2)
 
-        base_character_ref = await _ensure_base_frog_reference(edit_client)
+        base_character_ref = await _ensure_base_character_reference(edit_client)
         character_ref_path = await _build_character_variant_ref(
             edit_client,
             base_character_ref,
@@ -581,7 +580,7 @@ Return ONLY the category name, nothing else.""",
             variant_traits = "; ".join(character_variant.get("traits") or [])
             base_prompt = (
             "Photorealistic. SINGLE IMAGE only — NOT a comic panel, NOT a chart, NOT multiple panels. "
-            "Strict side-view full-body comparison shot. The human-sized athletic green frog character stands ON THE GROUND "
+            "Strict side-view full-body comparison shot. The human-sized googly-eyed skeleton character stands ON THE GROUND "
             "with both feet planted flat beside a striped measurement mast and a silver research lander used for scale. "
             "The body pose is neutral and grounded, with no crouch, no leap, no floating, and no hero-angle exaggeration. "
             f"Keep these concept-specific accessories consistent: {variant_traits}. "
@@ -595,7 +594,7 @@ Return ONLY the category name, nothing else.""",
             for _marker in ['For edits', 'For every edit', 'For animation', 'For each edit']:
                 _base_text = _base_text.split(_marker)[0]
             _character_desc = (
-            "The character is a HUMAN-SIZED athletic green frog person with glossy skin, big expressive frog eyes, upright human posture, "
+            "The character is a HUMAN-SIZED glossy ivory-plastic skeleton with oversized googly eyes, a grinning skull face, upright human posture, "
             "and the same core face/body from the reference image. "
             f"Add these consistent variant traits: {'; '.join(character_variant.get('traits') or [])}."
             )
@@ -615,7 +614,7 @@ Return ONLY the category name, nothing else.""",
 CONCEPT: {title}
 CONCEPT TYPE: {concept_type}
 
-THE CHARACTER: A human-sized athletic green frog person with glossy skin, big expressive frog eyes, upright human posture, and the same core face/body from the reference image.
+THE CHARACTER: A human-sized glossy ivory-plastic skeleton with oversized googly eyes, a grinning skull face, upright human posture, and the same core face/body from the reference image.
 CONCEPT-SPECIFIC VARIANT TRAITS: {'; '.join(character_variant.get("traits") or [])}
 
 CAMERA + SETTING based on concept type:
@@ -641,7 +640,7 @@ Return ONLY the prompt.""",
             shutil.copy2(earth_ref, base_scene_path)
             logger.info("using approved manual grounded Earth reference as base scene", path=earth_ref)
         elif not os.path.exists(base_scene_path):
-            # Use frog reference image as input for consistent character
+            # Use character reference image as input for consistent character
             if os.path.exists(character_ref_path):
                 frog_file = open(character_ref_path, "rb")
                 try:
@@ -661,7 +660,7 @@ Return ONLY the prompt.""",
                 except Exception as e:
                     try: frog_file.close()
                     except: pass
-                    logger.warning("frog ref edit failed, generating fresh", error=str(e)[:80])
+                    logger.warning("character ref edit failed, generating fresh", error=str(e)[:80])
                     await generate_image_dalle_async(
                         prompt=base_prompt,
                         output_path=base_scene_path, size="1024x1536",
@@ -698,7 +697,7 @@ Return ONLY the prompt.""",
 - The character is in the SAME setting across all scenes (same road, same pool, same arena)
 - The SURFACE/MEDIUM/OPPONENT is what changes per scene
 - Show the character performing the action (running, swimming, jumping)
-- For RACE-style comparisons: since Grok can't animate things pulling ahead, BAKE the result into the image — if the frog loses, show the opponent already far ahead with motion blur and distance. If the frog wins, show them clearly in the lead.
+- For RACE-style comparisons: since Grok can't animate things pulling ahead, BAKE the result into the image — if the skeleton loses, show the opponent already far ahead with motion blur and distance. If the skeleton wins, show them clearly in the lead.
 - If the variable is a SURFACE (grass, ice, asphalt): show the character on that specific surface with visible differences in their traction/speed"""
     elif not has_explicit_scene_plan and concept_type == "EQUIPMENT":
         _edit_guidance = """EQUIPMENT concept guidance:
@@ -733,7 +732,7 @@ Return ONLY the prompt.""",
         for scene in scenes_meta:
             edit_prompts.append(
                 f"Only change the planet environment to {scene.get('environment', scene.get('planet', 'planet surface'))}. "
-                "Treat the input image as a LOCKED TEMPLATE. Preserve the exact same side-view camera, crop, frog character size, body pose, foot placement, "
+                "Treat the input image as a LOCKED TEMPLATE. Preserve the exact same side-view camera, crop, skeleton character size, body pose, foot placement, "
                 "striped mast position, and silver lander position. "
                 "The jumper must remain ON THE GROUND beside the mast with both boots fully touching the surface in a pre-jump stance. "
                 "Do NOT show the jumper crouching deeply, airborne, floating, landing, or at the apex. "
@@ -755,7 +754,7 @@ NARRATION:
 {_edit_guidance}
 
 KEY RULES:
-- The CHARACTER must stay visually consistent across scenes — same frog face, same body proportions, same variant accessories
+- The CHARACTER must stay visually consistent across scenes — same skeleton face, same body proportions, same variant accessories
 - For MOTION concepts: keep the same camera angle and setting, only change the surface/opponent
 - For EQUIPMENT/CONDITION concepts: the BACKGROUND CAN CHANGE to match the tool/environment. Don't force the base scene's setting if it doesn't fit the variable.
 - Each scene should be VISUALLY DISTINCT from the others — not all same background if the concept doesn't require it
@@ -799,7 +798,7 @@ Return ONLY a JSON array of {n_lines} strings. Line 0 should be "No changes — 
                     if is_planet_jump_format:
                         edit_instruction = (
                             "TREAT THE INPUT IMAGE AS A LOCKED TEMPLATE. "
-                            "Do not change the frog's pose, height in frame, arm position, leg position, foot placement, or facial direction. "
+                            "Do not change the skeleton's pose, height in frame, arm position, leg position, foot placement, or facial direction. "
                             "Do not change the camera angle, crop, or framing. "
                             "Keep the striped mast and silver lander visible in the exact same relative positions and scale. "
                             f"{edit_prompts[i]} NO text anywhere."
@@ -845,9 +844,9 @@ Return ONLY a JSON array of {n_lines} strings. Line 0 should be "No changes — 
                     if is_planet_jump_format:
                         review_prompt = (
                             "Image 1 is the locked base measurement setup. Image 2 should be the SAME setup on a different planet. "
-                            "PASS only if ALL of these are true: same side-view camera, same crop, same frog character size, same body pose, both boots touching the ground, "
+                            "PASS only if ALL of these are true: same side-view camera, same crop, same skeleton character size, same body pose, both boots touching the ground, "
                             "striped mast visible, silver lander visible, and the image is clearly a pre-jump start frame. "
-                            "FAIL if the frog is airborne, floating, landing, crouching deeply, framed differently, missing the mast, or missing the lander. "
+                            "FAIL if the skeleton is airborne, floating, landing, crouching deeply, framed differently, missing the mast, or missing the lander. "
                             "Answer PASS or FAIL with one short reason."
                         )
                     else:
@@ -1026,7 +1025,7 @@ Return ONLY a JSON array of {n_lines} strings. Line 0 should be "No changes — 
         )
         top_two_scene_indices = set(ranked_scene_indices[:2])
         anim_prompts = [
-            "Start on the ground beside the striped mast. The frog athlete does one tiny anticipatory bend and settles back down. Keep the full body, mast, lander, and native measurement card visible. No camera movement."
+            "Start on the ground beside the striped mast. The skeleton athlete does one tiny anticipatory bend and settles back down. Keep the full body, mast, lander, and native measurement card visible. No camera movement."
         ]
         for scene_idx, scene in enumerate(scenes_meta):
             jump_label = scene.get("jump_label", "1 ft 8 in")
@@ -1097,11 +1096,11 @@ STEP 2 — WRITE EVERY PROMPT WITH:
 2. What the object/variable is DOING in reaction (the egg cooks, the hill tilts, the sprinter pulls ahead, the water freezes)
 3. Environmental cues that sell the moment: steam, dust, sparks, smoke, splashes, wind, light
 4. Frog's expression/reaction: concentrated focus, panic, pride, disbelief, exhaustion — match the moment
-5. The frog stays ON THE EXPERIMENT — never wanders off, never does random filler motion, always engaged with the variable being tested
+5. The skeleton stays ON THE EXPERIMENT — never wanders off, never does random filler motion, always engaged with the variable being tested
 
 RULES:
-- The frog is the EXPERIMENTER. Every scene shows them performing the specific action from the narration.
-- Line 0 (hook): frog at the starting position, prepping the action (holding the lens, readying the pan, lining up the shot). Build anticipation.
+- The skeleton is the EXPERIMENTER. Every scene shows them performing the specific action from the narration.
+- Line 0 (hook): skeleton at the starting position, prepping the action (holding the lens, readying the pan, lining up the shot). Build anticipation.
 - Lines 1+: FULL EXECUTION of the specific action. Each scene shows a different variable/attempt.
 - Use specific verbs matching the concept: for racing → pumping, cycling, thundering / for cooking → stirring, flipping, searing / for freezing → shivering, trembling, cracking / for jumping → crouching, launching, landing
 - NEVER: generic "moves", "does stuff", random idle animation. Always specific to the concept.

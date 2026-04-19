@@ -38,7 +38,7 @@ BASE_CHARACTER_IDENTITY = (
     "Remove the old recurring accessories entirely: NO gold chain and NO sunglasses unless a concept explicitly requires them."
 )
 
-ART_STYLE = (
+DEFAULT_ART_STYLE = (
     "Photorealistic world with cinematic golden hour lighting. "
     "The main character is a FULL-SIZE adult human-height 3D animated Skeletorinio with an ivory plastic skeleton body "
     "with oversized googly eyes and a grinning skull face. "
@@ -46,10 +46,10 @@ ART_STYLE = (
     "He looks like a stylized glossy plastic toy character placed into a real photograph."
 )
 
-IMAGE_RULES = """RULES — FOLLOW THESE EXACTLY:
+DEFAULT_IMAGE_RULES = """RULES — FOLLOW THESE EXACTLY:
 - The main character is a FULL-SIZE adult human-height 3D animated Skeletorinio with an ivory plastic skeleton body, oversized googly eyes, and a grinning skull face. He is the SAME HEIGHT as real humans — NOT a miniature toy.
 - The core identity NEVER changes: same skull face, same googly eyes, same body proportions, same glossy ivory plastic skeleton material. No sunglasses and no gold chain unless the specific concept requires them.
-- The skeletorinio is "YOU" — the protagonist/observer/reactor in every scene. He is the HUMAN PERSON doing the action.
+- The skeletorinio is "YOU" — the protagonist/driver of the situation in every scene. He is the HUMAN PERSON doing the action.
 - A reference image of the skeletorinio is provided — match this character exactly but at HUMAN SCALE
 - For EVERY scene with the skeletorinio, start from the exact reference character and preserve the concept-specific variant consistently across every scene
 - The WORLD is PHOTOREALISTIC — real-looking buildings, landscapes, people, objects. Cinematic golden hour lighting.
@@ -83,6 +83,33 @@ POWER / DOMAIN CONCEPTS:
 - For accidental god-power concepts, the fun should come from visible POWER PROGRESSION: a small accidental glitch first, then a controlled trick, then a useful/funny public use, then a huge world-scale flex. Do not spend multiple scenes on throne-room complaints.
 """
 
+STYLIZED_IMAGE_RULES = """RULES — FOLLOW THESE EXACTLY:
+- The main character is a FULL-SIZE adult human-height Skeletorinio with an ivory plastic skeleton body, oversized googly eyes, and a grinning skull face. He is the SAME HEIGHT as the humans or creatures around him — NOT a miniature toy.
+- The core identity NEVER changes: same skull face, same googly eyes, same body proportions, same glossy ivory plastic skeleton material. No sunglasses and no gold chain unless the specific concept requires them.
+- The skeletorinio is "YOU" — the protagonist/driver of the situation in every scene. He is the HUMAN PERSON doing the action.
+- A reference image of the skeletorinio is provided — match this character exactly but adapt it into the chosen stylized art direction.
+- The ENTIRE IMAGE must follow the chosen stylized look. Do NOT drift into photorealism or cinematic live-action realism unless the concept explicitly calls for that.
+- For EVERY scene with the skeletorinio, start from the exact reference character and preserve the concept-specific variant consistently across every scene.
+- Do NOT say "toy" or "miniature" or "figurine" — the skeletorinio is HUMAN-SIZED.
+- Every prompt must end with "NO text anywhere."
+- Each prompt should describe ONE clear scene matching the narration line.
+
+TWO-CHARACTER CONCEPTS (demon, dragon, genie, alien, monster, ghost, god, creature):
+- When the concept introduces a SECOND major entity (demon, dragon, god, etc.), that entity is a SEPARATE CHARACTER from the skeletorinio.
+- The skeletorinio is "YOU" the human. The demon/dragon/god is the SPECTACLE/THREAT/COMPANION.
+- In scenes where the narration mentions the second entity, that entity MUST be the VISUAL FOCUS of the scene — large, dramatic, centered.
+- DESCRIBE THE SECOND ENTITY IN FULL VISUAL DETAIL — size, color, features, pose, expression.
+- NEVER swap the second entity for a random human bystander. If the script says "demon," draw a demon.
+
+HOOK / LINE 0 — PAYOFF VISUAL:
+- The hook frame must depict the CONCEPT in motion — not a setup scene, not a random establishing shot.
+- NEVER let the hook be a random unrelated scene — it must illustrate the video's actual premise.
+
+POWER / DOMAIN CONCEPTS:
+- If the premise gives the skeletorinio a mythic job, divine title, or control over a domain (lightning, storms, sea, sun, fire, time, weather, etc.), the visuals must show that power visibly affecting the world.
+- Do NOT reduce these concepts to meetings, paperwork, or reaction poses. The dominant image must still be the power misfiring, being used badly, or changing the environment.
+"""
+
 SCRIPT_PROMPT = """Write a narration script for a Skeletorinio YouTube video.
 
 CONCEPT: {title}
@@ -97,7 +124,9 @@ THE FORMAT:
 - BAD HOOK (skips the concept): TITLE is "SUMMONED A DEMON" but line 1 says "What if you read one line from an old book out loud?" — a viewer has no idea what this is about, no context for the demon that appears in line 2
 - The hook must LABEL the concept — use the specific noun from the title (demon, sword, jetpack, dragon, time portal, genie, etc.) in line 1, not a vague setup
 - If the title says "ACCIDENTALLY X" — the hook must include "accidentally" and name what X is
-- The story is about the SITUATION — the skeletorinio is the person doing it. The situation is the star.
+- The story is about the SITUATION — but once the premise starts, push it HARD. Do not write the protagonist as a passive bystander for six lines straight.
+- Avoid timid underreactions like "you did not want this" / "you did not ask for this" / "you still don't know what it does" unless that exact anticlimax is the entire punchline. In most cases, those lines make the concept feel smaller than it should.
+- We have AI visuals. Use them. Favor huge powers, impossible consequences, warped cities, divine flexes, monsters, castles, collapsing reality, accidental empires, giant status shifts, and absurd new normals over mild shrug-comedy.
 - If the concept gives you a mythic job, divine title, or control over a domain (Zeus, Poseidon, sun god, storms, tides, weather, fire, time, etc.), at least 3 post-hook lines must show you visibly USING or MISUSING that exact power in the world.
 - Bureaucracy can appear, but it cannot dominate those concepts. One complaint/help-desk line is enough. The rest should show the sky, sea, light, weather, or world physically reacting to your bad decisions.
 - Bad Zeus version: gods hand you scrolls for three lines in a row.
@@ -117,9 +146,9 @@ THE FORMAT:
      - GOOD fit: "What if you tried to return something on Black Friday" → walk in, line is insane, chaos erupts
   Pick whichever structure fits the concept naturally. Day-by-day is the default for concepts that span time. Real-time is for single-moment chaos.
 - The ending must GO ABSOLUTELY INSANE:
-  - NOT "people get mad" or "the authorities arrive" — that's boring
-  - YES: you become president, you buy an island, you accidentally start a religion, you get launched into space, you break reality, the simulation crashes, the gods revolt
-  - The ending should make viewers replay the video. Realistic endings are BORING — go full absurd comedy.
+  - NOT "people get mad" or "the authorities arrive" or "you are confused" — that's boring
+  - YES: you become emperor, buy an island, accidentally start a religion, split the sky open, break reality, colonize the moon, wake an ancient god, or force history to rewrite itself
+  - The ending should make viewers replay the video. Realistic endings are BORING — go full absurd comedy or mythic spectacle.
 - THE PENULTIMATE LINE (second to last) MUST BE A MAXIMUM ESCALATION — the biggest, most absurd, world-scale consequence. The ending line then resolves that peak.
   - Good peak examples: "Year 1: Prophecies about you are carved into mountains.", "Year 3: It has a seat at Thanksgiving, a LinkedIn profile, and joint custody of the dog."
   - Bad peak examples: "You get a crown", "You get it a chair" (too small — nothing lands after)
@@ -149,24 +178,24 @@ THE FORMAT:
 - Punchy, fast-paced, funny
 - Do NOT mention skeletorinio, bones, or the character's appearance — just tell the story
 
-REFERENCE EXAMPLE (the Chosen One — this was a hit, study its shape):
+REFERENCE EXAMPLE (the Chosen One — study the escalation shape, not the exact words):
 Title: WHAT IF YOU ACCIDENTALLY BECAME THE CHOSEN ONE
 Narration:
   0: What if you accidentally pulled a sword from a stone?
-  1: Day 1: You were just curious. The sword slides out with a hum.
-  2: Day 2: A dragon lands in front of you and bows. You did not ask for this.
-  3: Day 3: Wizards appear from thin air. They are all weeping.
-  4: Week 1: You are crowned king of a realm you cannot pronounce.
-  5: Month 2: The dragon is your ride now. You sleep in a floating castle.
-  6: Year 1: Prophecies about you are carved into mountains.
-  7: You still don't know what the sword does.
+  1: Day 1: The sword screams awake and every knight in the valley kneels.
+  2: Day 2: A dragon lands in your street and offers you its back.
+  3: Week 1: Three kingdoms go to war over who gets to serve you.
+  4: Month 2: Your throne room is floating over a city you built from clouds.
+  5: Year 1: Prophecies about you are carved into mountains by lightning.
+  6: Year 5: Your face is on coins, flags, and a moon base.
+  7: Decades later, the sword returns itself to the stone and waits again.
 
 Why this worked:
 - Universal mythology (Excalibur) — zero-context entry
-- "You" is a REACTOR — things happen TO you (dragon bows, wizards weep, prophecies carve themselves)
+- Each line gets visibly larger and more impossible than the last
 - Time jumps ACCELERATE: Day 1, Day 2, Day 3, Week 1, Month 2, Year 1
 - CONCRETE visuals only (sword, dragon, crown, castle, mountains) — never abstract
-- Anticlimactic punchline: "You still don't know what the sword does" — leaves mystery
+- The ending lands in a new mythic normal instead of a shrug
 - 8 lines, each under 15 words
 
 Aim for this shape. Match it in structure and energy.
@@ -287,6 +316,70 @@ def _variant_rules_text(character_variant: dict) -> str:
         f"- Forbidden drift: {negatives_text}.\n"
         "- Every image_prompt must keep this exact variant consistent across the entire video.\n"
     )
+
+
+def _extract_style_override(concept: dict) -> str | None:
+    explicit = concept.get("art_style")
+    if isinstance(explicit, str) and explicit.strip():
+        return explicit.strip()
+
+    camera_cues = [
+        "Close-up", "Wide shot", "Wide ", "Medium shot", "Medium ", "Low-angle",
+        "High-angle", "Bird's-eye", "Over-the-shoulder", "Side view",
+        "Dutch-angle", "Full-body", "Extreme close-up",
+    ]
+
+    for scene in concept.get("scenes") or []:
+        if not isinstance(scene, dict):
+            continue
+        text = (scene.get("description") or scene.get("image_prompt") or "").strip()
+        if not text:
+            continue
+        lowered = text.lower()
+        if "in the style of" not in lowered:
+            continue
+
+        style_text = text
+        if "—" in style_text:
+            style_text = style_text.split("—", 1)[1].strip()
+        elif " - " in style_text:
+            style_text = style_text.split(" - ", 1)[1].strip()
+        else:
+            marker = lowered.find("in the style of")
+            style_text = text[marker + len("in the style of"):].strip()
+
+        cut_idx = None
+        for cue in camera_cues:
+            idx = style_text.find(cue)
+            if idx != -1 and (cut_idx is None or idx < cut_idx):
+                cut_idx = idx
+        if cut_idx is not None:
+            style_text = style_text[:cut_idx].strip()
+
+        style_text = style_text.strip(" .")
+        if style_text:
+            return style_text
+    return None
+
+
+def _build_style_profile(concept: dict) -> dict:
+    style_override = _extract_style_override(concept)
+    if style_override:
+        return {
+            "mode": "stylized",
+            "art_style": style_override,
+            "image_rules": STYLIZED_IMAGE_RULES,
+            "anchor_world_line": (
+                f"Render the entire scene in this stylized visual direction: {style_override}. "
+                "Do NOT drift into photorealism. NO text anywhere."
+            ),
+        }
+    return {
+        "mode": "photoreal",
+        "art_style": DEFAULT_ART_STYLE,
+        "image_rules": DEFAULT_IMAGE_RULES,
+        "anchor_world_line": "Photorealistic world with cinematic golden hour lighting. NO text anywhere.",
+    }
 
 
 def _is_domain_power_concept(title: str, brief: str) -> bool:
@@ -479,6 +572,8 @@ async def build_skeletorinio(run_id: int, concept: dict, output_dir: str, _updat
     images_dir = os.path.join(output_dir, "images")
     os.makedirs(images_dir, exist_ok=True)
     anchor_path = os.path.join(images_dir, "style_anchor.png")
+    style_profile = _build_style_profile(concept)
+    art_style_prompt = style_profile["art_style"]
     character_variant = concept.get("character_variant") if isinstance(concept.get("character_variant"), dict) else None
     if not character_variant:
         await _update_step("designing character variant")
@@ -508,7 +603,7 @@ async def build_skeletorinio(run_id: int, concept: dict, output_dir: str, _updat
                     f"Place the resulting variant into the scene for this video: {brief[:200]}. "
                     f"{narration_lines[0] if narration_lines else ''}. "
                     "The character is FULL ADULT HUMAN HEIGHT — same size as real people around him. "
-                    "Photorealistic world with cinematic golden hour lighting. NO text anywhere."
+                    f"{style_profile['anchor_world_line']}"
                 ),
                 size="1024x1536",
                 quality="medium",
@@ -528,9 +623,9 @@ async def build_skeletorinio(run_id: int, concept: dict, output_dir: str, _updat
             logger.warning("style anchor fallback to bare skeletorinio ref", error=str(_e)[:80])
 
     # ─── STEP 4: Unified pipeline — uses style anchor (skeleton IN scene) for all edits ───
-    image_rules = IMAGE_RULES + _variant_rules_text(character_variant)
+    image_rules = style_profile["image_rules"] + _variant_rules_text(character_variant)
     clips_dir, clip_paths, n_clips, line_clip_map = await generate_and_animate_scenes(
-        narration_lines, concept, image_rules, ART_STYLE, output_dir, _update_step, run_id=run_id, character_ref_path=anchor_path,
+        narration_lines, concept, image_rules, art_style_prompt, output_dir, _update_step, run_id=run_id, character_ref_path=anchor_path,
     )
 
     # ─── STEP 4: Build segments from clip map ───

@@ -7,7 +7,7 @@ export default defineConfig({
   server: {
     proxy: {
       '/api/videos': {
-        target: 'http://localhost:8000',
+        target: 'http://127.0.0.1:8000',
         // Video streaming needs selfHandleResponse to avoid proxy buffering
         selfHandleResponse: true,
         configure: (proxy) => {
@@ -18,8 +18,8 @@ export default defineConfig({
           });
         },
       },
-      '/api': 'http://localhost:8000',
-      '/output': 'http://localhost:8000',
+      '/api': 'http://127.0.0.1:8000',
+      '/output': 'http://127.0.0.1:8000',
     },
   },
 })
