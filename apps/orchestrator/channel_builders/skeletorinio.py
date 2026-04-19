@@ -73,7 +73,14 @@ HOOK / LINE 0 — PAYOFF VISUAL:
 - The hook frame must depict the CONCEPT in motion — not a setup scene, not a random establishing shot.
 - For "summoned a demon": show the skeletorinio in his living room with the massive demon already there (the "can't send back" situation already happening).
 - For "brought a jetpack to Rome": show the skeletorinio flying over the Colosseum in a jetpack.
-- NEVER let the hook be a random unrelated scene (e.g. cupcake shop, coffee house) — it must illustrate the video's actual premise."""
+- NEVER let the hook be a random unrelated scene (e.g. cupcake shop, coffee house) — it must illustrate the video's actual premise.
+
+POWER / DOMAIN CONCEPTS:
+- If the premise gives the skeletorinio a mythic job, divine title, or control over a domain (lightning, storms, sea, sun, fire, time, weather, etc.), the visuals must show that power visibly affecting the world.
+- Do NOT reduce these concepts to meetings, paperwork, or reaction poses. Bureaucracy can support the joke, but the dominant image must still be the power misfiring, being used badly, or changing the environment.
+- When narration mentions approvals for storms, tides, sunlight, weather, or other divine systems, depict the actual sky, sea, light, clouds, waves, or environment reacting on screen.
+- For Zeus / storm-king concepts specifically, show lightning, storm bands, broken weather patterns, sunlight patches, or sky control in at least half the scenes. Do not let the whole video become "people handing him scrolls."
+"""
 
 SCRIPT_PROMPT = """Write a narration script for a Skeletorinio YouTube video.
 
@@ -90,6 +97,10 @@ THE FORMAT:
 - The hook must LABEL the concept — use the specific noun from the title (demon, sword, jetpack, dragon, time portal, genie, etc.) in line 1, not a vague setup
 - If the title says "ACCIDENTALLY X" — the hook must include "accidentally" and name what X is
 - The story is about the SITUATION — the skeletorinio is the person doing it. The situation is the star.
+- If the concept gives you a mythic job, divine title, or control over a domain (Zeus, Poseidon, sun god, storms, tides, weather, fire, time, etc.), at least 3 post-hook lines must show you visibly USING or MISUSING that exact power in the world.
+- Bureaucracy can appear, but it cannot dominate those concepts. One complaint/help-desk line is enough. The rest should show the sky, sea, light, weather, or world physically reacting to your bad decisions.
+- Bad Zeus version: gods hand you scrolls for three lines in a row.
+- Good Zeus version: you grab the lightning, the sky obeys, storms hit the wrong places, tides move wrong, sunlight patches keep shifting, THEN Olympus opens a ridiculous help desk.
 - CHOOSE THE RIGHT STRUCTURE for the concept:
   A) DAY-BY-DAY ESCALATION — use when the concept spans time (arriving somewhere new, starting a job, entering a new world):
      - Lines include "Day 1:", "Day 2:", "Week 2:", "Month 3:" as part of the narration
@@ -275,6 +286,90 @@ def _variant_rules_text(character_variant: dict) -> str:
     )
 
 
+def _is_domain_power_concept(title: str, brief: str) -> bool:
+    text = f"{title} {brief}".lower()
+    keywords = [
+        "zeus", "poseidon", "apollo", "artemis", "hades",
+        "lightning", "thunder", "storm", "weather", "tide", "tides",
+        "sun", "sunlight", "moon", "ocean", "sea", "fire", "time",
+        "god", "goddess", "olympus",
+    ]
+    return any(word in text for word in keywords)
+
+
+def _count_domain_effect_lines(narration_lines: list[str]) -> int:
+    effect_words = [
+        "lightning", "storm", "storms", "weather", "sky", "cloud", "clouds",
+        "rain", "sun", "sunlight", "tide", "tides", "ocean", "sea",
+        "wave", "waves", "wind", "winds", "fire", "moon", "thunder",
+    ]
+    count = 0
+    for line in narration_lines[1:]:
+        text = line.lower()
+        if any(word in text for word in effect_words):
+            count += 1
+    return count
+
+
+def _fallback_power_rewrite(title: str, narration_lines: list[str]) -> list[str]:
+    hook = narration_lines[0] if narration_lines else f"What if {title.lower()}?"
+    return [
+        hook,
+        "Day 1: You grab one loose lightning bolt and the sky obeys.",
+        "Day 2: One bad shrug puts thunderstorms over beaches and sunshine over the sea.",
+        "Week 1: Poseidon is furious because you keep pulling the tides backward.",
+        "Month 1: Farmers cheer, sailors panic, and every cloud follows your finger.",
+        "Olympus opens a weather help desk, and somehow you still run it.",
+    ]
+
+
+def _maybe_strengthen_power_narration(title: str, brief: str, narration_lines: list[str]) -> list[str]:
+    if not narration_lines or not _is_domain_power_concept(title, brief):
+        return narration_lines
+
+    min_effect_lines = min(3, max(1, len(narration_lines) - 1))
+    if _count_domain_effect_lines(narration_lines) >= min_effect_lines:
+        return narration_lines
+
+    try:
+        from packages.clients.claude import generate as claude_generate
+
+        resp = claude_generate(
+            prompt=f"""Rewrite this Skeletorinio narration so the spectacle comes from visibly USING or MISUSING the domain power, not just meetings or complaints.
+
+TITLE: {title}
+BRIEF: {brief}
+CURRENT NARRATION:
+{json.dumps(narration_lines, ensure_ascii=False)}
+
+RULES:
+- Keep the same core premise and comedic tone.
+- Keep 6-8 lines total.
+- Every line under 15 words.
+- Keep the hook as a clear "What if..." line naming the concept.
+- At least 3 post-hook lines must show visible environment effects from the power/domain.
+- Bureaucracy/help-desk/complaint beats can appear at most once.
+- For Zeus/weather concepts, physically show lightning, storms, tides, sunlight, clouds, or sky behavior.
+
+Return ONLY JSON:
+{{"narration": ["line 1", "line 2", "..."]}}""",
+            max_tokens=400,
+        )
+        match = re.search(r"\{.*\}", resp, re.DOTALL)
+        if match:
+            parsed = json.loads(match.group())
+            candidate = parsed.get("narration") or []
+            if candidate and _count_domain_effect_lines(candidate) >= min_effect_lines:
+                logger.info("strengthened power narration", title=title, before=narration_lines, after=candidate)
+                return candidate
+    except Exception as e:
+        logger.warning("power narration rewrite fallback", title=title, error=str(e)[:120])
+
+    fallback = _fallback_power_rewrite(title, narration_lines)
+    logger.info("using fallback power narration", title=title, fallback=fallback)
+    return fallback
+
+
 async def build_skeletorinio(run_id: int, concept: dict, output_dir: str, _update_step, db_url: str):
     """Full Skeletorinio video build using unified pipeline."""
     title = concept.get("title", "Untitled")
@@ -303,6 +398,9 @@ async def build_skeletorinio(run_id: int, concept: dict, output_dir: str, _updat
                 title = script_data["title"]
         if not narration_lines:
             raise ValueError("Failed to generate narration script")
+
+    narration_lines = _maybe_strengthen_power_narration(title, brief, narration_lines)
+    concept["narration"] = narration_lines
 
     n_lines = len(narration_lines)
 
