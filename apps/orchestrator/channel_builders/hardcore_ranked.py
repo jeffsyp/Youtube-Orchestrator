@@ -12,8 +12,10 @@ import os
 import re
 import shutil
 import subprocess
+from pathlib import Path
 
 import structlog
+from PIL import Image, ImageDraw, ImageFont
 from packages.clients.channel_profiles import (
     get_channel_video_model,
     get_channel_video_provider,
@@ -163,6 +165,47 @@ def _overlay_scene_label(clip_path: str, planet: str, jump_label: str, fact_labe
         timeout=300,
     )
     os.replace(tmp_path, clip_path)
+
+
+def _burn_scene_label_on_image(image_path: str, planet: str, jump_label: str, fact_label: str) -> None:
+    """Bake the measurement label into the source still before animation."""
+    path = Path(image_path)
+    img = Image.open(path).convert("RGBA")
+    draw = ImageDraw.Draw(img, "RGBA")
+
+    title_text = f"{str(planet).upper()}  {_display_jump_label(jump_label).upper()}"
+    fact_text = str(fact_label).upper()
+
+    title_font = ImageFont.truetype(LABEL_FONT_PATH, 54)
+    fact_font = ImageFont.truetype(LABEL_FACT_FONT_PATH, 30)
+
+    pad_x = 24
+    pad_y = 20
+    gap = 8
+    box_x = 34
+    box_y = 34
+
+    title_bbox = draw.textbbox((0, 0), title_text, font=title_font)
+    fact_bbox = draw.textbbox((0, 0), fact_text, font=fact_font)
+    text_w = max(title_bbox[2] - title_bbox[0], fact_bbox[2] - fact_bbox[0])
+    title_h = title_bbox[3] - title_bbox[1]
+    fact_h = fact_bbox[3] - fact_bbox[1]
+    box_w = text_w + pad_x * 2
+    box_h = title_h + fact_h + gap + pad_y * 2
+
+    draw.rounded_rectangle(
+        [box_x, box_y, box_x + box_w, box_y + box_h],
+        radius=24,
+        fill=(11, 15, 23, 180),
+        outline=(235, 242, 255, 80),
+        width=2,
+    )
+    title_y = box_y + pad_y - title_bbox[1]
+    fact_y = title_y + title_h + gap - fact_bbox[1]
+    draw.text((box_x + pad_x, title_y), title_text, font=title_font, fill=(255, 255, 255, 255))
+    draw.text((box_x + pad_x, fact_y), fact_text, font=fact_font, fill=(215, 226, 242, 255))
+
+    img.convert("RGB").save(path, quality=95)
 
 
 def _is_ranked_actual_planets(concept: dict, scenes_meta: list[dict]) -> bool:
@@ -398,6 +441,14 @@ Return ONLY the prompt.""",
     scene_00 = os.path.join(images_dir, "scene_00.png")
     if not os.path.exists(scene_00):
         shutil.copy2(base_scene_path, scene_00)
+    if use_manual_planet_refs and scenes_meta:
+        first_scene = scenes_meta[0]
+        _burn_scene_label_on_image(
+            scene_00,
+            first_scene.get("planet", "Earth"),
+            first_scene.get("jump_label", "1 ft 8 in"),
+            first_scene.get("fact_label", "SPACE FACT"),
+        )
 
     # Edit base scene for each liquid/variable — gpt-image-1.5 edit with input_fidelity=high
     await _update_step("creating scene variants")
@@ -492,6 +543,12 @@ Return ONLY a JSON array of {n_lines} strings. Line 0 should be "No changes — 
             if not ref_path:
                 raise RuntimeError(f"Missing approved grounded reference for scene {i} slug={slug}")
             shutil.copy2(ref_path, img_path)
+            _burn_scene_label_on_image(
+                img_path,
+                scene_meta.get("planet", "Planet"),
+                scene_meta.get("jump_label", "1 ft 8 in"),
+                scene_meta.get("fact_label", "SPACE FACT"),
+            )
             logger.info("copied approved manual grounded scene reference", scene=i, slug=slug, path=ref_path)
             continue
         review_text = ""
@@ -825,14 +882,6 @@ Return ONLY a JSON array of {n_lines} strings.""",
                 aspect_ratio="9:16",
                 image_url=img_b64,
                 timeout=600,
-            )
-        if is_planet_jump_format and i > 0 and (i - 1) < len(scenes_meta):
-            scene_meta = scenes_meta[i - 1]
-            _overlay_scene_label(
-                clip_path,
-                scene_meta.get("planet", "Planet"),
-                scene_meta.get("jump_label", "1 ft 8 in"),
-                scene_meta.get("fact_label", "SPACE FACT"),
             )
         logger.info("scene animated", scene=i, provider=provider, model=model, resolution=resolution)
 
