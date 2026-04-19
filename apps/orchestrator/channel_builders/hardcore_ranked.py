@@ -11,6 +11,7 @@ import json
 import os
 import re
 import shutil
+import subprocess
 
 import structlog
 from packages.clients.channel_profiles import (
@@ -46,13 +47,13 @@ MANUAL_PLANET_REF_DIR = os.path.join(
     "..",
     "..",
     "..",
-    "output",
-    "manual_lab",
-    "hardcore_ranked_planets",
-    "manual_grounded_test",
-    "images",
+    "assets",
+    "reference",
+    "hardcore_ranked_worlds",
 )
 TAGS = ["hardcore ranked", "comparison", "ranked", "shorts", "viral"]
+LABEL_FONT_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "..", "assets", "fonts", "Inter-ExtraBold.ttf")
+LABEL_FACT_FONT_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "..", "assets", "fonts", "Inter-Bold.ttf")
 
 # Channel-specific image prompt rules
 IMAGE_RULES = """RULES:
@@ -84,6 +85,84 @@ EACH PROMPT MUST DESCRIBE ONLY WHAT CHANGES:
 def _manual_planet_ref(slug: str) -> str | None:
     path = os.path.join(MANUAL_PLANET_REF_DIR, f"{slug}_grounded.png")
     return path if os.path.exists(path) else None
+
+
+def _parse_jump_label_inches(jump_label: str) -> int:
+    text = str(jump_label).strip().lower()
+    ft_match = re.search(r"(\d+)\s*ft", text)
+    in_match = re.search(r"(\d+)\s*in", text)
+    feet = int(ft_match.group(1)) if ft_match else 0
+    inches = int(in_match.group(1)) if in_match else 0
+    if feet or inches:
+        return feet * 12 + inches
+    num_match = re.search(r"(\d+)", text)
+    return int(num_match.group(1)) if num_match else 20
+
+
+def _escape_drawtext(text: str) -> str:
+    return (
+        str(text)
+        .replace("\\", "\\\\")
+        .replace(":", r"\:")
+        .replace("'", r"\'")
+        .upper()
+    )
+
+
+def _display_jump_label(jump_label: str) -> str:
+    total_inches = _parse_jump_label_inches(jump_label)
+    feet, inches = divmod(total_inches, 12)
+    parts: list[str] = []
+    if feet:
+        parts.append(f"{feet} {'foot' if feet == 1 else 'feet'}")
+    if inches:
+        parts.append(f"{inches} {'inch' if inches == 1 else 'inches'}")
+    return " ".join(parts) if parts else str(jump_label)
+
+
+def _overlay_scene_label(clip_path: str, planet: str, jump_label: str, fact_label: str) -> None:
+    """Burn a compact scene label onto a rendered clip."""
+    tmp_path = clip_path.replace(".mp4", "_labeled.mp4")
+    title_text = _escape_drawtext(f"{planet}  {_display_jump_label(jump_label)}")
+    fact_text = _escape_drawtext(fact_label)
+    filter_str = ",".join(
+        [
+            "drawbox=x=34:y=34:w=620:h=180:color=black@0.42:t=fill",
+            (
+                f"drawtext=fontfile='{LABEL_FONT_PATH}':text='{title_text}':"
+                "x=56:y=58:fontsize=62:fontcolor=white"
+            ),
+            (
+                f"drawtext=fontfile='{LABEL_FACT_FONT_PATH}':text='{fact_text}':"
+                "x=58:y=132:fontsize=34:fontcolor=#D7E2F2"
+            ),
+        ]
+    )
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-y",
+            "-i",
+            clip_path,
+            "-vf",
+            filter_str,
+            "-c:v",
+            "libx264",
+            "-preset",
+            "fast",
+            "-crf",
+            "20",
+            "-pix_fmt",
+            "yuv420p",
+            "-c:a",
+            "copy",
+            tmp_path,
+        ],
+        capture_output=True,
+        check=True,
+        timeout=300,
+    )
+    os.replace(tmp_path, clip_path)
 
 
 def _is_ranked_actual_planets(concept: dict, scenes_meta: list[dict]) -> bool:
@@ -634,16 +713,17 @@ Return ONLY a JSON array of {n_lines} strings. Line 0 should be "No changes — 
         ]
         for scene in scenes_meta:
             jump_label = scene.get("jump_label", "1 ft 8 in")
-            if jump_label == "8 in":
+            jump_inches = _parse_jump_label_inches(jump_label)
+            if jump_inches <= 10:
                 jump_action = "The jumper bends deeply, tries to explode upward, barely rises a few inches beside the mast, then lands back down fast and heavy."
-            elif jump_label.startswith("4 ft"):
-                jump_action = f"The jumper starts on the ground, crouches, launches high up beside the mast to roughly {jump_label}, hangs for a beat, then lands back on the same spot."
-            elif jump_label.startswith("1 ft 11"):
-                jump_action = f"The jumper starts grounded, springs upward to roughly {jump_label} on the mast, pauses briefly at the top, then drops and lands cleanly."
-            elif jump_label.startswith("1 ft 8"):
+            elif jump_inches <= 24:
                 jump_action = f"The jumper starts grounded, performs a normal athletic jump to about {jump_label}, then lands back in the same place."
+            elif jump_inches <= 72:
+                jump_action = f"The jumper starts on the ground, crouches, launches high beside the mast to roughly {jump_label}, hangs in the air for a beat, then lands back on the same spot."
+            elif jump_inches <= 240:
+                jump_action = f"The jumper explodes upward from the ground, rockets far above the mast to around {jump_label}, briefly leaves the upper part of frame, then drops back in and lands."
             else:
-                jump_action = f"The jumper starts grounded, pushes into a slightly heavy jump to about {jump_label}, then falls back down and lands."
+                jump_action = f"The jumper blasts off from the ground with absurd low-gravity power, shoots completely past the mast toward roughly {jump_label}, disappears upward for a long hang, then falls back down and lands."
             anim_prompts.append(
                 f"{jump_action} Show the FULL motion cycle in one shot: start on ground, takeoff, apex, and landing. "
                 f"Keep the {scene.get('planet', 'planet')} environment stable, with the mast and lander visible for scale. "
@@ -739,6 +819,14 @@ Return ONLY a JSON array of {n_lines} strings.""",
                 aspect_ratio="9:16",
                 image_url=img_b64,
                 timeout=600,
+            )
+        if is_planet_jump_format and i > 0 and (i - 1) < len(scenes_meta):
+            scene_meta = scenes_meta[i - 1]
+            _overlay_scene_label(
+                clip_path,
+                scene_meta.get("planet", "Planet"),
+                scene_meta.get("jump_label", "1 ft 8 in"),
+                scene_meta.get("fact_label", "SPACE FACT"),
             )
         logger.info("scene animated", scene=i, provider=provider, model=model, resolution=resolution)
 
