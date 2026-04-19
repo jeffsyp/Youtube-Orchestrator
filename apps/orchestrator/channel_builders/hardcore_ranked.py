@@ -1059,33 +1059,16 @@ Return ONLY a JSON array of {n_lines} strings.""",
             from packages.clients.veo import generate_video_async as veo_generate
 
             primary_model = model or "veo-3.1-lite-generate-001"
-            veo_kwargs = {
-                "prompt": anim_prompts[i],
-                "output_path": clip_path,
-                "model": primary_model,
-                "duration_seconds": _veo_duration(narr_path),
-                "aspect_ratio": "9:16",
-                "resolution": resolution or "720p",
-                "image_path": img_path,
-                "last_frame_path": img_path if is_planet_jump_format else None,
-            }
-            try:
-                await veo_generate(**veo_kwargs)
-            except Exception as e:
-                msg = str(e).lower()
-                fallback_model = None
-                if "filtered" in msg and "lite" in primary_model:
-                    fallback_model = "veo-3.1-fast-generate-001"
-                if not fallback_model:
-                    raise
-                logger.warning(
-                    "veo filtered — retrying scene with fast model",
-                    scene=i,
-                    original_model=primary_model,
-                    fallback_model=fallback_model,
-                )
-                veo_kwargs["model"] = fallback_model
-                await veo_generate(**veo_kwargs)
+            await veo_generate(
+                prompt=anim_prompts[i],
+                output_path=clip_path,
+                model=primary_model,
+                duration_seconds=_veo_duration(narr_path),
+                aspect_ratio="9:16",
+                resolution=resolution or "720p",
+                image_path=img_path,
+                last_frame_path=img_path if is_planet_jump_format else None,
+            )
         else:
             from packages.clients.grok import generate_video_async as grok_generate
 
