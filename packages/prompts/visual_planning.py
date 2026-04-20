@@ -50,13 +50,13 @@ You are editing a video. You know exactly when every word is spoken. Plan the vi
 
 VISUAL TYPES AVAILABLE:
 
-1. "grok" — AI-generated VIDEO CLIP (Grok Imagine Video)
+1. "grok" — AI-generated VIDEO CLIP
    - Duration: 1-15 seconds per clip
    - Great for: action, movement, character moments, dramatic reveals, hooks
    - Video prompts MUST describe MOVEMENT — characters doing things, camera tracking/pushing, environmental motion
    - Cost: $0.07/sec — use strategically, not for everything
 
-2. "image" — AI-generated STILL IMAGE (Grok Imagine Image) with Ken Burns zoom
+2. "image" — AI-generated STILL IMAGE with Ken Burns zoom
    - Great for: info visuals, maps, comparisons, number cards, dramatic stills, reaction shots
    - Cheaper and faster than video — use when motion isn't needed
    - Image prompts MUST describe ONE clear subject per image — never split screens, never collages, never multiple panels
@@ -79,8 +79,8 @@ DIRECTING RULES:
 - Fewer visuals that land > many visuals that flash by
 
 CONSISTENCY OPTIONS:
-- "consistent_character": true — keeps the same character look across scenes (uses reference image from first grok clip)
-- "extend_previous": true — chains this grok clip from the last frame of the previous one (continuous action)
+- "consistent_character": true — keeps the same character look across scenes (uses the first animated clip as the reference image)
+- "extend_previous": true — chains this animated clip from the last frame of the previous one (continuous action)
 - "label": "TEXT" — persistent text overlay (for rankings, location names, etc.). NO EMOJIS in labels — they break rendering
 
 ASPECT RATIO: {aspect}

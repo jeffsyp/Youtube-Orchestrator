@@ -386,7 +386,7 @@ async def generate_and_animate_scenes(
             _narr_durs.append(3.0)
 
     plan_resp = claude_generate(
-        prompt=f"""Break this narration into animation sub-actions. Each sub-action is ONE simple movement (2-3 seconds for Grok to animate).
+        prompt=f"""Break this narration into animation sub-actions. Each sub-action is ONE simple movement (2-3 seconds for the animation model to render clearly).
 
 CHANNEL RULES (HIGHEST PRIORITY — every image_prompt must follow these exactly):
 {channel_rules}
@@ -412,12 +412,12 @@ CRITICAL — NO STATIC ANIMATION PROMPTS: Every animation_prompt must describe C
 
 CRITICAL — CAMERA LANGUAGE IS BANNED IN animation_prompt:
 - Do NOT write: "camera", "zoom", "push in", "pull back", "pan", "whip-pan", "dolly", "rack focus", "tracking shot", "camera slowly"
-- Grok performs better when the prompt describes CHARACTER / OBJECT / ENVIRONMENT motion only
+- Prompt clarity is strongest when the description focuses on CHARACTER / OBJECT / ENVIRONMENT motion only
 - GOOD: "Hisoka's grin twitches and disappears as sweat rolls down his face"
 - BAD: "Camera slowly pushes in on Hisoka's face"
 
 CRITICAL — MULTIPLE CHARACTERS ARE FINE, DIRECT CONTACT IS NOT:
-- Grok can handle several characters in frame, but it struggles when the key action requires two characters to physically touch, grapple, collide, wrestle, exchange objects hand-to-hand, or overlap heavily.
+- The generator can handle several characters in frame, but it struggles when the key action requires two characters to physically touch, grapple, collide, wrestle, exchange objects hand-to-hand, or overlap heavily.
 - Prefer ONE moving subject per sub-action. Other characters may be visible, but they should mostly be watching, recoiling, bracing, or standing several feet away.
 - If narration implies "A hits B", "A grabs B", "A hands B something", "A and B clash", or "A knocks B out", do NOT try to show the literal contact moment in one crowded image.
 - Instead, split it into separate clean beats:
@@ -521,7 +521,7 @@ Example skeleton:
 For each sub-action, decide:
 - "new_scene": true if this needs a fresh GPT-generated image (new setting, new character entering). false if it chains from the previous clip's last frame.
 - "image_prompt": what the starting image should show (BEFORE the action happens). Only needed if new_scene=true.
-- "animation_prompt": ONE simple action for Grok (2-3 seconds). One moving subject. e.g. "opens door and walks through", "raises sword and lunges", "energy builds in fist", "slides backward into a wall"
+- "animation_prompt": ONE simple action for the animation model (2-3 seconds). One moving subject. e.g. "opens door and walks through", "raises sword and lunges", "energy builds in fist", "slides backward into a wall"
 - "line": which narration line (0-indexed) this belongs to
 - "duration": seconds (2-3)
 - "chain_rule": if chaining, what must be in the last frame for the chain to work (e.g. "Zoro visible in hallway")
@@ -690,7 +690,7 @@ Check ALL of these:
 7. Does the image visibly prove the specific joke/detail in the narration? If the narration says "backward", "smile gone", "license", "begging", "frozen midair", or another concrete proof-detail, the image must make that detail obvious at a glance.
 8. If the narration beat is primarily a REACTION punchline ("stops talking", "goes silent", "begs", "stares", "smile disappears"), is that reaction visually dominant and unmistakable? Subtle face changes are FAILs.
 9. Is there anything that contradicts the narration?
-10. If multiple characters are present, is the staging simple enough for Grok? Crowded touching, grappling, hand-to-hand exchanges, or collision-dependent poses should FAIL unless absolutely necessary to the beat.
+10. If multiple characters are present, is the staging simple and readable enough for the generator? Crowded touching, grappling, hand-to-hand exchanges, or collision-dependent poses should FAIL unless absolutely necessary to the beat.
 11. Does the frame communicate ONE dominant visual claim on mute? If it feels split-focus, busy, or "technically related but hard to parse at a glance," FAIL it.
 
 FAIL any image that drifts into the wrong finish. If the expected style is crude cartoon, reject polished webtoon/chibi/mobile-game art. If the expected style is clean anime-cartoon, reject grimy doodle, painterly realism, plush/chibi softness, or glossy 3D-game rendering. The style must match the exact channel identity, not just be "cartoony."

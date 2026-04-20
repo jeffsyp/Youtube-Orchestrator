@@ -10,6 +10,7 @@ import structlog
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 from dotenv import load_dotenv
+from packages.clients.channel_profiles import get_channel_builder_slug, get_channel_profile
 from packages.clients.db import get_engine
 from packages.utils.hardcore_ranked_language import normalize_hardcore_ranked_concept, normalize_hardcore_ranked_viewer_text
 
@@ -428,6 +429,81 @@ _NATURE_RECEIPTS_GENERIC_TARGETS = {
     "neighbor's yard",
     "neighbor's fence",
 }
+_SHORT_DRAFT_MODE_ALIASES = {
+    "builder": "builder_pitch",
+    "builder_pitch": "builder_pitch",
+    "builder_pitches": "builder_pitch",
+    "pitch": "builder_pitch",
+    "pitch_only": "builder_pitch",
+    "dialogue_short": "no_narration",
+    "short_script": "short_script",
+    "short_scripts": "short_script",
+    "narrated": "short_script",
+    "narration": "short_script",
+    "narrated_short": "short_script",
+    "educational_short": "educational_short",
+    "educational_shorts": "educational_short",
+    "explainer": "educational_short",
+    "explainers": "educational_short",
+    "kids": "no_narration",
+    "no_narration": "no_narration",
+    "scene_first": "no_narration",
+    "scene_based": "no_narration",
+    "silent": "no_narration",
+    "satisfying": "no_narration",
+}
+_SUPPORTED_SHORT_DRAFT_MODES = frozenset({
+    "builder_pitch",
+    "short_script",
+    "educational_short",
+    "no_narration",
+})
+
+
+def _normalize_short_draft_mode(raw_mode: str | None) -> str | None:
+    """Normalize profile draft mode values into the supported short-form modes."""
+    if not isinstance(raw_mode, str):
+        return None
+
+    normalized = raw_mode.strip().lower().replace("-", "_").replace(" ", "_")
+    if not normalized:
+        return None
+    return _SHORT_DRAFT_MODE_ALIASES.get(normalized, normalized)
+
+
+def _get_profile_draft_mode(channel_id: int, *, form_type: str = "short") -> str | None:
+    """Read `draft_mode` from the channel profile when present."""
+    profile = get_channel_profile(channel_id)
+    raw_mode = profile.get("draft_mode")
+    if isinstance(raw_mode, dict):
+        raw_mode = raw_mode.get(form_type) or raw_mode.get("default")
+
+    normalized = _normalize_short_draft_mode(raw_mode)
+    if normalized in _SUPPORTED_SHORT_DRAFT_MODES:
+        return normalized
+    if normalized:
+        logger.warning("unknown draft_mode in channel profile", channel_id=channel_id, draft_mode=raw_mode)
+    return None
+
+
+def _resolve_short_draft_mode(
+    channel_id: int,
+    *,
+    educational_channels: set[int],
+    satisfying_channels: set[int],
+) -> str:
+    """Resolve the short-form draft generator with profile overrides and safe fallbacks."""
+    explicit_mode = _get_profile_draft_mode(channel_id, form_type="short")
+    if explicit_mode:
+        return explicit_mode
+
+    if channel_id in educational_channels:
+        return "educational_short"
+    if channel_id in satisfying_channels:
+        return "no_narration"
+    if get_channel_builder_slug(channel_id):
+        return "builder_pitch"
+    return "no_narration"
 
 
 def _research_niche(niche: str, max_results: int = 15, form_type: str = "short") -> str:
@@ -681,8 +757,6 @@ async def generate_drafts_for_channel(channel_id: int, count: int = 5, form_type
         if yt_trending:
             trending = f"{trending}\n\n{yt_trending}" if trending else yt_trending
 
-        from packages.clients.claude import generate
-
         from packages.prompts.concept_drafts import KIDS_CHANNELS, MID_LENGTH_CHANNELS, EDUCATIONAL_CHANNELS, WEEKLY_RECAP_CHANNELS, RESEARCH_CHANNELS, SATISFYING_CHANNELS
 
         if channel_id in RESEARCH_CHANNELS:
@@ -713,15 +787,35 @@ async def generate_drafts_for_channel(channel_id: int, count: int = 5, form_type
                     past_titles, trending, count, form_type,
                 )
         else:
-            # Schmoney Facts is narration-first in production, so generate reviewed drafts
-            # in the same format the builder actually consumes.
-            if channel_id == 31:
+            short_draft_mode = _resolve_short_draft_mode(
+                channel_id,
+                educational_channels=EDUCATIONAL_CHANNELS,
+                satisfying_channels=SATISFYING_CHANNELS,
+            )
+
+            logger.info(
+                "resolved short draft mode",
+                channel_id=channel_id,
+                channel=channel_name,
+                draft_mode=short_draft_mode,
+            )
+
+            if short_draft_mode == "short_script":
                 draft_ids = await _generate_short_drafts(
                     engine, channel_id, channel_name, niche, voice_id,
                     past_titles, trending, count, form_type,
                 )
+            elif short_draft_mode == "educational_short":
+                draft_ids = await _generate_educational_short_drafts(
+                    engine, channel_id, channel_name, niche, voice_id,
+                    past_titles, trending, count,
+                )
+            elif short_draft_mode == "builder_pitch":
+                draft_ids = await _generate_builder_pitch_drafts(
+                    engine, channel_id, channel_name, niche,
+                    past_titles, trending, count,
+                )
             else:
-                # All other shorts use the scene-first no-narration flow
                 draft_ids = await _generate_no_narration_drafts(
                     engine, channel_id, channel_name, niche,
                     past_titles, trending, count,
@@ -801,6 +895,64 @@ async def _generate_short_drafts(
             continue
 
         draft_id = await _insert_draft(engine, channel_id, title, concept, brief, form_type)
+        if draft_id:
+            draft_ids.append(draft_id)
+
+    return draft_ids
+
+
+async def _generate_builder_pitch_drafts(
+    engine, channel_id, channel_name, niche,
+    past_titles, trending, count,
+) -> list[int]:
+    """Generate pitch-level drafts for custom builders that write their own scripts later."""
+    from packages.prompts.concept_drafts import build_concept_pitches_prompt
+    from packages.clients.claude import generate
+
+    system, user = build_concept_pitches_prompt(
+        channel_name=channel_name,
+        niche=niche,
+        past_titles=past_titles,
+        count=count,
+        trending=trending,
+    )
+
+    logger.info("phase 1: generating builder pitches", channel=channel_name, count=count)
+
+    resp = _strip_code_block(generate(prompt=user, system=system, model="claude-sonnet-4-6", max_tokens=4000))
+
+    pitches = json.loads(resp)
+    if not isinstance(pitches, list):
+        pitches = [pitches]
+
+    logger.info("phase 1 complete", channel=channel_name, pitches=len(pitches))
+
+    async with AsyncSession(engine) as s:
+        pending = await s.execute(text(
+            "SELECT count(*) FROM concept_drafts WHERE channel_id = :cid AND status = 'pending' AND form_type = 'short'"
+        ), {"cid": channel_id})
+        current_pending = pending.scalar()
+        remaining = max(0, DRAFTS_PER_CHANNEL - current_pending)
+
+    valid_pitches = await _filter_duplicate_pitches(engine, channel_id, pitches, remaining)
+
+    draft_ids = []
+    for pitch in valid_pitches:
+        title = pitch.get("title", "Untitled")
+        brief = pitch.get("brief", "")
+        concept = {
+            "title": title,
+            "brief": brief,
+            "key_facts": pitch.get("key_facts", ""),
+            "structure": pitch.get("structure", ""),
+            "format_strategy": pitch.get("format_strategy", "mini_story"),
+            "hook_type": pitch.get("hook_type", ""),
+            "channel_id": channel_id,
+            "format_version": 2,
+            "draft_mode": "builder_pitch",
+        }
+
+        draft_id = await _insert_draft(engine, channel_id, title, concept, brief, "short")
         if draft_id:
             draft_ids.append(draft_id)
 
