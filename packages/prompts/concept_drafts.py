@@ -1591,6 +1591,24 @@ SCENE COUNT BY STRATEGY:
     _channel_style = get_channel_art_style(channel_id) if channel_id else _DEFAULT_STYLE
     art_style_field = f',\n    "art_style": "{_channel_style}"' if (is_character_dialogue or not is_satisfying) else ""
     system_mode_label = "native-dialogue" if is_character_dialogue else "no-narration"
+    channel_visual_identity_block = ""
+    if channel_id == 16:
+        channel_visual_identity_block = """
+
+GAME VISUAL IDENTITY RULES (CRITICAL):
+- The image must prove the exact game world before the dialogue lands. Recognition cannot come from the title alone.
+- For League of Legends concepts, EVERY scene must explicitly place the character on Summoner's Rift or a Summoner's Rift location and keep at least TWO recognizable MOBA cues in frame:
+  cracked stone lane path, side brush, river edge, jungle entrance or camp, chunky defense turret base, doodled minimap corner, health bar, ping circles, recall ring.
+- Even close-ups still need environment/HUD proof. A face floating on a blank or generic fantasy background is a FAIL.
+- Use actual champion names when possible. If you do not name one, describe an unmistakable League champion silhouette or archetype: fox-mage tails, blind-monk red headband, wind swordsman topknot, bandaged mummy wraps, tiny scout cap. Never generic fantasy rogue/archer/hooded ranger.
+- Translate League slang into literal visuals:
+  * gank = jungler bursting from brush or jungle entrance onto a lane
+  * under turret = champion on lane stones with a chunky stone turret base nearby
+  * recall = blue recall ring under the champion
+  * low = almost-empty doodled health bar above the champion
+- BAD League prompts: "guy in a forest", "hooded ranger with a trophy", "generic fantasy ruins", "random campfire jungle"
+- GOOD League prompt: "Close-up of Ahri on Summoner's Rift mid lane, cracked stone path and river brush behind her, low doodled health bar overhead, ping circles near a minimap corner."
+"""
 
     if is_character_dialogue:
         style_guidance = f"""CHARACTER DIALOGUE SHORTS FORMAT — CHARACTERS SPEAK THEIR OWN LINES:
@@ -1606,6 +1624,7 @@ THE GOLDEN RULES:
 
 ART STYLE: {_channel_style}
 This style should stay entertaining and visually readable, not stiff or overcomplicated.
+{channel_visual_identity_block}
 
 SCENE FLOW IS CRITICAL:
 - Each scene must visually connect to the next — the viewer must understand what changed
@@ -1639,7 +1658,9 @@ WHAT DOESN'T WORK:
 CHANNEL CONTEXT: This is for "{channel_name}" ({niche}). Every concept must fit this channel's world and niche."""
 
         scene_format = f"""Each scene needs:
-- "image_prompt": Start with "{_channel_style}". ONE character per scene (the one speaking). Close-up framing. Exaggerated facial expression matching the dialogue. Add "One character only. NO text anywhere." at the end.
+- "image_prompt": Start with "{_channel_style}". ONE character per scene (the one speaking). Close-up or medium-close framing. Exaggerated facial expression matching the dialogue. The background still needs enough specific game-world detail to instantly prove the franchise. If the concept is League of Legends, literally say "Summoner's Rift", "lane", "river brush", "jungle entrance", "stone turret base", "minimap corner", "health bar", etc. Add "One character only. NO text anywhere." at the end.
+  GOOD: "Simple crude cartoon... Close-up of Ahri on Summoner's Rift mid lane, cracked stone path and river brush behind her, low doodled health bar overhead. One character only. NO text anywhere."
+  BAD: "Simple crude cartoon... Close-up of a worried mage in a forest. One character only. NO text anywhere."
 - "video_prompt": Describe what the character DOES and SAYS. The dialogue must be written naturally in the prompt so Grok generates the character speaking it. Also include sound effects.
   GOOD: "Guy leans forward into the microphone smugly and says yeah he is guilty, shrugs his shoulders. Courtroom murmur, dramatic dun dun sound."
   GOOD: "Guy slams his hands on the table and yells but you are my best friend, tears fly off his face. Table slam, crowd gasps."
