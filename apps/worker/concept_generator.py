@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from dotenv import load_dotenv
 from packages.clients.channel_profiles import get_channel_builder_slug, get_channel_profile
 from packages.clients.db import get_engine
+from packages.utils.game_meme_identity import normalize_game_meme_concept
 from packages.utils.hardcore_ranked_language import normalize_hardcore_ranked_concept, normalize_hardcore_ranked_viewer_text
 
 load_dotenv(override=True)
@@ -1821,6 +1822,7 @@ async def _insert_draft(engine, channel_id, title, concept, brief, form_type) ->
 
         concept = apply_format_strategy_defaults(concept, form_type=form_type)
         concept = normalize_hardcore_ranked_concept(concept, channel_id=channel_id)
+        concept = normalize_game_meme_concept(concept, channel_id=channel_id)
         title = normalize_hardcore_ranked_viewer_text(concept.get("title") or title)
         brief = normalize_hardcore_ranked_viewer_text(concept.get("brief") or brief)
         async with AsyncSession(engine) as s:

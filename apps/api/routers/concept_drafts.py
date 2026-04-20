@@ -8,6 +8,7 @@ from sqlalchemy import text
 
 from packages.clients.db import async_session
 from packages.clients.workflow_state import ensure_concept, update_concept_status
+from packages.utils.game_meme_identity import normalize_game_meme_concept
 from packages.utils.hardcore_ranked_language import normalize_hardcore_ranked_concept, normalize_hardcore_ranked_viewer_text
 
 router = APIRouter(prefix="/api", tags=["concept-drafts"])
@@ -122,6 +123,7 @@ async def approve_draft(draft_id: int, bg: BackgroundTasks):
     except Exception:
         concept = {}
     concept = normalize_hardcore_ranked_concept(concept, channel_id=channel_id)
+    concept = normalize_game_meme_concept(concept, channel_id=channel_id)
     title = normalize_hardcore_ranked_viewer_text(concept.get("title") or title)
     concept_json = json.dumps(concept)
 

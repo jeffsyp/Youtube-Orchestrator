@@ -19,6 +19,7 @@ from packages.clients.workflow_state import (
     update_concept_status,
     update_run_manifest,
 )
+from packages.utils.game_meme_identity import normalize_game_meme_concept
 from packages.prompts.concept_drafts import KIDS_CHANNELS
 
 load_dotenv(override=True)
@@ -150,6 +151,8 @@ async def _generate_item(item: dict):
     if not concept_raw:
         raise ValueError(f"Missing concept JSON for content bank #{bank_id}")
     concept = json.loads(concept_raw) if isinstance(concept_raw, str) else concept_raw
+    if isinstance(concept, dict):
+        concept = normalize_game_meme_concept(concept, channel_id=channel_id)
     if concept_id and isinstance(concept, dict):
         concept.setdefault("concept_id", concept_id)
 
