@@ -1555,12 +1555,15 @@ CRABRAVESHORTS PLAYER-VOICE RULES (CRITICAL):
 - NEVER write polished sitcom dialogue or full formal sentences. If a real player would not say it mid-match, do not write it.
 - Prefer fragments, interruptions, repeats, and half-finished thoughts over clean grammar. "yo wait wait" beats "please stop for a moment."
 - Players should sound like they are reacting live while moving, not narrating the joke for the audience afterward.
+- Recognition alone is NOT enough. "Everyone knows this situation" is only the setup. The concept still needs a sharper payoff: a humiliating reveal, insane audacity, immediate karma, or a line so specific it feels clip-worthy.
+- Reject bland gamer pain. A title that is only "friend steals loot" or "teammate throws" is too generic unless the ending has a distinctive twist people would actually send to a friend.
 - Use game-specific vocabulary naturally:
   * Minecraft: stacked, full diamond, split the loot, strip mine, griefed, spawn, chest, pick, redstone
   * Valorant: eco, full buy, one tap, rotate, spike, whiffed
   * League: gank, inting, diff, flash, ult, troll
 - At least 3 concepts in the batch should center on two-player conflict, betrayal, blame, or instant voice-chat reaction.
 - The funniest CrabRave concepts should feel like a real lobby meltdown someone clipped, not an outsider explaining a game joke.
+- End on the funniest SPECIFIC line in the whole concept. The last scene should escalate or reframe the joke, not just restate the premise.
 """
 
     is_satisfying = channel_id in SATISFYING_CHANNELS

@@ -1527,8 +1527,8 @@ async def _run_no_narration(run_id: int, concept: dict, output_dir: str, _update
                 logger.info("chained last frame to next scene", from_scene=i, to_scene=i + 1)
 
         # Create segment — keep Grok native audio (run in executor to avoid blocking)
-        # Pad last segment so xfade doesn't clip the ending
-        seg_duration = duration + (0.6 if i == len(scenes) - 1 else 0)
+        # Do not pad the final segment; the extra cloned tail reads like a repeated beat.
+        seg_duration = duration
         def _render_scene_segment(d=seg_duration):
             cmd = [
                 "ffmpeg", "-y",
