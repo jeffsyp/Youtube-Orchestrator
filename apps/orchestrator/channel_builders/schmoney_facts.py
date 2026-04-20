@@ -1,4 +1,4 @@
-"""Schmoney Facts channel builder — "What if you had X money" escalation videos.
+"""Schmoney Facts channel builder — money, pricing, flex, and scam story shorts.
 
 Uses unified pipeline: style anchor → sub-actions → GPT images → Grok animation → chaining.
 """
@@ -28,25 +28,25 @@ VOICE_ID = "EOVAuWqgSZN2Oel78Psj"  # Schmoney Facts voice
 MUSIC_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "..", "assets", "music", "upbeat", "retrofuture_clean.mp3")
 TAGS = ["schmoney facts", "money", "finance", "what if", "rich", "shorts", "viral"]
 
-ART_STYLE = "GTA loading screen art style — bold illustrated characters, saturated colors, slightly exaggerated proportions, urban and flashy. Money, luxury, and hustle energy."
+ART_STYLE = "GTA loading screen art style — bold illustrated characters, saturated colors, slightly exaggerated proportions, flashy commercial energy. Money is the star whether the scene is luxury, debt, pricing, gambling, banking, shopping, or pure flex."
 
 IMAGE_RULES = """ART STYLE:
-- Simple crude cartoon with thick black outlines and flat colors
-- Urban, flashy, money energy — gold chains, stacks of cash, luxury cars, mansions, private jets
-- Characters with exaggerated expressions — jaw drops, dollar sign eyes, flexing poses
-- Backgrounds should show wealth escalation — apartment → penthouse → mansion → private island → space station
+- Bold illustrated GTA loading screen energy — saturated colors, confident silhouettes, exaggerated expressions
+- Money is the subject of every scene, but NOT every concept is a mansion/jet fantasy
+- Use settings that fit the specific money idea: bank lobby, casino floor, grocery aisle, airport kiosk, private hangar, yacht dock, payday storefront, checkout counter, mansion driveway, vault room, gas station, trading floor
 
 MONEY VISUALIZATION:
-- SHOW the money and luxury items specifically — don't just describe them
-- Stacks of cash, gold bars, diamond jewelry, supercars, yachts, private jets should be visible
-- The spending should be VISUALLY escalating — each scene more extravagant than the last
+- Show the money mechanic physically and literally — cash bricks, vault stacks, grocery bags, poker chips, gold bars, supercars, fuel trucks, checkout counters, casino cages, tax piles, loan traps, yachts, jets
+- Include one dominant proof prop that makes the cost or flex instantly legible on mute
+- If the concept is about markup, fees, taxes, or profit, show both the payer and the winner whenever possible
+- Do NOT default to the same house → supercar → yacht → jet escalation unless the narration is specifically a flex fantasy
 
 EVERY PROMPT MUST:
-- Start with "Simple crude cartoon with thick black outlines and flat colors."
-- Show the main character spending money or surrounded by wealth
-- Include SPECIFIC luxury items that match the narration (Lamborghini, Rolex, yacht, etc.)
-- Show the escalation visually — early scenes modest, later scenes insane
-- End with "Crude cartoon style. NO text anywhere." """
+- Start with "Bold illustrated GTA loading screen art style."
+- Make the money idea instantly legible on mute
+- Show the main subject interacting with the cost, profit, luxury item, trap, or payout
+- Include SPECIFIC objects that match the narration (private jet stairs, grocery cart, popcorn bucket, ATM, casino chips, Rolex box, yacht deck, fuel hose, mansion gate, tax avalanche)
+- End with "Illustrated not photographed. NO text anywhere." """
 
 SCRIPT_PROMPT = """Write a narration script for a Schmoney Facts video.
 
@@ -54,21 +54,23 @@ CONCEPT: {title}
 BRIEF: {brief}
 
 THE FORMAT:
-- Line 1 MUST state the scenario with a specific dollar amount: "What if you had 200 billion dollars for 24 hours?" — this IS the title. Shorts viewers don't see titles.
-- Line 2 goes STRAIGHT into spending — no setup, no "imagine this"
-- ESCALATING SPENDING — each line is a bigger, crazier purchase:
-  - Start modest: pay off student loans, buy a house ($500K)
-  - Then flex: buy a Lamborghini, a yacht, a private jet ($1M-$50M)
-  - Then insane: buy an NFL team, an island, a country's GDP ($1B+)
-  - Then completely unhinged: buy the moon, fund a Mars colony, purchase the entire stock market
-- SPECIFIC dollar amounts in every line — "$47 million for a private island" not "you buy an island"
-- SPECIFIC brand names — "a Bugatti Chiron" not "a fancy car", "a Patek Philippe" not "a nice watch"
-- The spending must be mathematically reasonable for the starting amount
-- The ending must GO COMPLETELY INSANE — you run out of money and realize you still owe taxes, or you bought so much you accidentally crashed the economy, or you own so much real estate you're technically a country
-- 6-8 narration lines total, ~20-30 seconds. SHORTER IS BETTER — every line must earn its place
+- Line 1 MUST state the exact money premise clearly. If there is a company, object, scam, salary, or dollar amount, say it immediately.
+- Line 2 goes straight into the first concrete number or money mechanic — no slow setup.
+- Follow the concept instead of forcing one template:
+  - If it is a flex fantasy, escalate the spending.
+  - If it is a trap, escalate the damage.
+  - If it is a business reveal, escalate the profit or markup.
+  - If it is a salary / luxury / tax video, escalate the real-world cost.
+- Use SPECIFIC dollar amounts, percentages, salaries, hourly burn rates, taxes, fees, profits, or totals in as many lines as possible.
+- Use SPECIFIC brands / objects when they help the visual: "a Gulfstream G650" not "a private jet", "movie theater popcorn" not "snacks", "a Rolex Daytona" not "a watch".
+- Every line must add a NEW beat. No repeating the same mortgage / fee / loan point in slightly different words.
+- Money topics can include: hidden fees, salaries, taxes, rich flexes, luxury operating costs, scams, business margins, pricing tricks, casinos, investing, or weird cash logistics.
+- Tone depends on the concept: hype, disgust, disbelief, envy, admiration, or horror. Not every video should sound angry.
+- The ending should hit the SHARPEST number, consequence, or reaction — the line people replay.
+- 6-8 narration lines total, ~20-30 seconds. SHORTER IS BETTER — every line must earn its place.
 - Each line = one scene = one image
 - Each line UNDER 15 words
-- Tone: excited, flexing, "I can't believe I'm doing this"
+- If the concept is about "you", use second person. Otherwise name the company, billionaire, or object directly.
 
 Return ONLY a JSON object:
 {{"narration": ["line 1", "line 2", ...], "title": "SHORT PUNCHY TITLE"}}"""

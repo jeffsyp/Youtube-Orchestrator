@@ -438,13 +438,23 @@ def _build_style_profile(concept: dict) -> dict:
 
 def _is_domain_power_concept(title: str, brief: str) -> bool:
     text = f"{title} {brief}".lower()
-    keywords = [
+    direct_keywords = [
         "zeus", "poseidon", "apollo", "artemis", "hades",
         "lightning", "thunder", "storm", "weather", "tide", "tides",
-        "sun", "sunlight", "moon", "ocean", "sea", "fire", "time",
+        "sun", "sunlight", "moon", "ocean", "sea", "fire",
         "god", "goddess", "olympus",
     ]
-    return any(word in text for word in keywords)
+    time_power_phrases = [
+        "god of time",
+        "time god",
+        "time powers",
+        "control time",
+        "master of time",
+        "lord of time",
+        "chronos",
+        "chrono powers",
+    ]
+    return any(word in text for word in direct_keywords) or any(phrase in text for phrase in time_power_phrases)
 
 
 def _count_domain_effect_lines(narration_lines: list[str]) -> int:
@@ -454,6 +464,8 @@ def _count_domain_effect_lines(narration_lines: list[str]) -> int:
         "wave", "waves", "wind", "winds", "fire", "moon", "thunder",
         "shock", "shocks", "bolt", "bolts", "cook", "cooks", "cooking",
         "cloudride", "ride", "rides", "split", "splits",
+        "freeze time", "freezes time", "frozen in time", "rewind", "rewinds",
+        "pause time", "pauses time", "fast-forward", "ages instantly", "clock stops",
     ]
     count = 0
     for line in narration_lines[1:]:
@@ -509,7 +521,8 @@ def _needs_power_progression_rewrite(title: str, brief: str, narration_lines: li
 
 def _fallback_power_rewrite(title: str, narration_lines: list[str]) -> list[str]:
     hook = narration_lines[0] if narration_lines else f"What if {title.lower()}?"
-    if "zeus" in title.lower():
+    lower_title = title.lower()
+    if "zeus" in lower_title:
         return [
             hook,
             "Day 1: Tiny shocks jump out whenever you touch metal.",
@@ -517,6 +530,15 @@ def _fallback_power_rewrite(title: str, narration_lines: list[str]) -> list[str]
             "Month 2: You ride a cloud, then ruin three weddings with perfect weather.",
             "Year 1: Farmers beg for rain while sailors beg you to stop the storms.",
             "Year 2: One finger splits the sky open, and Olympus already calls you Zeus.",
+        ]
+    if any(term in lower_title for term in ["god of time", "time god", "control time", "master of time", "lord of time", "chronos"]):
+        return [
+            hook,
+            "Day 1: One nervous blink freezes a whole crosswalk in place.",
+            "Week 1: You rewind spilled coffee, broken plates, and one terrible haircut.",
+            "Month 1: Trains leave early because you keep fast-forwarding your commute.",
+            "Year 1: Cities beg you to pause disasters before they happen.",
+            "By year 2, clocks stop when you walk in and history waits.",
         ]
     return [
         hook,

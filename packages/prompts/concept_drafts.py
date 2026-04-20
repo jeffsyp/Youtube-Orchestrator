@@ -65,6 +65,43 @@ HARDCORE RANKED CONCEPT RULES (CRITICAL):
 - If a concept can be reframed as a bigger, more universal, more physics-driven question, do that.
 """
 
+    schmoney_facts_pitch_block = ""
+    if channel_name.lower() == "schmoney facts":
+        schmoney_facts_pitch_block = """
+
+SCHMONEY FACTS CONCEPT RULES (CRITICAL):
+- The only hard requirement is that the concept is MONEY-RELATED. It does NOT have to be a debt trap, bank fee, mortgage, or investing lecture.
+- In a batch of 5, use at least 4 DIFFERENT premise families.
+- At most ONE concept in the batch may be a personal-finance pain story about interest, debt, credit cards, loans, mortgages, or silent bank fees ruining your life.
+- Mix premise families aggressively:
+  1. hidden fee / scam / financial trap
+  2. absurd price shock or cost comparison
+  3. weird rich-person / celebrity / athlete spending
+  4. salary / hourly wage / take-home-pay reality
+  5. business model / profit margin / markup reveal
+  6. luxury operating cost (private jet, yacht, mansion, supercar)
+  7. casino / cash logistics / vault / money movement
+  8. inflation / opportunity cost / investing
+  9. tax / loophole / fine / subscription / financing trick
+  10. "what if you had X money" fantasy flex
+- Mix emotions too. A full batch of outrage is a FAIL. Mix disgust, envy, curiosity, aspiration, disbelief, admiration, and horror.
+- Avoid repetitive title skeletons like:
+  - "X STOLE Y FROM YOU"
+  - "YOUR $X ACTUALLY COSTS $Y"
+  - "THE $X LOAN THAT BECOMES $Y"
+  - "$100 AT 22 VS 32"
+- Avoid generic personal-finance preaching. Schmoney Facts can cover business, luxury, scams, spending, pricing tricks, taxes, rich flexes, weird money systems, cash handling, and black-market-style economics too.
+- Strong examples:
+  - "WHY AIRPORT WATER COSTS 8X MORE"
+  - "HOW MUCH A PRIVATE JET COSTS PER HOUR"
+  - "WHY COSTCO'S HOT DOG STILL COSTS $1.50"
+  - "THE $20 POPCORN THAT MAKES MOVIE THEATERS RICH"
+  - "WHAT $1 MILLION A YEAR ACTUALLY LOOKS LIKE AFTER TAXES"
+  - "HOW CASINOS MOVE MILLIONS IN CASH EVERY NIGHT"
+- A batch with two titles about interest, debt, or loan math is a FAIL even if the exact products differ.
+- If two pitches are basically the same "money pain math" with different nouns, keep the better one and replace the other.
+"""
+
     system = f"""You pitch YouTube Shorts concepts for "{channel_name}" — a channel about {niche}.
 
 YOUR GOAL: Maximum watch time. The #1 metric is Average View Duration (AVD%). Over 100% means viewers are looping. Every concept must keep viewers watching until the end AND wanting to rewatch.
@@ -94,7 +131,7 @@ WHAT MAKES A GOOD CONCEPT:
 - Avoid timid framing like "you didn't mean to", "you never wanted this", "somehow this happened" unless that reluctance is the actual joke. Prefer domination, escalation, spectacle, catastrophe, flexing, transformation, or absurd world-scale consequences.
 - If the concept involves power, mythology, combat, space, animals, disasters, or extreme comparisons, push it toward the wildest visually obvious version rather than the safest small one.
 - If the concept is about becoming a final boss, raid boss, dungeon lord, chosen tyrant, or world-ending threat, do NOT pitch it as cozy administration, city-building, tourism, or paperwork. Pitch escalating fights, stronger challengers, bigger powers, phase changes, summons, armies, and an undefeated ending.
-{hardcore_ranked_pitch_block}
+{hardcore_ranked_pitch_block}{schmoney_facts_pitch_block}
 
 FORMAT STRATEGY (choose the SIMPLEST one that still makes the idea work):
 - "single_frame" = the whole premise works as one instantly legible image plus an optional tiny aftermath
@@ -286,13 +323,36 @@ Notice the difference: specific champion, specific items, specific absurd detail
 
 - Structure: set up a painfully relatable moment → pile on increasingly absurd specifics → punchline that makes people screenshot and send to friends."""
 
+    schmoney_block = ""
+    if channel_id in SCHMONEY_CHANNELS:
+        schmoney_block = """
+SCHMONEY FACTS RULES (CRITICAL):
+- This channel is about MONEY in the broadest sense: prices, spending, scams, salaries, taxes, business models, luxury costs, cash logistics, investing, and financial absurdity.
+- Do NOT force every concept into "what if you had X dollars" or "the bank secretly robbed you."
+- Line 1 must state the exact money premise clearly, using the specific thing, company, object, or dollar amount.
+- Every later line must add a NEW money beat: a new number, cost, comparison, consequence, reveal, or flex. Do not repeat the same fee or loan math in slightly different words.
+- Use exact numbers constantly. Dollar amounts, salaries, margins, hourly burn, taxes, fees, profits, or totals are the hook.
+- Tone should match the premise: hype, disgust, disbelief, envy, admiration, or horror. Not every video should sound angry.
+- If the title is about "you", use second person. If it's about a company, billionaire, product, or scam, name it directly.
+- Great Schmoney angles include:
+  * absurd markup
+  * hidden cost
+  * luxury burn rate
+  * rich flex escalation
+  * salary vs take-home reality
+  * scam / loophole / fee trap
+  * business profit reveal
+  * insane real-world cost comparison
+- End on the sharpest number, total, or reaction. The final line should make the viewer say "that's insane."
+- Keep the narration visually legible. Favor things the viewer can instantly picture: grocery carts, jets, casinos, yachts, cash bricks, vaults, taxes, checkout counters, gas pumps, mansions, chips, and armored trucks."""
+
     user = f"""Write the narration for this approved concept:
 
 TITLE: {title}
 PITCH: {brief}
 KEY FACTS: {key_facts}
 STRUCTURE: {structure}
-{vs_block}{comedy_block}{ranking_block}
+{vs_block}{comedy_block}{ranking_block}{schmoney_block}
 FORMAT STRATEGY: {format_strategy}
 
 Write ONLY the words that will be spoken. No visual descriptions. Use the KEY FACTS — these are the real details that make the story specific and credible. Name the actual people, places, dates, and numbers. Make every line sound like someone excitedly telling a story at a party. The visual director will handle everything else AFTER hearing your narration."""
@@ -307,7 +367,10 @@ KIDS_CHANNELS = {24}  # Blanket Fort Cartoons
 VS_CHANNELS = {21, 28}  # One on Ones For Fun, NightNightShorts
 
 # Comedy-first channels — prioritize humor over accuracy/analysis
-COMEDY_CHANNELS = {13, 14, 16, 22, 30, 31}  # Munchlax Lore, ToonGunk, CrabRaveShorts, Deity Drama, Historic Ls, Schmoney Facts
+COMEDY_CHANNELS = {13, 14, 16, 22, 30}  # Munchlax Lore, ToonGunk, CrabRaveShorts, Deity Drama, Historic Ls
+
+# Money/economics channel — concrete numbers and specific money mechanics matter more than generic roast tone
+SCHMONEY_CHANNELS = {31}  # Schmoney Facts
 
 # Ranking/list channels — strict numbered countdown format
 RANKING_CHANNELS = {26}  # Hardcore Ranked

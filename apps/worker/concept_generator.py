@@ -713,11 +713,19 @@ async def generate_drafts_for_channel(channel_id: int, count: int = 5, form_type
                     past_titles, trending, count, form_type,
                 )
         else:
-            # ALL shorts use visual slapstick no-narration format
-            draft_ids = await _generate_no_narration_drafts(
-                engine, channel_id, channel_name, niche,
-                past_titles, trending, count,
-            )
+            # Schmoney Facts is narration-first in production, so generate reviewed drafts
+            # in the same format the builder actually consumes.
+            if channel_id == 31:
+                draft_ids = await _generate_short_drafts(
+                    engine, channel_id, channel_name, niche, voice_id,
+                    past_titles, trending, count, form_type,
+                )
+            else:
+                # All other shorts use the scene-first no-narration flow
+                draft_ids = await _generate_no_narration_drafts(
+                    engine, channel_id, channel_name, niche,
+                    past_titles, trending, count,
+                )
 
         logger.info("concept drafts generated", channel=channel_name, count=len(draft_ids),
                      form_type=form_type)
