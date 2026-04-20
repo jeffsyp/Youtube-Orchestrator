@@ -134,6 +134,108 @@ def get_veo_duration(seconds: int | float) -> int:
     return 8
 
 
+_VEO_SOFTENING_REPLACEMENTS: list[tuple[str, str]] = [
+    (r"\bbloodshot\b", "glowing"),
+    (r"\bterrified\b", "startled"),
+    (r"\bterror\b", "shock"),
+    (r"\bfurious\b", "outraged"),
+    (r"\bshove(?:s|d)?\b", "jolt"),
+    (r"\blunge(?:s|d)?\b", "rush"),
+    (r"\bslam(?:s|med)?\b", "bump"),
+    (r"\bsmash(?:es|ed)?\b", "break apart"),
+    (r"\bcrash(?:es|ed|ing)?\b", "drop"),
+    (r"\btopples? over\b", "stumbles away from"),
+    (r"\bpitches forward\b", "lurches forward"),
+    (r"\bthunderous impact\b", "burst of dust"),
+]
+
+
+def _soften_veo_prompt(prompt: str, *, stronger: bool = False) -> str:
+    """Lightly sanitize animation prompts when Veo filters a request."""
+    softened = prompt
+    for pattern, replacement in _VEO_SOFTENING_REPLACEMENTS:
+        softened = re.sub(pattern, replacement, softened, flags=re.IGNORECASE)
+
+    safety_tail = (
+        " Keep the action cinematic, readable, and non-graphic. "
+        "Emphasize surprise, motion, dust, and spectacle over bodily harm."
+    )
+    if stronger:
+        safety_tail = (
+            " Keep the action PG-13 and non-graphic. "
+            "Avoid collisions, impacts, injuries, panic, or suffering. "
+            "Emphasize reaction, movement, dust, and mythic spectacle instead."
+        )
+
+    if not softened.rstrip().endswith("."):
+        softened = softened.rstrip() + "."
+    return f"{softened}{safety_tail}"
+
+
+async def _generate_veo_clip_with_retries(
+    *,
+    prompt: str,
+    output_path: str,
+    model: str,
+    duration_seconds: int,
+    aspect_ratio: str,
+    resolution: str,
+    image_path: str,
+    timeout_seconds: int,
+) -> dict:
+    """Retry transient/internal Veo failures and soften filtered prompts once."""
+    prompt_variant = prompt
+    last_error: Exception | None = None
+
+    for attempt in range(1, 4):
+        try:
+            return await veo_generate_video_async(
+                prompt=prompt_variant,
+                output_path=output_path,
+                model=model,
+                duration_seconds=duration_seconds,
+                aspect_ratio=aspect_ratio,
+                resolution=resolution,
+                image_path=image_path,
+                timeout_seconds=timeout_seconds,
+            )
+        except Exception as e:
+            last_error = e
+            message = str(e)
+            is_filtered = (
+                "Veo filtered the request" in message
+                or "could not generate 1 videos" in message
+            )
+            is_transient = (
+                "Internal error" in message
+                or "code': 13" in message
+                or "timed out" in message.lower()
+            )
+
+            if is_filtered and attempt < 3:
+                prompt_variant = _soften_veo_prompt(prompt, stronger=attempt > 1)
+                logger.warning(
+                    "veo filtered prompt — retrying with softened wording",
+                    attempt=attempt,
+                    original_prompt=prompt[:120],
+                    softened_prompt=prompt_variant[:160],
+                )
+                continue
+
+            if is_transient and attempt < 3:
+                logger.warning(
+                    "veo transient failure — retrying",
+                    attempt=attempt,
+                    error=message[:200],
+                )
+                await asyncio.sleep(min(5 * attempt, 15))
+                continue
+
+            raise
+
+    raise last_error or RuntimeError("Veo retry loop exhausted without an error object")
+
+
 async def run_tasks(coroutines: list, parallel: bool = True, max_concurrent: int = 5):
     """Run async coroutine-generating functions in parallel or sequentially.
 
@@ -977,7 +1079,7 @@ Answer PASS or FAIL with specific reason."""},
         # Animate
         if video_provider == "veo":
             veo_duration = get_veo_duration(duration)
-            await veo_generate_video_async(
+            await _generate_veo_clip_with_retries(
                 prompt=anim_prompt,
                 output_path=clip_path,
                 model=video_model or "veo-3.1-lite-generate-001",

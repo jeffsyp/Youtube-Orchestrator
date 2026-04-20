@@ -993,6 +993,9 @@ Return ONLY the prompt.""",
             edit_prompts.append(
                 f"Same exact impact-test arena, same strike wall, same observation booth, same camera. "
                 f"Replace the subject with {subject}, shown {strike_pose}. "
+                "Keep the ranked subject as the SAME upright full-body test-dummy silhouette on the plate. "
+                "Do not turn the subject into a loose heap, puddle, scattered debris pile, or collapsed scrap shape. "
+                "Even when the material is failing, it should still read as a standing body at the impact moment or immediate aftermath. "
                 f"Make the anatomy physically believable and species-correct. "
                 f"Show {visible_result}. "
                 f"The visual damage must match this narration: {result_text or 'the hit lands harder than the previous subject'}. "
@@ -1131,6 +1134,8 @@ Return ONLY a JSON array of {n_lines} strings. Line 0 should be "No changes — 
                         edit_instruction = (
                             "Treat the input image as a LOCKED scientific impact-test template. "
                             "Preserve the exact same camera angle, crop, strike wall position, floor markings, debris lane, and skeleton observation booth placement. "
+                            "Preserve the ranked subject as a readable upright full-body target on the impact plate. "
+                            "Never replace it with an unstructured pile of debris or a collapsed heap. "
                             "Do not change the environment or convert it into poster art. "
                             f"{edit_prompts[i]}"
                         )

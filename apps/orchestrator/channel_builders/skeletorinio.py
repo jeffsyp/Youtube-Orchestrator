@@ -438,11 +438,36 @@ def _build_style_profile(concept: dict) -> dict:
 
 def _is_domain_power_concept(title: str, brief: str) -> bool:
     text = f"{title} {brief}".lower()
+    artifact_terms = [
+        "helmet", "helm", "sword", "trident", "crown", "ring",
+        "amulet", "artifact", "relic", "lamp", "staff", "hammer",
+    ]
+    borrowed_terms = [
+        "stole", "stolen", "grabbed", "grab", "touched", "touch",
+        "found", "wear", "wore", "borrowed", "picked up", "pick up",
+    ]
     direct_keywords = [
-        "zeus", "poseidon", "apollo", "artemis", "hades",
+        "zeus", "poseidon", "apollo", "artemis",
         "lightning", "thunder", "storm", "weather", "tide", "tides",
         "sun", "sunlight", "moon", "ocean", "sea", "fire",
-        "god", "goddess", "olympus",
+        "olympus",
+    ]
+    explicit_domain_phrases = [
+        "became hades",
+        "new hades",
+        "god of the underworld",
+        "rule the underworld",
+        "underworld powers",
+        "became a god",
+        "became the god",
+        "became a goddess",
+        "became the goddess",
+        "divine powers",
+        "control the weather",
+        "control the sea",
+        "control the ocean",
+        "control the sun",
+        "control fire",
     ]
     time_power_phrases = [
         "god of time",
@@ -454,7 +479,21 @@ def _is_domain_power_concept(title: str, brief: str) -> bool:
         "chronos",
         "chrono powers",
     ]
-    return any(word in text for word in direct_keywords) or any(phrase in text for phrase in time_power_phrases)
+    artifact_borrow_concept = any(word in text for word in artifact_terms) and any(
+        word in text for word in borrowed_terms
+    )
+    explicit_domain_concept = any(phrase in text for phrase in explicit_domain_phrases)
+
+    # Borrowed myth artifacts like Hades' helmet should keep their own premise instead of
+    # being rewritten into generic "you became a god of X" fallback narration.
+    if artifact_borrow_concept and not explicit_domain_concept:
+        return False
+
+    return (
+        any(word in text for word in direct_keywords)
+        or explicit_domain_concept
+        or any(phrase in text for phrase in time_power_phrases)
+    )
 
 
 def _count_domain_effect_lines(narration_lines: list[str]) -> int:
