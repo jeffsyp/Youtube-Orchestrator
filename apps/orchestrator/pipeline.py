@@ -13,8 +13,15 @@ import time
 import structlog
 from dotenv import load_dotenv
 from packages.clients.channel_profiles import (
+    get_channel_anchor_policy as get_profile_anchor_policy,
     get_channel_art_style as get_profile_art_style,
+    get_channel_audio_policy as get_profile_audio_policy,
     get_channel_category as get_profile_category,
+    get_channel_intro_policy as get_profile_intro_policy,
+    get_channel_provider_strategy as get_profile_provider_strategy,
+    get_channel_video_model as get_profile_video_model,
+    get_channel_video_provider as get_profile_video_provider,
+    get_channel_video_resolution as get_profile_video_resolution,
     should_skip_image_review as get_profile_skip_image_review,
 )
 
@@ -105,6 +112,53 @@ def get_channel_art_style(channel_id: int) -> str:
 
 def should_skip_image_review(channel_id: int) -> bool:
     return get_profile_skip_image_review(channel_id)
+
+
+def get_channel_runtime_policy(channel_id: int, concept: dict | None = None) -> dict[str, str | None]:
+    concept = concept or {}
+    provider_strategy = str(
+        concept.get("provider_strategy") or get_profile_provider_strategy(channel_id)
+    ).strip().lower()
+    explicit_provider = str(
+        concept.get("video_provider") or get_profile_video_provider(channel_id, default="")
+    ).strip().lower()
+    video_provider = explicit_provider or ("veo" if provider_strategy == "veo" else "grok")
+    return {
+        "provider_strategy": provider_strategy,
+        "video_provider": video_provider,
+        "video_model": concept.get("video_model") or get_profile_video_model(channel_id),
+        "video_resolution": concept.get("video_resolution") or get_profile_video_resolution(channel_id),
+        "audio_policy": str(
+            concept.get("audio_policy") or get_profile_audio_policy(channel_id)
+        ).strip().lower(),
+        "intro_policy": str(
+            concept.get("intro_policy") or get_profile_intro_policy(channel_id)
+        ).strip().lower(),
+        "anchor_policy": str(
+            concept.get("anchor_policy") or get_profile_anchor_policy(channel_id)
+        ).strip().lower(),
+    }
+
+
+def build_anchor_policy_instruction(anchor_policy: str) -> str:
+    policy = (anchor_policy or "none").strip().lower()
+    if policy == "recurring_character":
+        return """
+- RECURRING ANCHOR: keep the same main character design across the whole video. If a line can stay on the main character, keep them on screen instead of swapping to generic observers.
+"""
+    if policy == "recurring_pair":
+        return """
+- RECURRING ANCHOR: keep the same core pair across the whole video. Default to scenes that feature the pair together unless the narration explicitly isolates one character.
+"""
+    if policy == "recurring_host":
+        return """
+- RECURRING ANCHOR: keep the same host/presenter design across all host-led scenes. Prefer host-centered framing when the narration is explanatory.
+"""
+    if policy == "proof_props":
+        return """
+- RECURRING ANCHOR: keep recurring proof objects visible across scenes where possible — receipts, bills, price tags, calculators, charts, meters, or cash props.
+"""
+    return ""
 
 
 async def run_pipeline(run_id: int, concept: dict):
@@ -1166,7 +1220,13 @@ async def _run_no_narration(run_id: int, concept: dict, output_dir: str, _update
 
     scenes = concept.get("scenes", [])
     title = concept.get("title", "Untitled")
-    channel_id = concept.get("channel_id", 14)
+    channel_id = int(concept.get("channel_id", 14))
+    runtime_policy = get_channel_runtime_policy(channel_id, concept)
+    video_provider = str(runtime_policy["video_provider"] or "grok").strip().lower()
+    video_model = runtime_policy["video_model"]
+    video_resolution = runtime_policy["video_resolution"] or "720p"
+    audio_policy = str(runtime_policy["audio_policy"] or "native_sfx").strip().lower()
+    use_native_video_audio = audio_policy in {"native_sfx", "native_dialogue"}
     WIDTH, HEIGHT = SHORT_WIDTH, SHORT_HEIGHT
 
     images_dir = os.path.join(output_dir, "images")
@@ -1176,6 +1236,8 @@ async def _run_no_narration(run_id: int, concept: dict, output_dir: str, _update
         os.makedirs(d, exist_ok=True)
 
     from packages.clients.grok import generate_image as grok_gen_image, generate_video_async
+    from packages.clients.veo import generate_video_async as veo_generate_video_async
+    from apps.orchestrator.channel_builders.shared import get_veo_duration
 
     # 0. Build character reference descriptions for consistent characters
     character_descriptions = {}  # character_name -> text description
@@ -1410,14 +1472,30 @@ async def _run_no_narration(run_id: int, concept: dict, output_dir: str, _update
             else:
                 await _update_step(f"generating scene {i + 1}/{len(scenes)} — text-to-video" + (" (with ref)" if scene_ref_url else ""))
 
-            await generate_video_async(
-                prompt=motion_prompt,
-                output_path=clip_path,
-                duration=min(duration, 10),
-                aspect_ratio="9:16",
-                image_url=img_b64,
-                reference_image_url=scene_ref_url if text_to_video else None,
-            )
+            if video_provider == "veo":
+                veo_kwargs = {
+                    "prompt": motion_prompt,
+                    "output_path": clip_path,
+                    "model": video_model or "veo-3.1-lite-generate-001",
+                    "duration_seconds": get_veo_duration(duration),
+                    "aspect_ratio": "9:16",
+                    "resolution": video_resolution,
+                    "generate_audio": use_native_video_audio,
+                    "timeout_seconds": 600,
+                }
+                if not text_to_video and img_path:
+                    veo_kwargs["image_path"] = img_path
+                await veo_generate_video_async(**veo_kwargs)
+            else:
+                await generate_video_async(
+                    prompt=motion_prompt,
+                    output_path=clip_path,
+                    duration=min(duration, 10),
+                    aspect_ratio="9:16",
+                    image_url=img_b64,
+                    reference_image_url=scene_ref_url if text_to_video else None,
+                    resolution=video_resolution,
+                )
             logger.info("scene animated", scene=i)
 
         # Extract last frame for seamless chaining to next scene
@@ -1442,17 +1520,23 @@ async def _run_no_narration(run_id: int, concept: dict, output_dir: str, _update
         # Create segment — keep Grok native audio (run in executor to avoid blocking)
         # Pad last segment so xfade doesn't clip the ending
         seg_duration = duration + (0.6 if i == len(scenes) - 1 else 0)
-        await asyncio.get_event_loop().run_in_executor(None, lambda d=seg_duration: subprocess.run([
-            "ffmpeg", "-y",
-            "-stream_loop", "-1", "-i", clip_path,
-            "-t", str(d),
-            "-vf", f"scale={WIDTH}:{HEIGHT}:force_original_aspect_ratio=decrease,pad={WIDTH}:{HEIGHT}:(ow-iw)/2:(oh-ih)/2",
-            "-r", "30", "-pix_fmt", "yuv420p",
-            "-c:v", "libx264", "-preset", "fast", "-crf", "23", "-pix_fmt", "yuv420p",
-            "-c:a", "aac", "-ar", "44100", "-b:a", "192k",
-            "-movflags", "+faststart",
-            seg_path,
-        ], capture_output=True, timeout=120))
+        def _render_scene_segment(d=seg_duration):
+            cmd = [
+                "ffmpeg", "-y",
+                "-stream_loop", "-1", "-i", clip_path,
+                "-t", str(d),
+                "-vf", f"scale={WIDTH}:{HEIGHT}:force_original_aspect_ratio=decrease,pad={WIDTH}:{HEIGHT}:(ow-iw)/2:(oh-ih)/2",
+                "-r", "30", "-pix_fmt", "yuv420p",
+                "-c:v", "libx264", "-preset", "fast", "-crf", "23", "-pix_fmt", "yuv420p",
+                "-movflags", "+faststart",
+            ]
+            if audio_policy == "none":
+                cmd.extend(["-an", seg_path])
+            else:
+                cmd.extend(["-map", "0:v:0", "-map", "0:a?", "-c:a", "aac", "-ar", "44100", "-b:a", "192k", seg_path])
+            return subprocess.run(cmd, capture_output=True, timeout=120)
+
+        await asyncio.get_event_loop().run_in_executor(None, _render_scene_segment)
 
         if os.path.exists(seg_path):
             segment_paths.append(seg_path)
@@ -1644,7 +1728,13 @@ async def _run_narration_first(run_id: int, concept: dict, output_dir: str, _upd
     voice_id = concept.get("voice_id", "56bWURjYFHyYyVf490Dp")
     narration_speed = concept.get("speed", None)
     title = concept.get("title", "Untitled")
-    channel_id = concept.get("channel_id", 14)
+    channel_id = int(concept.get("channel_id", 14))
+    runtime_policy = get_channel_runtime_policy(channel_id, concept)
+    video_provider = str(runtime_policy["video_provider"] or "grok").strip().lower()
+    video_model = runtime_policy["video_model"]
+    video_resolution = runtime_policy["video_resolution"] or ("1080p" if is_long_form else "720p")
+    anchor_policy = str(runtime_policy["anchor_policy"] or "none").strip().lower()
+    anchor_policy_block = build_anchor_policy_instruction(anchor_policy)
 
     # No-narration pipeline (memes, satisfying videos)
     if no_narration:
@@ -1818,6 +1908,7 @@ SPEAKING/DIALOGUE (CRITICAL — violations look terrible):
 - The AI video generator animates ALL mouths if you say "characters talking" — you MUST specify which single character's mouth moves.
 - Make sure the speaking character matches who the text/narration attributes the dialogue to. If the text says "mom:" then the mom character speaks, not the teen.
 - Character gender must match: "your mom" = woman, "your dad" = man, "the teacher" = match context.
+{anchor_policy_block}
 
 TYPES:
 - "grok": animated video clip. DEFAULT — use for almost every line. The image is generated first, then animated.
@@ -1930,6 +2021,8 @@ CRITICAL: The viewer should be able to understand the video on MUTE just from th
     from packages.clients.grok import generate_image as grok_gen_image
     from packages.clients.grok import generate_image_dalle as dalle_gen_image
     from packages.clients.grok import generate_video_async as grok_generate, extend_video_async as grok_extend
+    from packages.clients.veo import generate_video_async as veo_generate_video_async
+    from apps.orchestrator.channel_builders.shared import get_veo_duration
 
     from packages.clients.grok import generate_image_dalle_async
 
@@ -2308,11 +2401,11 @@ PROMPT: (only if NO) a corrected image prompt with detailed visual description o
     # Generate grok video clips
     if grok_indices:
         aspect_ratio = "16:9" if is_long_form else "9:16"
-        needs_consistency = any(visuals[i].get("consistent_character") for i in grok_indices)
+        needs_consistency = video_provider == "grok" and any(visuals[i].get("consistent_character") for i in grok_indices)
 
 
-        async def _gen_grok_with_retries(i, max_attempts=3):
-            """Generate a grok video clip: image first, then animate.
+        async def _gen_animated_clip_with_retries(i, max_attempts=3):
+            """Generate an animated clip: image first, then animate.
 
             1. Generate image with detailed scene prompt
             2. Animate image to video with short motion-only prompt
@@ -2321,12 +2414,12 @@ PROMPT: (only if NO) a corrected image prompt with detailed visual description o
             """
             clip_path = os.path.join(clips_dir, f"line_{i}.mp4")
             if os.path.exists(clip_path):
-                await _log(f"grok clip line {i} [cached]")
+                await _log(f"{video_provider} clip line {i} [cached]")
                 return i, clip_path
             dur = max(1, min(int(line_audio[i]["duration"]) + 1, 10))
 
             # Step 1: Generate the image
-            await _log(f"grok clip line {i} — calling gpt-image-1.5 ({dur}s target)")
+            await _log(f"{video_provider} clip line {i} — calling gpt-image-1.5 ({dur}s target)")
             img_path = os.path.join(images_dir, f"line_{i}.png")
             if not os.path.exists(img_path):
                 _prompt = visuals[i].get("prompt") or visuals[i].get("image_prompt", "")
@@ -2334,9 +2427,9 @@ PROMPT: (only if NO) a corrected image prompt with detailed visual description o
                     import time as _img_t
                     _img_start = _img_t.time()
                     await _gen_video_image_async(prompt=_prompt, output_path=img_path)
-                    await _log(f"grok clip line {i} — image generated ({_img_t.time()-_img_start:.0f}s)")
+                    await _log(f"{video_provider} clip line {i} — image generated ({_img_t.time()-_img_start:.0f}s)")
                 except Exception as img_err:
-                    await _log(f"grok clip line {i} — image FAILED: {str(img_err)[:150]}")
+                    await _log(f"{video_provider} clip line {i} — image FAILED: {str(img_err)[:150]}")
                     raise
 
                 if not os.path.exists(img_path):
@@ -2355,30 +2448,43 @@ PROMPT: (only if NO) a corrected image prompt with detailed visual description o
 
             # Step 2: Animate with Grok video
             motion_prompt = visuals[i].get("video_prompt", "Slow cinematic movement, dramatic mood")
-            await _log(f"grok clip line {i} — animating image to video")
+            await _log(f"{video_provider} clip line {i} — animating image to video")
 
             for attempt in range(max_attempts):
                 try:
                     if attempt > 0:
                         await asyncio.sleep(5 * attempt)
-                        await _log(f"grok clip line {i} — retry {attempt}")
-                    async def _grok_progress(progress, elapsed, _i=i):
-                        await _log(f"grok clip line {_i} — {progress}% ({elapsed}s)")
+                        await _log(f"{video_provider} clip line {i} — retry {attempt}")
+                    if video_provider == "veo":
+                        await veo_generate_video_async(
+                            prompt=motion_prompt,
+                            output_path=clip_path,
+                            model=video_model or "veo-3.1-lite-generate-001",
+                            duration_seconds=get_veo_duration(dur),
+                            aspect_ratio=aspect_ratio,
+                            resolution=video_resolution,
+                            image_path=img_path,
+                            timeout_seconds=600,
+                        )
+                    else:
+                        async def _grok_progress(progress, elapsed, _i=i):
+                            await _log(f"grok clip line {_i} — {progress}% ({elapsed}s)")
 
-                    await grok_generate(
-                        prompt=motion_prompt,
-                        output_path=clip_path, duration=dur, aspect_ratio=aspect_ratio,
-                        image_url=img_data_url,
-                        progress_callback=_grok_progress,
-                    )
+                        await grok_generate(
+                            prompt=motion_prompt,
+                            output_path=clip_path, duration=dur, aspect_ratio=aspect_ratio,
+                            image_url=img_data_url,
+                            resolution=video_resolution,
+                            progress_callback=_grok_progress,
+                        )
 
-                    await _log(f"grok clip line {i} — done")
+                    await _log(f"{video_provider} clip line {i} — done")
                     return i, clip_path
                 except Exception as e:
                     if attempt == max_attempts - 1:
-                        await _log(f"grok clip line {i} — FAILED after {max_attempts} attempts: {str(e)[:100]}")
-                        raise RuntimeError(f"Grok video failed for line {i} after {max_attempts} attempts: {e}") from e
-                    await _log(f"grok clip line {i} — attempt {attempt} failed: {str(e)[:80]}")
+                        await _log(f"{video_provider} clip line {i} — FAILED after {max_attempts} attempts: {str(e)[:100]}")
+                        raise RuntimeError(f"{video_provider} video failed for line {i} after {max_attempts} attempts: {e}") from e
+                    await _log(f"{video_provider} clip line {i} — attempt {attempt} failed: {str(e)[:80]}")
 
         # If consistency, generate first for ref frame
         if needs_consistency:
@@ -2402,6 +2508,7 @@ PROMPT: (only if NO) a corrected image prompt with detailed visual description o
                         prompt=motion_prompt,
                         output_path=first_clip, duration=dur, aspect_ratio=aspect_ratio,
                         image_url=first_img_url,
+                        resolution=video_resolution,
                     )
                     break
                 except Exception as e:
@@ -2409,7 +2516,7 @@ PROMPT: (only if NO) a corrected image prompt with detailed visual description o
                         raise RuntimeError(f"Grok failed on first clip (line {first_gi}) after 3 attempts: {e}") from e
                     logger.warning("first grok clip retry", attempt=attempt, error=str(e)[:100])
 
-            visual_paths[first_gi] = {"type": "video", "path": first_clip, "source": "grok"}
+            visual_paths[first_gi] = {"type": "video", "path": first_clip, "source": video_provider}
             ref_path = os.path.join(clips_dir, "grok_ref.jpg")
             subprocess.run([
                 "ffmpeg", "-y", "-ss", "1", "-i", first_clip,
@@ -2423,17 +2530,17 @@ PROMPT: (only if NO) a corrected image prompt with detailed visual description o
             remaining = grok_indices
 
         if remaining:
-            await _update_step(f"generating {len(remaining)} video clips")
+            await _update_step(f"generating {len(remaining)} {video_provider} video clips")
             # Launch all concurrently with minimal stagger
             tasks = []
             for idx, i in enumerate(remaining):
                 async def _launch(i=i, delay=idx * 0.3):
                     await asyncio.sleep(delay)
-                    return await _gen_grok_with_retries(i)
+                    return await _gen_animated_clip_with_retries(i)
                 tasks.append(_launch())
             results = await asyncio.gather(*tasks)
             for i, clip_path in results:
-                visual_paths[i] = {"type": "video", "path": clip_path, "source": "grok"}
+                visual_paths[i] = {"type": "video", "path": clip_path, "source": video_provider}
 
     # 4. Create segments — each line's audio paired directly with its visual — PARALLEL
     await _update_step(f"visuals done — creating {len(line_audio)} segments")

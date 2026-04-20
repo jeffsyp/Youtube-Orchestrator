@@ -836,7 +836,10 @@ async def build_skeletorinio(run_id: int, concept: dict, output_dir: str, _updat
 
     # ─── STEP 5: Intro, audio, subtitles ───
     await _update_step("building intro")
-    actual_teaser_dur = build_intro_teasers(n_lines, narr_dir, clips_dir, segments_dir, line_clip_map)
+    actual_teaser_dur = build_intro_teasers(
+        n_lines, narr_dir, clips_dir, segments_dir, line_clip_map,
+        channel_id=CHANNEL_ID, concept=concept,
+    )
 
     await _update_step("concatenating")
     teasers_path = os.path.join(segments_dir, "teasers.mp4")
@@ -845,6 +848,7 @@ async def build_skeletorinio(run_id: int, concept: dict, output_dir: str, _updat
     await _update_step("building audio")
     audio_path, seg_starts = build_numpy_audio(
         n_lines, narr_dir, MUSIC_PATH, actual_teaser_dur, seg_durations, total_dur, output_dir,
+        channel_id=CHANNEL_ID, concept=concept,
     )
 
     await _update_step("combining")

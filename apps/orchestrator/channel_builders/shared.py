@@ -25,6 +25,82 @@ WHOOSH_SFX = os.path.join(os.path.dirname(__file__), "..", "..", "..", "assets",
 SHUTTER_SFX = os.path.join(os.path.dirname(__file__), "..", "..", "..", "assets", "sfx", "camera_shutter.mp3")
 
 
+def resolve_channel_media_policy(channel_id: int, concept: dict | None = None) -> dict[str, str | None]:
+    """Resolve profile-backed media policy for a channel."""
+    from packages.clients.channel_profiles import (
+        get_channel_anchor_policy,
+        get_channel_audio_policy,
+        get_channel_intro_policy,
+        get_channel_provider_strategy,
+        get_channel_video_model,
+        get_channel_video_provider,
+        get_channel_video_resolution,
+    )
+
+    concept = concept or {}
+    provider_strategy = str(
+        concept.get("provider_strategy") or get_channel_provider_strategy(channel_id)
+    ).strip().lower()
+    intro_policy = str(
+        concept.get("intro_policy") or get_channel_intro_policy(channel_id)
+    ).strip().lower()
+    audio_policy = str(
+        concept.get("audio_policy") or get_channel_audio_policy(channel_id)
+    ).strip().lower()
+    anchor_policy = str(
+        concept.get("anchor_policy") or get_channel_anchor_policy(channel_id)
+    ).strip().lower()
+
+    explicit_provider = str(
+        concept.get("video_provider") or get_channel_video_provider(channel_id, default="")
+    ).strip().lower()
+    video_provider = explicit_provider or ("veo" if provider_strategy == "veo" else "grok")
+
+    return {
+        "provider_strategy": provider_strategy,
+        "intro_policy": intro_policy,
+        "audio_policy": audio_policy,
+        "anchor_policy": anchor_policy,
+        "video_provider": video_provider,
+        "video_model": concept.get("video_model") or get_channel_video_model(channel_id),
+        "video_resolution": concept.get("video_resolution") or get_channel_video_resolution(channel_id),
+    }
+
+
+def build_anchor_policy_prompt(anchor_policy: str) -> str:
+    """Return prompt guidance for recurring anchors."""
+    policy = (anchor_policy or "none").strip().lower()
+    if policy == "recurring_character":
+        return """
+
+CRITICAL — RECURRING ANCHOR:
+- Keep the SAME main character design, proportions, outfit language, and face silhouette across the whole video.
+- If the beat can plausibly stay with the anchor character, stay with them instead of cutting to random bystanders.
+"""
+    if policy == "recurring_pair":
+        return """
+
+CRITICAL — RECURRING ANCHOR:
+- Keep the SAME core pair visually consistent across the whole video.
+- Default to scenes that feature the pair together unless the narration explicitly isolates one of them.
+"""
+    if policy == "recurring_host":
+        return """
+
+CRITICAL — RECURRING ANCHOR:
+- Treat the host/presenter as the stable face of the video.
+- Keep the same host design across all host-led scenes and prefer host-centered framing when the narration is explanatory.
+"""
+    if policy == "proof_props":
+        return """
+
+CRITICAL — RECURRING ANCHOR:
+- Reuse recurring proof props across scenes: receipts, bills, price tags, calculators, cash stacks, charts, meters, or other concrete evidence objects.
+- The viewer should feel like the same proof language is carrying through the whole video.
+"""
+    return ""
+
+
 def get_duration(path: str) -> float:
     """Get audio/video duration in seconds."""
     if not os.path.exists(path) or os.path.getsize(path) == 0:
@@ -321,11 +397,6 @@ async def generate_and_animate_scenes(
     """
     from packages.clients.grok import generate_image_dalle_async, generate_image_grok_async, generate_video_async as grok_generate_video_async
     from packages.clients.veo import generate_video_async as veo_generate_video_async
-    from packages.clients.channel_profiles import (
-        get_channel_video_model,
-        get_channel_video_provider,
-        get_channel_video_resolution,
-    )
     # Pick image generator based on channel preference
     _gen_image = generate_image_grok_async if prefer_grok_images else generate_image_dalle_async
     from packages.clients.claude import generate as claude_generate
@@ -340,10 +411,13 @@ async def generate_and_animate_scenes(
     client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"), timeout=120.0)
     brief = concept.get("brief", "")
     channel_id = int(concept.get("channel_id") or 0)
-    video_provider = (concept.get("video_provider") or get_channel_video_provider(channel_id)).strip().lower()
-    video_model = concept.get("video_model") or get_channel_video_model(channel_id)
-    video_resolution = concept.get("video_resolution") or get_channel_video_resolution(channel_id)
+    media_policy = resolve_channel_media_policy(channel_id, concept)
+    video_provider = str(media_policy["video_provider"] or "grok").strip().lower()
+    video_model = media_policy["video_model"]
+    video_resolution = media_policy["video_resolution"]
+    anchor_policy = str(media_policy["anchor_policy"] or "none")
     extra_rules = f"\n\nCONCEPT-SPECIFIC INSTRUCTIONS:\n{brief}" if brief else ""
+    anchor_policy_block = build_anchor_policy_prompt(anchor_policy)
     ref_style_prefix = (
         "MATCH THE EXACT ART STYLE OF THE REFERENCE IMAGE. "
         "Keep the same rendering medium, same line quality, same level of detail, same character design, "
@@ -397,6 +471,7 @@ NARRATION (with durations):
 CRITICAL — CHARACTER CONSISTENCY: If the CHANNEL RULES above describe a specific main character (e.g. a skeletorinio, a frog, a mascot), that exact character MUST appear in EVERY image_prompt as the subject. Do NOT substitute with generic humans, tourists, or other characters. The named main character is the star of every single scene unless the narration explicitly focuses on someone else.
 
 CRITICAL — NO CROSS-FRANCHISE CONTAMINATION: If the concept is a CROSSOVER (a character from Franchise A visiting Franchise B's world), ONLY the visiting character may come from Franchise A. All OTHER characters, backgrounds, and settings must be from Franchise B only. Every image_prompt must end with an explicit negative like "No other Dragon Ball characters. Only Hunter x Hunter characters besides Goku." to prevent the model from hallucinating the visitor's franchise-mates into the scene. If you don't know which franchise the visitor is from, infer from their name (Goku/Vegeta/Gohan → Dragon Ball; Naruto/Sasuke → Naruto; Luffy/Zoro → One Piece; Saitama → One Punch Man; etc.).
+{anchor_policy_block}
 
 CRITICAL — CLIP COVERAGE: The total duration of sub-action clips for each narration line MUST cover the narration duration. A 6-second narration line needs 2-3 sub-actions (2x3s or 3x2s), NOT one 3s clip. A 4-second line needs at least 2 sub-actions. Only lines under 3.5s can have a single sub-action.
 
@@ -1151,6 +1226,10 @@ def build_intro_teasers(
     clips_dir: str,
     segments_dir: str,
     line_clip_map: dict[int, list[str]] | None = None,
+    *,
+    channel_id: int | None = None,
+    concept: dict | None = None,
+    intro_policy: str | None = None,
 ) -> float:
     """Build intro teasers from distinct scenes, not every raw clip in order.
 
@@ -1159,7 +1238,18 @@ def build_intro_teasers(
     lagged on the same beat.
     """
     title_narr_dur = get_duration(os.path.join(narr_dir, "line_00.mp3"))
+    if intro_policy is None and channel_id is not None:
+        intro_policy = str(resolve_channel_media_policy(channel_id, concept)["intro_policy"] or "teaser_intro")
+    intro_policy = (intro_policy or "teaser_intro").strip().lower()
     teaser_clip_dur = 0.6  # matches shutter sfx interval
+    teasers_path = os.path.join(segments_dir, "teasers.mp4")
+
+    if intro_policy in {"cold_open", "matchup_card"}:
+        hook_segment = os.path.join(segments_dir, "seg_00.mp4")
+        if os.path.exists(hook_segment):
+            import shutil as _sh
+            _sh.copy2(hook_segment, teasers_path)
+            return get_duration(teasers_path)
 
     teaser_sources: list[str] = []
 
@@ -1213,7 +1303,6 @@ def build_intro_teasers(
         ], capture_output=True, timeout=10)
 
     # Concat teasers
-    teasers_path = os.path.join(segments_dir, "teasers.mp4")
     tl = os.path.join(segments_dir, "teaser_list.txt")
     with open(tl, "w") as f:
         for j in range(n_teasers):
@@ -1385,28 +1474,46 @@ def build_numpy_audio(
     seg_durations: list[float],
     total_dur: float,
     output_dir: str,
+    *,
+    channel_id: int | None = None,
+    concept: dict | None = None,
+    audio_policy: str | None = None,
+    intro_policy: str | None = None,
 ) -> tuple[str, list[float]]:
     """Build entire audio as one WAV using numpy. Returns (audio_path, seg_starts)."""
+    if channel_id is not None:
+        media_policy = resolve_channel_media_policy(channel_id, concept)
+        if audio_policy is None:
+            audio_policy = str(media_policy["audio_policy"] or "voiceover")
+        if intro_policy is None:
+            intro_policy = str(media_policy["intro_policy"] or "teaser_intro")
+
+    audio_policy = (audio_policy or "voiceover").strip().lower()
+    intro_policy = (intro_policy or "teaser_intro").strip().lower()
+    add_intro_sfx = intro_policy in {"teaser_intro", "matchup_card"}
+    include_music = bool(music_path) and audio_policy == "voiceover"
+
     total_samples = int(total_dur * SR) + SR
     output = np.zeros(total_samples, dtype=np.float32)
 
-    whoosh = load_audio_samples(WHOOSH_SFX)
-    shutter = load_audio_samples(SHUTTER_SFX)[:int(0.3 * SR)] * 1.2
     title_narr = load_audio_samples(os.path.join(narr_dir, "line_00.mp3"))
+    if add_intro_sfx:
+        whoosh = load_audio_samples(WHOOSH_SFX)
+        shutter = load_audio_samples(SHUTTER_SFX)[:int(0.3 * SR)] * 1.2
 
-    # Whoosh stretched to teaser duration
-    whoosh_resampled = np.interp(
-        np.linspace(0, len(whoosh) - 1, int(actual_teaser_dur * SR)),
-        np.arange(len(whoosh)), whoosh,
-    ) * 0.3
-    output[:len(whoosh_resampled)] += whoosh_resampled
+        # Whoosh stretched to teaser duration
+        whoosh_resampled = np.interp(
+            np.linspace(0, len(whoosh) - 1, int(actual_teaser_dur * SR)),
+            np.arange(len(whoosh)), whoosh,
+        ) * 0.3
+        output[:len(whoosh_resampled)] += whoosh_resampled
 
-    # Camera shutter clicks at 0.6s intervals
-    n_teasers = max(4, int(actual_teaser_dur / 0.6))
-    for j in range(n_teasers):
-        pos = int(j * 0.6 * SR)
-        end = min(pos + len(shutter), int(actual_teaser_dur * SR))
-        output[pos:end] += shutter[:end - pos]
+        # Camera shutter clicks at 0.6s intervals
+        n_teasers = max(4, int(actual_teaser_dur / 0.6))
+        for j in range(n_teasers):
+            pos = int(j * 0.6 * SR)
+            end = min(pos + len(shutter), int(actual_teaser_dur * SR))
+            output[pos:end] += shutter[:end - pos]
 
     # Title narration over intro
     narr_len = min(len(title_narr), int(actual_teaser_dur * SR))
@@ -1429,9 +1536,10 @@ def build_numpy_audio(
         current_pos += int((seg_durations[i] - overlap) * SR)
 
     # Background music (starts after intro)
-    music = load_audio_samples(music_path)
-    ml = min(len(music), total_samples - intro_end)
-    output[intro_end:intro_end + ml] += music[:ml] * 0.05
+    if include_music:
+        music = load_audio_samples(music_path)
+        ml = min(len(music), total_samples - intro_end)
+        output[intro_end:intro_end + ml] += music[:ml] * 0.05
 
     # Normalize and write
     max_val = np.max(np.abs(output))
