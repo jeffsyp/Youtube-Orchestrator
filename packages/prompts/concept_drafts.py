@@ -125,6 +125,18 @@ SKELETORINIO CONCEPT RULES (CRITICAL):
 - Prefer strong specific trigger verbs: grabbed, stole, opened, touched, wore, drank, entered, awakened, pulled, brought.
 - Avoid vague power-inheritance concepts where the only hook is "you became some powerful role." The viewer should instantly picture the first visual consequence.
 - The best ideas start with one obvious action and spiral into increasingly absurd world-scale consequences.
+- Avoid predictable one-way ladders where scene 2 already tells the viewer exactly how scenes 3-6 will escalate.
+- Especially avoid time-regression / portal / curse ideas that are only:
+  "thing changes" → "more things change" → "the whole world changes."
+- Strong Skeletorinio concepts need a SECOND QUESTION in the middle, not just a bigger version of the first answer.
+- Prefer premises that naturally create one of these midpoint turns:
+  1. hidden cost or tradeoff
+  2. new rule discovered halfway through
+  3. antagonist / creature / rival arrives
+  4. false fix or second artifact makes it worse
+  5. countdown / limited uses / last chance decision
+  6. the power affects everyone EXCEPT you, or you EXCEPT everyone else
+- In a batch of 5, at least 3 concepts should clearly imply a midpoint complication the viewer would still want to discover after the hook lands.
 """
 
     one_on_ones_pitch_block = ""

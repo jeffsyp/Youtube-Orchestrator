@@ -162,6 +162,17 @@ THE FORMAT:
 - Every post-hook line should imply a DISTINCT visual beat. Do not write six lines that all naturally map to the same room, same pose, or same composition with slightly bigger stakes.
 - If the story stays in one overall place, the beats should still move to different parts/functions of that place: entrance, corridor, staircase, battlefield floor, balcony, treasure room, gate, rooftop, crowd, aftermath, etc.
 - Escalation should create NEW visual situations, not just "more people in the same shot."
+- The viewer should still have a NEW QUESTION after line 2. If line 2 already tells them exactly how the rest of the video will escalate, the story is too predictable.
+- By line 3 or 4, introduce a MIDPOINT TURN: a new rule, hidden cost, antagonist, misfire, countdown, false fix, trap, tradeoff, or reversal that changes what the viewer is waiting to see.
+- BAD predictable shape: "thing gets younger" → "more things get younger" → "the city gets younger" → "dinosaurs show up." Once line 2 lands, the rest is obvious.
+- GOOD sticky shape: "thing gets younger" → "everyone else starts reversing faster than you" → "the fountain will not stop" → "every sip erases a century" → "one last drop could restore the future or finish deleting it."
+- Across the post-hook lines, force at least 3 DISTINCT consequence categories, not one category repeated bigger:
+  1. personal/body consequence,
+  2. social/public reaction,
+  3. world/environment change,
+  4. creature/antagonist arrival,
+  5. rule/cost/discovery,
+  6. impossible choice / false solution.
 - If the concept gives you a mythic job, divine title, or control over a domain (Zeus, Poseidon, sun god, storms, tides, weather, fire, time, etc.), at least 3 post-hook lines must show you visibly USING or MISUSING that exact power in the world.
 - Bureaucracy can appear, but it cannot dominate those concepts. One complaint/help-desk line is enough. The rest should show the sky, sea, light, weather, or world physically reacting to your bad decisions.
 - If the concept is about becoming a FINAL BOSS, RAID BOSS, DUNGEON LORD, DARK KING, SERVER ENDGAME THREAT, or any other combat-power-fantasy role, DO NOT pivot into management, tourism, construction, urban planning, or cozy civilization jokes.
@@ -764,6 +775,143 @@ Return ONLY JSON:
     return fallback
 
 
+def _story_novelty_categories(line: str) -> set[str]:
+    lower = str(line or "").lower()
+    categories: set[str] = set()
+    keyword_map = {
+        "body": ["young", "younger", "older", "aging", "age", "wrinkle", "baby", "toddler", "body", "face", "shrink", "grow"],
+        "social": ["crowd", "everyone", "villagers", "king", "queen", "army", "worship", "kneel", "court", "people", "citizens"],
+        "world": ["city", "sky", "storm", "ocean", "village", "kingdom", "moon", "mountain", "earthquake", "sun", "world", "history"],
+        "creature": ["dragon", "mammoth", "dinosaur", "monster", "demon", "beast", "wolf", "serpent", "army of the dead"],
+        "rule": ["but", "except", "until", "won't", "will not", "can't", "cannot", "cost", "price", "trade", "deal", "sip", "one more", "last drop", "rule", "erase", "stuck", "trapped", "backfires"],
+        "travel": ["portal", "rome", "future", "past", "jurassic", "ice age", "era", "century", "timeline", "history rewrites"],
+        "artifact": ["fountain", "sword", "lamp", "crown", "stone", "relic", "amulet", "ring", "book"],
+        "combat": ["fight", "raid", "spell", "blast", "summon", "charge", "battle", "wipe", "explode", "crack"],
+    }
+    for category, keywords in keyword_map.items():
+        if any(keyword in lower for keyword in keywords):
+            categories.add(category)
+    return categories
+
+
+def _is_predictable_ladder_story(title: str, brief: str, narration_lines: list[str]) -> bool:
+    if not narration_lines or len(narration_lines) < 6:
+        return False
+    if _is_domain_power_concept(title, brief) or _is_boss_raid_concept(title, brief):
+        return False
+
+    post_hook = narration_lines[1:]
+    category_hits: set[str] = set()
+    for line in post_hook:
+        category_hits.update(_story_novelty_categories(line))
+    early_lines = post_hook[: min(4, len(post_hook))]
+    early_category_hits: set[str] = set()
+    for line in early_lines:
+        early_category_hits.update(_story_novelty_categories(line))
+
+    time_jump_lines = sum(
+        1 for line in post_hook if re.search(r"(?i)^(day|week|month|year|decades?)\b", line.strip())
+    )
+    novelty_markers = [
+        "but", "except", "until", "instead", "suddenly", "turns out", "backfires",
+        "won't", "will not", "can't", "cannot", "cost", "price", "deal", "trade",
+        "last drop", "one more", "stuck", "trapped", "erase", "everyone else",
+        "then you learn", "you realize", "the problem", "the catch", "actually",
+    ]
+    novelty_lines = sum(
+        1 for line in post_hook if any(marker in line.lower() for marker in novelty_markers)
+    )
+    early_turn_lines = sum(
+        1 for line in early_lines if any(marker in line.lower() for marker in novelty_markers)
+    )
+    regression_terms = [
+        "younger", "older", "rewind", "revers", "century", "decade", "jurassic",
+        "ice age", "fountain of youth", "everyone else getting younger", "back through",
+    ]
+    regression_signal = any(
+        term in f"{title} {brief} {' '.join(early_lines)}".lower() for term in regression_terms
+    )
+    repeated_regression_lines = sum(
+        1 for line in early_lines if any(term in line.lower() for term in regression_terms)
+    )
+
+    return (
+        (time_jump_lines >= 3 and len(category_hits) < 4)
+        or (novelty_lines == 0 and len(category_hits) < 3)
+        or (early_turn_lines == 0 and len(early_category_hits) < 4)
+        or (regression_signal and early_turn_lines == 0 and repeated_regression_lines >= 2)
+    )
+
+
+def _fallback_story_novelty_rewrite(title: str, brief: str, narration_lines: list[str]) -> list[str]:
+    hook = narration_lines[0] if narration_lines else f"What if {title.lower()}?"
+    lower = f"{title} {brief}".lower()
+    if any(term in lower for term in ["fountain of youth", "younger", "getting younger", "age backwards", "aging backward"]):
+        return [
+            hook,
+            "Day 1: Your face gets younger, but the whole plaza reverses faster.",
+            "Day 2: Everyone becomes toddlers, and the fountain still will not stop.",
+            "Week 1: The city rewinds to ruins, and mammoths start drinking beside you.",
+            "Then you learn each sip erases one century everywhere except your memory.",
+            "By sunset, Jurassic trees cover the square, and the fountain is almost dry.",
+            "One last drop remains. The future only comes back if you drink again.",
+        ]
+    return narration_lines
+
+
+def _maybe_strengthen_story_novelty(title: str, brief: str, narration_lines: list[str]) -> list[str]:
+    if not _is_predictable_ladder_story(title, brief, narration_lines):
+        return narration_lines
+
+    try:
+        from packages.clients.claude import generate as claude_generate
+
+        resp = claude_generate(
+            prompt=f"""Rewrite this Skeletorinio narration so the viewer is still discovering NEW story information after line 2 instead of just watching the same effect scale up.
+
+TITLE: {title}
+BRIEF: {brief}
+CURRENT NARRATION:
+{json.dumps(narration_lines, ensure_ascii=False)}
+
+RULES:
+- Keep the same core premise and comedic tone.
+- Keep 6-8 lines total.
+- Every line under 15 words.
+- Keep the hook as a clear "What if..." line naming the concept.
+- By line 3 or 4, add a MIDPOINT TURN: new rule, hidden cost, antagonist, trap, misfire, false fix, countdown, or impossible choice.
+- At least 3 distinct post-hook beat categories must appear across the script:
+  1. personal/body consequence
+  2. social/public reaction
+  3. world/environment change
+  4. creature/antagonist arrival
+  5. rule/cost/discovery
+  6. impossible choice / false solution
+- Do NOT make every line just "the same effect but bigger."
+- Every line should imply a fresh scene or a fresh kind of scene.
+- The penultimate line is the craziest peak.
+- The final line lands in a concrete weird new normal or a final choice that completes the story.
+
+Return ONLY JSON:
+{{"narration": ["line 1", "line 2", "..."]}}""",
+            max_tokens=450,
+        )
+        match = re.search(r"\{.*\}", resp, re.DOTALL)
+        if match:
+            parsed = json.loads(match.group())
+            candidate = parsed.get("narration") or []
+            if candidate and not _is_predictable_ladder_story(title, brief, candidate):
+                logger.info("strengthened story novelty", title=title, before=narration_lines, after=candidate)
+                return candidate
+    except Exception as e:
+        logger.warning("story novelty rewrite fallback", title=title, error=str(e)[:120])
+
+    fallback = _fallback_story_novelty_rewrite(title, brief, narration_lines)
+    if fallback != narration_lines:
+        logger.info("using fallback story novelty narration", title=title, fallback=fallback)
+    return fallback
+
+
 async def build_skeletorinio(run_id: int, concept: dict, output_dir: str, _update_step, db_url: str):
     """Full Skeletorinio video build using unified pipeline."""
     title = concept.get("title", "Untitled")
@@ -795,6 +943,7 @@ async def build_skeletorinio(run_id: int, concept: dict, output_dir: str, _updat
 
     narration_lines = _maybe_strengthen_power_narration(title, brief, narration_lines)
     narration_lines = _maybe_strengthen_boss_raid_narration(title, brief, narration_lines)
+    narration_lines = _maybe_strengthen_story_novelty(title, brief, narration_lines)
     concept["narration"] = narration_lines
 
     n_lines = len(narration_lines)
