@@ -214,7 +214,7 @@ async def publish_run(run_id: int, privacy: str = "private"):
 
         async with async_session() as session:
             await session.execute(
-                text("UPDATE content_runs SET status = 'published' WHERE id = :id"),
+                text("UPDATE content_runs SET status = 'published', current_step = 'published' WHERE id = :id"),
                 {"id": run_id},
             )
             if concept_id:
@@ -321,7 +321,7 @@ async def publish_run(run_id: int, privacy: str = "private"):
     if result.get("published"):
         async with async_session() as session:
             await session.execute(
-                text("UPDATE content_runs SET status = 'published' WHERE id = :id"),
+                text("UPDATE content_runs SET status = 'published', current_step = 'published' WHERE id = :id"),
                 {"id": run_id},
             )
             await session.execute(

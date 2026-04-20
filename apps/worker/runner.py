@@ -642,7 +642,11 @@ async def _maybe_auto_upload(engine, run_id: int, channel_id: int, concept: dict
                     UPDATE content_bank SET status = 'uploaded' WHERE run_id = :rid
                 """), {"rid": run_id})
                 await s.execute(text("""
-                    UPDATE content_runs SET status = 'published', completed_at = COALESCE(completed_at, NOW()) WHERE id = :rid
+                    UPDATE content_runs
+                    SET status = 'published',
+                        current_step = 'published',
+                        completed_at = COALESCE(completed_at, NOW())
+                    WHERE id = :rid
                 """), {"rid": run_id})
                 await s.execute(text("""
                     INSERT INTO assets (run_id, channel_id, asset_type, content)
