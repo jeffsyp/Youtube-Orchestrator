@@ -181,6 +181,32 @@ NATURE RECEIPTS CONCEPT RULES (CRITICAL):
 - The best Nature Receipts ideas feel like tiny wildlife disaster documentaries, not random animal Mad Libs.
 """
 
+    coldcase_pitch_block = ""
+    if channel_name.lower() == "coldcasecartoons":
+        coldcase_pitch_block = """
+
+COLDCASECARTOONS CONCEPT RULES (CRITICAL):
+- This is a narrator-led TRUE CRIME channel now, not a skit channel and not characters talking in scenes.
+- Pitch concise case-breakdown shorts the narrator can explain clearly in 20-30 seconds.
+- Strong premise families:
+  1. search-party betrayal
+  2. insurance or inheritance motive
+  3. poisoning / medical manipulation
+  4. escaped victim or mistaken death
+  5. alibi collapse or forensic breakthrough
+  6. trusted insider did it: spouse, best friend, sibling, doctor, business partner
+- Titles should state the role + twist clearly:
+  GOOD: "HER BEST FRIEND LED THE SEARCH PARTY AWAY FROM THE BODY"
+  GOOD: "HE BOUGHT THE LIFE INSURANCE POLICY THE DAY BEFORE THE ACCIDENT"
+  BAD: "SHE SMILED TOO MUCH AT THE FUNERAL"
+  BAD: "THE CASE THAT CHANGED EVERYTHING"
+- The structure should feel like:
+  case setup → suspicious detail → what broke the case open → what happened next.
+- KEY FACTS must include the specific relationship, method, clue, timeline beat, and reveal. Do not leave it at vague lines like "investigators got suspicious."
+- Avoid fictional banter, imaginary press-conference dialogue, or meme punchlines. The tension should come from the case itself.
+- Avoid generic killer trivia or random shock premises. Each pitch needs one distinct betrayal or investigative turn viewers can instantly picture.
+"""
+
     system = f"""You pitch YouTube Shorts concepts for "{channel_name}" — a channel about {niche}.
 
 YOUR GOAL: Maximum watch time. The #1 metric is Average View Duration (AVD%). Over 100% means viewers are looping. Every concept must keep viewers watching until the end AND wanting to rewatch.
@@ -210,7 +236,7 @@ WHAT MAKES A GOOD CONCEPT:
 - Avoid timid framing like "you didn't mean to", "you never wanted this", "somehow this happened" unless that reluctance is the actual joke. Prefer domination, escalation, spectacle, catastrophe, flexing, transformation, or absurd world-scale consequences.
 - If the concept involves power, mythology, combat, space, animals, disasters, or extreme comparisons, push it toward the wildest visually obvious version rather than the safest small one.
 - If the concept is about becoming a final boss, raid boss, dungeon lord, chosen tyrant, or world-ending threat, do NOT pitch it as cozy administration, city-building, tourism, or paperwork. Pitch escalating fights, stronger challengers, bigger powers, phase changes, summons, armies, and an undefeated ending.
-{hardcore_ranked_pitch_block}{schmoney_facts_pitch_block}{skeletorinio_pitch_block}{one_on_ones_pitch_block}{nature_receipts_pitch_block}
+{hardcore_ranked_pitch_block}{schmoney_facts_pitch_block}{skeletorinio_pitch_block}{one_on_ones_pitch_block}{nature_receipts_pitch_block}{coldcase_pitch_block}
 
 FORMAT STRATEGY (choose the SIMPLEST one that still makes the idea work):
 - "single_frame" = the whole premise works as one instantly legible image plus an optional tiny aftermath
@@ -268,6 +294,30 @@ def build_script_prompt(
     format_strategy = normalize_format_strategy(format_strategy)
     format_spec = get_format_strategy_spec(format_strategy)
     format_description = FORMAT_STRATEGY_DESCRIPTIONS[format_strategy]
+    is_coldcase = channel_id in COLDCASE_CHANNELS
+    if is_coldcase:
+        tone_block = """
+- This channel is NARRATED TRUE CRIME, not comedy and not character dialogue.
+- Treat the short like a concise case breakdown: shocking premise → suspicious detail → clue or reveal → consequence.
+- Never invent dialogue, taunts, or emotional one-liners for people in the case unless a documented quote is in KEY FACTS.
+- Line 1 should lead with the betrayal, disappearance, or impossible clue — not a joke and not throat-clearing.
+- Use a tense, factual tone. The viewer should feel pulled into a real case file, not a skit.
+- End on the case-turning clue, arrest, confession, or devastating implication — not a wink.
+- Be specific about the evidence that mattered: policy date, toxicology, timeline gap, phone ping, witness statement, search-map hole, receipt, DNA match, or hidden route.
+- If the title promises a betrayal or clue, the narration must explain exactly what it was.
+"""
+        humor_block = """
+- DO NOT go for jokes, roast energy, or party-story banter. Clarity, tension, and specificity win here.
+"""
+        delivery_line = "Make every line sound like a tense but controlled true-crime retelling. The visual director will handle the reenactment after hearing your narration."
+    else:
+        tone_block = ""
+        humor_block = """
+- BE FUNNY. But remember — this is read by an AI voice with zero comic timing. The humor must come from the WORDS AND SITUATION, not delivery. Absurd imagery, unexpected comparisons, escalating ridiculousness, and "wait that actually happened?" moments work. Dry wit and sarcasm do NOT work — they need vocal inflection that AI can't do.
+  GOOD: "Your team celebrated. Your bot lane typed 'nice.' And then Tryndamere killed your entire backline from beyond the grave." (funny because of the situation)
+  BAD: "Your screen said he was dead. He was not dead." (needs delivery to be funny, AI reads it flat)
+"""
+        delivery_line = "Make every line sound like someone excitedly telling a story at a party. The visual director will handle everything else AFTER hearing your narration."
 
     system = f"""You are a scriptwriter for "{channel_name}" — a YouTube Shorts channel about {niche}.
 
@@ -287,9 +337,7 @@ WRITING RULES:
 - Each narration line = one visual on screen. One sentence per line, not a paragraph. More lines = more visual cuts = more stimulating.
 - A viewer scrolling on their phone should be able to follow this with ZERO effort. If they have to think hard or rewind to understand, you've lost them.
 - Simple language. Simple structure. Setup → twist → punchline. That's it.
-- BE FUNNY. But remember — this is read by an AI voice with zero comic timing. The humor must come from the WORDS AND SITUATION, not delivery. Absurd imagery, unexpected comparisons, escalating ridiculousness, and "wait that actually happened?" moments work. Dry wit and sarcasm do NOT work — they need vocal inflection that AI can't do.
-  GOOD: "Your team celebrated. Your bot lane typed 'nice.' And then Tryndamere killed your entire backline from beyond the grave." (funny because of the situation)
-  BAD: "Your screen said he was dead. He was not dead." (needs delivery to be funny, AI reads it flat)
+{tone_block}{humor_block}
 - Line 1 MUST tell the viewer what this video is about. Shorts viewers do NOT see the title — they have ZERO context. Line 1 is the only way they know what they're watching. State the topic clearly AND make it compelling.
   GOOD: "What if World War 2 never happened? Here's the world we'd be living in." (clear topic + hook)
   GOOD: "3,000 rabbits once charged Napoleon and he literally had to run for his life." (clear topic + shocking)
@@ -434,7 +482,7 @@ STRUCTURE: {structure}
 {vs_block}{comedy_block}{ranking_block}{schmoney_block}
 FORMAT STRATEGY: {format_strategy}
 
-Write ONLY the words that will be spoken. No visual descriptions. Use the KEY FACTS — these are the real details that make the story specific and credible. Name the actual people, places, dates, and numbers. Make every line sound like someone excitedly telling a story at a party. The visual director will handle everything else AFTER hearing your narration."""
+Write ONLY the words that will be spoken. No visual descriptions. Use the KEY FACTS — these are the real details that make the story specific and credible. Name the actual people, places, dates, and numbers. {delivery_line}"""
 
     return system, user
 
@@ -450,6 +498,9 @@ COMEDY_CHANNELS = {13, 14, 16, 22, 30}  # Munchlax Lore, ToonGunk, CrabRaveShort
 
 # Money/economics channel — concrete numbers and specific money mechanics matter more than generic roast tone
 SCHMONEY_CHANNELS = {31}  # Schmoney Facts
+
+# Narrated true-crime channels — tense factual retelling, not comedy and not dialogue skits
+COLDCASE_CHANNELS = {20}  # ColdCaseCartoons
 
 # Ranking/list channels — strict numbered countdown format
 RANKING_CHANNELS = {26}  # Hardcore Ranked
@@ -1401,7 +1452,6 @@ CHARACTER_DIALOGUE_CHANNELS = {
     17,  # Smooth Brain Academy — science explainers
     18,  # What If City — hypothetical scenarios
     19,  # SpookLand — creepy stories
-    20,  # ColdCaseCartoons — true crime betrayal stories
     21,  # One on Ones For Fun — VS battles
     22,  # Deity Drama — mythology stories need characters talking
     23,  # Techognizer — AI/tech explainers

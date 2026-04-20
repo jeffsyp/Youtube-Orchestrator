@@ -97,14 +97,14 @@
   "20": {
     "slug": "coldcase-cartoons",
     "category": "Entertainment",
-    "draft_mode": "dialogue_short",
+    "draft_mode": "short_script",
     "provider_strategy": "grok",
-    "audio_policy": "native_dialogue",
+    "audio_policy": "voiceover",
     "intro_policy": "cold_open",
     "anchor_policy": "none",
     "primary_formats": ["attack_result", "mini_story"],
-    "core_lane": "betrayal cold cases",
-    "art_style": "High contrast black and white graphic novel illustration with bold ink linework. Almost entirely monochrome with selective pops of red or yellow for emphasis. Noir mystery aesthetic with dramatic shadows and silhouettes."
+    "core_lane": "narrated true-crime betrayal case breakdowns",
+    "art_style": "High contrast black and white graphic novel illustration with bold ink linework. Almost entirely monochrome with selective pops of red or yellow for evidence details, warning lights, or bloodlike accents. Noir mystery aesthetic with dramatic shadows, silhouettes, and illustrated crime-scene recreations."
   },
   "21": {
     "slug": "one-on-ones-for-fun",

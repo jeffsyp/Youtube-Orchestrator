@@ -21,7 +21,7 @@ This is the working source of truth for how each channel should behave after the
 | 17 | Smooth Brain Academy | `educational_short` | crayon body science and perception myths | `grok` | `voiceover` | `cold_open` | `recurring_host` | `single_frame`, `attack_result`, `mini_story` | hiccups/yawns/sneezes, sleep glitches, immune battles, earth-space myths, weird body facts |
 | 18 | Skeletorinio | `builder_pitch` | mythic what-if power escalation | `hybrid` | `voiceover` | `cold_open` | `recurring_character` | `attack_result`, `mini_story` | power progression, boss-fight takeovers, era portal chaos, god-domain flex, raid-boss ascension |
 | 19 | SpookLand | `builder_pitch` | narrated horror scenario escalation | `grok` | `voiceover` | `cold_open` | `none` | `attack_result`, `mini_story` | cursed-location encounters, survival mistakes, reveal-driven hauntings, entity rules, escalating panic |
-| 20 | ColdCaseCartoons | `dialogue_short` | betrayal-led cold cases and deception stories | `grok` | `native_dialogue` | `cold_open` | `none` | `attack_result`, `mini_story` | partner betrayal, inheritance motive, poisoning, abduction and escape, forensic breakthrough |
+| 20 | ColdCaseCartoons | `short_script` | narrated true-crime betrayals and case twists | `grok` | `voiceover` | `cold_open` | `none` | `attack_result`, `mini_story` | search-party betrayal, poisoning clues, insurance motive, escaped-victim reversals, forensic breakthrough |
 | 21 | One on Ones For Fun | `builder_pitch` | cross-franchise verdict battles | `grok` | `voiceover` | `matchup_card` | `none` | `attack_result`, `mini_story` | matchup verdicts, stat mismatch, signature-move counters, upset wins, final blow declarations |
 | 22 | Deity Drama | `builder_pitch` | mythic beings colliding with modern systems | `hybrid` | `voiceover` | `cold_open` | `none` | `attack_result`, `mini_story` | god in modern life, divine punishment, mythic flex, cosmic overreaction, mortal humiliation |
 | 23 | Techognizer | `educational_short` | AI and software systems explained simply | `grok` | `voiceover` | `cold_open` | `recurring_host` | `mini_story`, `full_story` | how it works, why it fails, tool comparisons, hidden algorithms, infra and security explainers |
@@ -49,5 +49,5 @@ This is the working source of truth for how each channel should behave after the
 
 - Whether 17 should stay native-dialogue for shorts or move fully to narrated explainers.
 - Whether 29 should remain a recurring news channel or get a stronger evergreen geopolitical explainer lane.
-- Whether 14 and 20 should keep native dialogue or eventually get custom builders for more controlled pacing.
+- Whether 14 should keep native dialogue or eventually get a custom builder for more controlled pacing.
 - When to expose Veo native audio operationally; the client supports it, but the orchestration layer does not yet use it.
