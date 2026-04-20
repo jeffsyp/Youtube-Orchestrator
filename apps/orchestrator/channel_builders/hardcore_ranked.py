@@ -806,6 +806,7 @@ Return ONLY the category name, nothing else.""",
             "Establish one clear starting point or entry point that every attempt begins from. "
             "Present it as a CONTROLLED industrial test site, not a raw dangerous cliff edge or open death pit. "
             "Use reinforced flooring, safety rails, machine housings, access ladders, warning stripes, or a sealed drill collar so the setup reads like a managed experiment. "
+            "The setting should match the challenge naturally: underground/center-of-Earth drilling should start from a land-based industrial drilling yard or reinforced bore site, not a random offshore rig unless the concept explicitly requires ocean water. "
             f"The human-sized googly-eyed skeleton host stays at the same observation position for scale, wearing {variant_traits or 'simple test gear'}. "
             f"The concept is: {_base_text.strip()}. "
             "The world and challenge stay the same in every scene, but later scenes are allowed to follow the machine or method farther into the challenge. "
@@ -1011,7 +1012,9 @@ Return ONLY the prompt.""",
                 f"Same destination, same experiment world, same starting point, same skeleton host identity. "
                 f"Change only the active method or machine to: {method}. "
                 f"Show it getting farther into the challenge than the previous attempt, while clearly failing or succeeding like this: {outcome or 'it gets farther before failing'}. "
-                "The scene may uniquely follow this method deeper into the challenge, but it must still clearly feel like it began from the same surface entry point or experiment origin as the other scenes. "
+                "This does NOT need to be the exact same camera frame as the hook. It can be a fresh view from the same overall project. "
+                "The scene may uniquely follow this method deeper into the challenge, including underground or cross-section views, but it must still clearly feel like it began from the same surface entry point or experiment origin as the other scenes. "
+                "Keep consistent project markers like the same safety-color palette, same drilling project, same skeleton host gear, and the same overall mission. "
                 "Make the progress measurable and visually obvious. No text anywhere."
             )
         while len(edit_prompts) < n_lines:
@@ -1094,13 +1097,36 @@ Return ONLY a JSON array of {n_lines} strings. Line 0 should be "No changes — 
                             f"{edit_prompts[i]} NO text anywhere."
                         )
                     elif concept_type == "LOCKED_TEST":
-                        edit_instruction = (
-                            "Treat the input image as the SAME scientific experiment world and same starting point. "
-                            "Preserve the same destination/challenge, same surface entry point or experiment origin, same overall visual identity, and the same skeleton host identity. "
-                            "The camera is allowed to follow this attempt deeper or farther than the hook frame, as long as it still clearly belongs to the same experiment and started from the same place. "
-                            "Do not convert it into a poster or unrelated environment. "
-                            f"{edit_prompts[i]}"
-                        )
+                        ref_source = character_ref_path if os.path.exists(character_ref_path) else base_scene_path
+                        fresh_base = open(ref_source, "rb")
+                        try:
+                            resp = await edit_client.images.edit(
+                                model="gpt-image-1.5",
+                                image=fresh_base,
+                                prompt=(
+                                    "Create a fresh photorealistic scene from the SAME ranked experiment project. "
+                                    "Keep the same skeleton host identity, the same overall mission, and a clear connection to the same surface starting point. "
+                                    "Later scenes may move underground or deeper into the challenge as needed. "
+                                    "Do not turn this into unrelated poster art or a random new environment. "
+                                    f"{edit_prompts[i]}"
+                                ),
+                                size="1024x1536",
+                                quality="medium",
+                                input_fidelity="high",
+                            )
+                            fresh_base.close()
+                            if resp.data and resp.data[0].b64_json:
+                                img_data = base64.b64decode(resp.data[0].b64_json)
+                                with open(img_path, "wb") as f:
+                                    f.write(img_data)
+                                logger.info("locked-test fresh scene generated", scene=i, edit=edit_prompts[i][:60])
+                        except Exception as e:
+                            try: fresh_base.close()
+                            except: pass
+                            logger.warning("locked-test fresh scene failed", scene=i, attempt=attempt, error=str(e)[:80])
+                            await asyncio.sleep(3)
+                            continue
+                        edit_instruction = None
                     elif concept_type == "IMPACT":
                         edit_instruction = (
                             "Treat the input image as a LOCKED scientific impact-test template. "
@@ -1115,20 +1141,21 @@ Return ONLY a JSON array of {n_lines} strings. Line 0 should be "No changes — 
                                else "The character stays consistent but the BACKGROUND and SETTING can change to match the variable for this scene. ")
                             + f"Change: {edit_prompts[i]} NO text anywhere."
                         )
-                    resp = await edit_client.images.edit(
-                        model="gpt-image-1.5",
-                        image=base_file,
-                        prompt=edit_instruction,
-                        size="1024x1536",
-                        quality="medium",
-                        input_fidelity="high",
-                    )
-                    base_file.close()
-                    if resp.data and resp.data[0].b64_json:
-                        img_data = base64.b64decode(resp.data[0].b64_json)
-                        with open(img_path, "wb") as f:
-                            f.write(img_data)
-                        logger.info("scene variant created", scene=i, edit=edit_prompts[i][:60])
+                    if concept_type != "LOCKED_TEST":
+                        resp = await edit_client.images.edit(
+                            model="gpt-image-1.5",
+                            image=base_file,
+                            prompt=edit_instruction,
+                            size="1024x1536",
+                            quality="medium",
+                            input_fidelity="high",
+                        )
+                        base_file.close()
+                        if resp.data and resp.data[0].b64_json:
+                            img_data = base64.b64decode(resp.data[0].b64_json)
+                            with open(img_path, "wb") as f:
+                                f.write(img_data)
+                            logger.info("scene variant created", scene=i, edit=edit_prompts[i][:60])
                 except Exception as e:
                     logger.warning("edit failed", scene=i, attempt=attempt, error=str(e)[:80])
                     try: base_file.close()
@@ -1156,9 +1183,10 @@ Return ONLY a JSON array of {n_lines} strings. Line 0 should be "No changes — 
                         )
                     elif concept_type == "LOCKED_TEST":
                         review_prompt = (
-                            "Image 1 is the base experiment setup. Image 2 should preserve the SAME challenge and the SAME starting point, but it may follow the method deeper or farther into the challenge. "
-                            "PASS if Image 2 still clearly feels like the same experiment and same origin, while showing a distinct deeper progress scene for that method. "
-                            "FAIL if Image 2 changes to a different environment, loses the sense of the shared starting point, or becomes a generic portrait/splash image with no clear experiment. "
+                            "Image 1 is the base experiment setup. Image 2 should preserve the SAME challenge and the SAME starting point, but it may follow the method deeper or farther into the challenge, including underground or cross-section views. "
+                            "PASS if Image 2 still clearly feels like the same experiment and same overall drilling/project origin, while showing a distinct deeper progress scene for that method. "
+                            "PASS if project markers stay consistent even when the environment becomes subterranean. "
+                            "FAIL only if Image 2 becomes a generic unrelated environment, loses the sense of one shared project, or turns into a portrait/splash image with no clear experiment. "
                             "Answer PASS or FAIL with one short reason."
                         )
                     elif concept_type == "IMPACT":
