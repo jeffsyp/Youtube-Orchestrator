@@ -2,7 +2,7 @@
   "12": {
     "slug": "globe-dump",
     "category": "News & Politics",
-    "art_style": "Clean flat vector infographic, like Vox or Bloomberg Quicktake graphics. White background, bold blue accents, clean icons, data-driven layout."
+    "art_style": "Clean flat vector news infographic. White background, bold blue accents, geometric icons, crisp data cards, broadcast-explainer layout, editorial polish."
   },
   "13": {
     "slug": "munchlax-lore",
@@ -15,7 +15,7 @@
     "anchor_policy": "none",
     "primary_formats": ["attack_result", "mini_story"],
     "core_lane": "pokemon in real life escalation",
-    "art_style": "Simple crude cartoon with thick wobbly outlines and flat colors. Like a funny webcomic or doodle. Pokemon should be recognizable by their signature features (Pikachu's red cheeks, Charizard's wings and tail flame, Snorlax's round belly) but drawn in crude doodle style. Exaggerated expressions, stubby proportions. Game elements like HP bars, pokeballs, and battle screens drawn in crude cartoon style. NOT realistic, NOT official Pokemon art — crude and funny."
+    "art_style": "Simple crude cartoon with thick wobbly outlines and flat colors, like a funny doodle comic. Creature designs should have instantly readable silhouettes, oversized signature features, exaggerated expressions, and stubby proportions. Battle UI elements like HP bars, capture orbs, and status popups should also look hand-doodled. NOT realistic, NOT polished franchise art — crude and funny."
   },
   "14": {
     "slug": "toongunk",
@@ -27,7 +27,7 @@
     "anchor_policy": "none",
     "primary_formats": ["attack_result", "mini_story"],
     "core_lane": "retro cartoon and animation lore",
-    "art_style": "In the visual style of actual 1990s-2000s cartoon show frames — like paused frames from Dexter's Lab, Powerpuff Girls, SpongeBob, or Fairly OddParents. Scenes should look like real cartoon screenshots with the show's backgrounds, character animations mid-action, classic cartoon expressions. NOT modern reinterpretation — actual retro cartoon frames."
+    "art_style": "Retro late-1990s to early-2000s TV cartoon frame. Chunky outlines, flat cel color, painted background plates, squash-and-stretch poses, loud expression takes, and freeze-frame energy from a real broadcast cartoon screenshot. NOT modern reinterpretation — authentic retro cartoon feel."
   },
   "15": {
     "slug": "very-clean-very-good",
@@ -39,7 +39,7 @@
     "anchor_policy": "none",
     "primary_formats": ["single_frame", "attack_result"],
     "core_lane": "precision satisfaction",
-    "art_style": "Clean flat lay illustration, birds-eye view, objects arranged symmetrically on white surface. Like an IKEA instruction manual meets Marie Kondo aesthetic. Vector art."
+    "art_style": "Clean flat-lay illustration from a top-down view. Objects arranged symmetrically on a white surface with obsessive neatness, minimal shadows, crisp spacing, and catalog-like clarity. Vector art."
   },
   "16": {
     "slug": "crabrave-shorts",
@@ -51,7 +51,7 @@
     "anchor_policy": "none",
     "primary_formats": ["single_frame", "attack_result"],
     "core_lane": "game meme slapstick",
-    "art_style": "Simple crude cartoon with thick wobbly outlines and flat colors. Like a funny webcomic or doodle. Game characters should be recognizable — use their actual names (Yasuo from League of Legends, Master Chief from Halo, Steve from Minecraft, etc.) and draw them in crude doodle style. Exaggerated expressions, stubby proportions, big heads. Game elements like health bars, chat boxes, and kill feeds drawn in crude cartoon style. NOT realistic, NOT official game art — crude and funny."
+    "art_style": "Simple crude cartoon with thick wobbly outlines and flat colors, like a funny doodle comic. Game-character silhouettes should stay instantly readable, but rendered with exaggerated expressions, stubby proportions, and oversized heads. HUD elements like health bars, chat boxes, and kill feeds should also look hand-doodled. NOT realistic, NOT polished game art — crude and funny."
   },
   "17": {
     "slug": "smooth-brain-academy",
@@ -63,7 +63,7 @@
     "anchor_policy": "recurring_host",
     "primary_formats": ["single_frame", "attack_result", "mini_story"],
     "core_lane": "crayon body science myths",
-    "art_style": "In the style of a child's crayon drawing on lined notebook paper — wobbly circles, stick figures, misspelled labels, colorful and messy but charming. Like Diary of a Wimpy Kid illustrations."
+    "art_style": "Childlike crayon drawing on lined notebook paper. Wobbly circles, stick figures, uneven labels, messy color fills, school-desk doodle energy, and charmingly imperfect handwriting."
   },
   "18": {
     "slug": "what-if-city",
@@ -79,7 +79,7 @@
     "video_provider": "veo",
     "video_model": "veo-3.1-lite-generate-001",
     "video_resolution": "720p",
-    "art_style": "In the style of Kurzgesagt — clean flat vector illustration, simple bold shapes, vibrant saturated colors on dark backgrounds, tiny detailed characters in massive sci-fi environments, cosmic scale. Educational but visually stunning."
+    "art_style": "Clean flat vector illustration with simple bold shapes, vibrant saturated colors on dark backgrounds, tiny detailed characters inside massive sci-fi or mythic environments, and big cosmic scale. Educational clarity with cinematic spectacle."
   },
   "19": {
     "slug": "spookland",
@@ -130,7 +130,7 @@
     "anchor_policy": "none",
     "primary_formats": ["attack_result", "mini_story"],
     "core_lane": "gods versus modern systems",
-    "art_style": "Photorealistic cinematic scene with dramatic lighting. Gods depicted as powerful muscular humans with divine features — glowing eyes, golden armor, supernatural auras. Like a scene from a Marvel or God of War movie. Characters must be recognizable by their iconic attributes (Zeus with lightning, Poseidon with trident, Ares in red armor). Photorealistic world, NOT cartoon, NOT illustrated."
+    "art_style": "Photorealistic mythic blockbuster frame with dramatic lighting. Powerful divine figures, glowing eyes, storm-charged skies, gold-and-bronze armor, supernatural auras, and cinematic environmental scale. Characters should be identifiable through iconic myth symbols like lightning, tridents, helms, spears, and elemental power. Photorealistic world, NOT cartoon, NOT illustrated."
   },
   "23": {
     "slug": "techognizer",
@@ -155,7 +155,7 @@
     "anchor_policy": "recurring_pair",
     "primary_formats": ["mini_story"],
     "core_lane": "cozy preschool animal stories",
-    "art_style": "In the style of Bluey or Peppa Pig animation — soft rounded shapes, warm pastel colors, simple faces, gentle lighting, no sharp edges. Children's TV animation cel style."
+    "art_style": "Warm preschool TV animation cel style. Soft rounded shapes, thick clean outlines, warm pastel colors, simple faces, cozy domestic or backyard backgrounds, gentle lighting, and no sharp edges."
   },
   "25": {
     "slug": "nature-receipts",
@@ -168,7 +168,7 @@
     "anchor_policy": "none",
     "primary_formats": ["attack_result", "mini_story"],
     "core_lane": "wildlife anomaly documentary",
-    "art_style": "In the style of children's nature book illustration — soft watercolor with rounded friendly shapes, big expressive eyes on animals, warm pastel backgrounds, gentle lighting. Animals should look cute and charming while still being recognizable. Think Studio Ghibli meets National Geographic Kids. Illustrated not photographed."
+    "art_style": "Children's nature-book watercolor illustration with rounded friendly animal shapes, expressive eyes, warm pastel habitats, gentle storybook lighting, and field-guide clarity. Animals should feel cute and charming while staying recognizable. Illustrated, not photographed."
   },
   "26": {
     "slug": "hardcore-ranked",
@@ -197,7 +197,7 @@
     "anchor_policy": "recurring_character",
     "primary_formats": ["mini_story", "full_story"],
     "core_lane": "body-horror science descents",
-    "art_style": "Conspiracy theory evidence board — cork board covered in red string connecting photographs, newspaper clippings, post-it notes, and handwritten arrows. Charlie Day Pepe Silvia energy."
+    "art_style": "Conspiracy evidence-board collage: cork board covered in red string, pinned photos, newspaper clippings, sticky notes, grease-pencil arrows, and frantic investigator annotations."
   },
   "28": {
     "slug": "nightnightshorts",
@@ -249,7 +249,7 @@
     "anchor_policy": "proof_props",
     "primary_formats": ["attack_result", "mini_story", "full_story"],
     "core_lane": "money mechanics with visual proof",
-    "art_style": "In the style of GTA loading screen art — bold illustrated characters, saturated colors, slightly exaggerated proportions, urban and flashy. Money, luxury, and hustle energy. Illustrated not photographed."
+    "art_style": "Bold illustrated luxury-heist poster art with saturated colors, glossy highlights, slightly exaggerated proportions, flashy wealth symbols, nightlife energy, and stylish money-focused composition. Illustrated, not photographed."
   },
   "32": {
     "slug": "mathematicious",
@@ -274,7 +274,7 @@
     "anchor_policy": "none",
     "primary_formats": ["single_frame", "attack_result"],
     "core_lane": "everyday micro-cringe memes",
-    "art_style": "Simple 2D cartoon style like TheOdd1sOut or Jaiden Animations — clean lines, flat colors, expressive round-headed characters with big eyes, white or solid color backgrounds. Looks hand-drawn but clean. NOT AI-looking, NOT photorealistic, NOT over-detailed."
+    "art_style": "Simple 2D internet-storytime cartoon with clean lines, flat colors, expressive round-headed characters, big readable eyes, and white or solid-color backgrounds. Hand-drawn but tidy. NOT AI-looking, NOT photorealistic, NOT over-detailed."
   },
   "34": {
     "slug": "ctrl-z-the-time",
@@ -287,6 +287,6 @@
     "anchor_policy": "none",
     "primary_formats": ["mini_story", "full_story"],
     "core_lane": "builder-facing tech news rewind",
-    "art_style": "Clean flat vector infographic, like Vox or Bloomberg Quicktake graphics. White background, bold blue accents, clean icons, data-driven layout."
+    "art_style": "Clean flat vector tech-news infographic. White background, bold blue accents, geometric icons, crisp charts, editorial layout, and broadcast-explainer polish."
   }
 }

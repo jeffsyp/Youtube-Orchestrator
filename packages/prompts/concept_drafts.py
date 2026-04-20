@@ -61,6 +61,8 @@ HARDCORE RANKED CONCEPT RULES (CRITICAL):
 - The viewer should instantly understand the experiment from the title alone.
 - Avoid concepts that mostly depend on fandom jokes, prison logic, doctor jokes, HR jokes, or “what if X in real life” social commentary.
 - Avoid concepts that require totally different settings or rules every beat. If the same test rig cannot stay mostly consistent, it is probably the wrong Hardcore Ranked concept.
+- Avoid gimmick concepts where the measurement is arbitrary, the fail-state is visually muddy, or the ranking logic changes from beat to beat.
+- If the viewer cannot instantly picture the repeated test rig from the title alone, reject the idea.
 - Avoid weak mascot framing. Never pitch titles or briefs around "frog suit guy", "frog mascot", or "skeleton mascot". The viewer-facing subject is always "you".
 - If a concept can be reframed as a bigger, more universal, more physics-driven question, do that.
 """
@@ -98,8 +100,73 @@ SCHMONEY FACTS CONCEPT RULES (CRITICAL):
   - "THE $20 POPCORN THAT MAKES MOVIE THEATERS RICH"
   - "WHAT $1 MILLION A YEAR ACTUALLY LOOKS LIKE AFTER TAXES"
   - "HOW CASINOS MOVE MILLIONS IN CASH EVERY NIGHT"
+- Business-model / profit-margin ideas must expose WHERE the money comes from and why the split feels unfair, weird, or shocking. Pure revenue trivia is weak.
+- Avoid concepts that are just "this company makes a lot of money" unless the mechanism itself is the hook.
+- Avoid sports concession trivia, celebrity net-worth fluff, and generic millionaire flexes unless the cash-flow mechanics are the entire punchline.
+- In a batch of 5, at least 3 concepts should make the viewer think "wait, THAT'S how the money works?"
 - A batch with two titles about interest, debt, or loan math is a FAIL even if the exact products differ.
 - If two pitches are basically the same "money pain math" with different nouns, keep the better one and replace the other.
+"""
+
+    skeletorinio_pitch_block = ""
+    if channel_name.lower() == "skeletorinio":
+        skeletorinio_pitch_block = """
+
+SKELETORINIO CONCEPT RULES (CRITICAL):
+- In a batch of 5, use at least 4 DIFFERENT premise families:
+  1. mythic power theft or artifact misuse
+  2. modern tool dropped into a historical catastrophe
+  3. portal / era collision
+  4. tournament / raid-boss / final-boss escalation
+  5. god-domain mismatch
+  6. cursed object or forbidden item
+- At most ONE title may start with "WHAT IF YOU ACCIDENTALLY BECAME".
+- At most TWO titles in the batch may use the exact shell "WHAT IF YOU..." at all.
+- Prefer strong specific trigger verbs: grabbed, stole, opened, touched, wore, drank, entered, awakened, pulled, brought.
+- Avoid vague power-inheritance concepts where the only hook is "you became some powerful role." The viewer should instantly picture the first visual consequence.
+- The best ideas start with one obvious action and spiral into increasingly absurd world-scale consequences.
+"""
+
+    one_on_ones_pitch_block = ""
+    if channel_name.lower() == "one on ones for fun":
+        one_on_ones_pitch_block = """
+
+ONE ON ONES CONCEPT RULES (CRITICAL):
+- The batch needs MATCHUP variety AND TITLE-SHELL variety.
+- At most TWO titles may use the exact shell "X VS Y WHO WINS THE REAL FIGHT".
+- Mix title frames like:
+  - "X VS Y: THE REAL WINNER"
+  - "COULD X ACTUALLY BEAT Y?"
+  - "WHY X ACTUALLY DESTROYS Y"
+  - "X VS Y ONLY ENDS ONE WAY"
+- Mix matchup families: comics, anime, games, myth, sci-fi, horror. A batch dominated by one universe or one publisher is a FAIL.
+- Every matchup needs one clean debate axis the viewer instantly understands: speed, durability, hax, intelligence, regeneration, range, or raw force.
+- Avoid soft "close call" wording. Pick matchups where the verdict feels sharp, debatable, and replayable.
+"""
+
+    nature_receipts_pitch_block = ""
+    if channel_name.lower() == "nature receipts":
+        nature_receipts_pitch_block = """
+
+NATURE RECEIPTS CONCEPT RULES (CRITICAL):
+- Stop defaulting to the same title skeleton: "[animal] was the size of X and discovered Y."
+- In a batch of 5, use 5 DIFFERENT lead animals and at least 4 DIFFERENT premise engines.
+- At most ONE giant-size concept in the batch.
+- At most ONE "discovers a generic human place/system" concept in the batch.
+- Prefer SPECIFIC collisions over generic destinations.
+  GOOD: airport baggage belt, koi pond filtration room, national cheese cave, shipping container yard, sunflower seed silo
+  BAD: downtown, the city, taxes, a store, the neighborhood, rush hour
+- Make the animal's REAL instinct the reason the scenario escalates.
+  GOOD: raccoon pries open sealed containers, otter hoards one object obsessively, penguin melts down in dry heat, octopus infiltrates vents and locks
+  BAD: the animal just becomes a generic chaos monster
+- Mix premise families aggressively:
+  1. habitat inversion
+  2. predator / prey reversal
+  3. impossible trait or physical power-up
+  4. human system collision
+  5. swarm / pack takeover
+  6. imprinting / obsession with one object or machine
+- The best Nature Receipts ideas feel like tiny wildlife disaster documentaries, not random animal Mad Libs.
 """
 
     system = f"""You pitch YouTube Shorts concepts for "{channel_name}" — a channel about {niche}.
@@ -131,7 +198,7 @@ WHAT MAKES A GOOD CONCEPT:
 - Avoid timid framing like "you didn't mean to", "you never wanted this", "somehow this happened" unless that reluctance is the actual joke. Prefer domination, escalation, spectacle, catastrophe, flexing, transformation, or absurd world-scale consequences.
 - If the concept involves power, mythology, combat, space, animals, disasters, or extreme comparisons, push it toward the wildest visually obvious version rather than the safest small one.
 - If the concept is about becoming a final boss, raid boss, dungeon lord, chosen tyrant, or world-ending threat, do NOT pitch it as cozy administration, city-building, tourism, or paperwork. Pitch escalating fights, stronger challengers, bigger powers, phase changes, summons, armies, and an undefeated ending.
-{hardcore_ranked_pitch_block}{schmoney_facts_pitch_block}
+{hardcore_ranked_pitch_block}{schmoney_facts_pitch_block}{skeletorinio_pitch_block}{one_on_ones_pitch_block}{nature_receipts_pitch_block}
 
 FORMAT STRATEGY (choose the SIMPLEST one that still makes the idea work):
 - "single_frame" = the whole premise works as one instantly legible image plus an optional tiny aftermath
@@ -960,10 +1027,21 @@ ASK YOURSELF: "What is the specific equation, formula, probability, or algorithm
     else:
         niche_enforcement = ""
 
+    channel_enforcement = ""
+    if channel_name.lower() == "techognizer":
+        channel_enforcement = """
+CRITICAL — TECHOGNIZER BATCH RULES:
+- Do NOT let all 5 pitches be AI model internals or agent mechanics.
+- In a batch of 5, at least 2 concepts must be about broader software / internet / product / infrastructure systems people actually touch:
+  - browsers, APIs, GPS, app stores, cloud pricing, compression, recommendation systems, databases, software security, code signing, syncing, search, maps, video delivery
+- At most 3 concepts may be about language models, AI agents, AI benchmarking, or model-vs-model comparisons.
+- Favor mechanics builders can use, notice, or argue about this week over abstract AI trivia.
+"""
+
     system = f"""You pitch educational YouTube Shorts concepts for "{channel_name}" — a channel about {niche}.
 
-YOUR GOAL: 20-30 second educational shorts that make the viewer feel smarter. One concept, one "aha" moment, one takeaway. The viewer should finish and think "huh, I never knew that."
-{niche_enforcement}
+    YOUR GOAL: 20-30 second educational shorts that make the viewer feel smarter. One concept, one "aha" moment, one takeaway. The viewer should finish and think "huh, I never knew that."
+{niche_enforcement}{channel_enforcement}
 
 You are ONLY pitching ideas — NOT writing scripts. For each concept:
 1. Title (ALL CAPS) — must be a clear question or reveal. "HOW GPS ACTUALLY FINDS YOU" not "GPS IS LYING TO YOU". Educational, not clickbait.
@@ -1113,9 +1191,28 @@ ALREADY MADE OR REJECTED (do NOT repeat these or anything too similar):
 Study these titles. They went viral. Ask yourself WHY — what made someone click and watch 3-5 minutes. Use that psychology. Do NOT copy titles.
 """
 
+    channel_block = ""
+    if channel_name.lower() == "nature receipts":
+        channel_block = """
+
+NATURE RECEIPTS MIDFORM RULES (CRITICAL):
+- This channel is wildlife anomaly documentary, not a generic talking-animal comedy channel.
+- The best long ideas follow ONE animal / trait / swarm / habitat collision through a real-world system and let the consequences escalate step by step.
+- Prefer titles like:
+  - "WHAT HAPPENS WHEN A RACCOON TAKES OVER AN AIRPORT BAGGAGE SYSTEM"
+  - "WHAT HAPPENS WHEN AN OCTOPUS GETS INTO A SUPERYACHT MARINA"
+  - "WHY A THOUSAND SQUIRRELS COULD BREAK A NATIONAL SEED VAULT"
+- Avoid anthropomorphic civic or school satire:
+  - BAD: animal goes to high school, becomes mayor, runs for office, gets elected, hosts a talk show
+- Avoid generic "discovered a place" or "raised by X" shells unless the real animal behavior is the whole point.
+- The animal's real instinct must DRIVE the entire story: prying, hoarding, swarming, overheating, tunneling, imprinting, locking, chewing, sliding, ambushing.
+- Use specific settings, not generic places. GOOD: baggage system, seed vault, marina, casino chip cart, freezer aisle. BAD: downtown, the mall, school, city hall.
+"""
+
     system = f"""You pitch mid-length YouTube video concepts for "{channel_name}" — a channel about {niche}.
 
 YOUR GOAL: A 3-5 minute video that TEACHES something clearly. The viewer clicks because of curiosity, stays because every sentence adds understanding, and leaves feeling smarter.
+{channel_block}
 
 THE VIDEO IS 3-5 MINUTES. Not 10. Not 15. A tight, focused explainer. One topic, one clear throughline, no filler. Think of it as explaining something fascinating to a friend in a single conversation — you wouldn't ramble for 15 minutes. You'd give them the tight version that makes them go "wait, really?"
 
@@ -1369,6 +1466,22 @@ NATURE RECEIPTS PREMISE RULES (CRITICAL):
 - Avoid dog/hamster/corgi/bunny-heavy batches unless one concept is clearly exceptional.
 - Each idea should feel like a tiny disaster movie with one instantly visual image, one escalation ladder, and one replayable ending.
 - A batch full of generic "animal + power + discovers place" ideas is a FAIL.
+"""
+    elif channel_id == 33:
+        channel_diversity_block = """
+
+THATS A MEME DIVERSITY RULES (CRITICAL):
+- Do NOT build the whole batch around one tiny social setting.
+- At most ONE concept in the batch may be about a parent borrowing your device / charger / phone.
+- At most ONE concept may be about a door-knock / wave-back / social-acknowledgment misunderstanding.
+- Mix premise families:
+  1. family phone invasion
+  2. payment or restaurant awkwardness
+  3. mistaken social signal
+  4. roommate / friend audacity
+  5. tiny tech dependency panic
+  6. public etiquette failure
+- Every title should feel like a sentence someone instantly recognizes from real life and wants to send to a friend.
 """
 
     is_satisfying = channel_id in SATISFYING_CHANNELS

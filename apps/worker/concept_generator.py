@@ -934,7 +934,13 @@ async def _generate_builder_pitch_drafts(
         current_pending = pending.scalar()
         remaining = max(0, DRAFTS_PER_CHANNEL - current_pending)
 
-    valid_pitches = await _filter_duplicate_pitches(engine, channel_id, pitches, remaining)
+    valid_pitches = await _filter_duplicate_pitches(engine, channel_id, pitches, len(pitches))
+    if channel_id == 28:
+        valid_pitches = _diversify_nightnight_concepts(valid_pitches, past_titles, remaining)
+    elif channel_id == 25:
+        valid_pitches = _diversify_nature_receipts_concepts(valid_pitches, past_titles, remaining)
+    else:
+        valid_pitches = valid_pitches[:remaining]
 
     draft_ids = []
     for pitch in valid_pitches:
