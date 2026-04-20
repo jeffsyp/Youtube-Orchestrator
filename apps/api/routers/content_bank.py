@@ -523,8 +523,48 @@ async def generate_now(item_id: int):
         concept_id = (
             await session.execute(text("SELECT concept_id FROM content_bank WHERE id = :id"), {"id": item_id})
         ).scalar_one_or_none()
+        active_run = (
+            await session.execute(
+                text(
+                    """
+                    SELECT id, status
+                    FROM content_runs
+                    WHERE content_bank_id = :id
+                      AND status IN ('running', 'blocked', 'pending_review')
+                    ORDER BY id DESC
+                    LIMIT 1
+                    """
+                ),
+                {"id": item_id},
+            )
+        ).fetchone()
+        if active_run:
+            run_id, run_status = active_run
+            await session.execute(
+                text(
+                    """
+                    UPDATE content_bank
+                    SET priority = 0,
+                        status = CASE
+                            WHEN :run_status IN ('running', 'blocked') THEN 'generating'
+                            ELSE status
+                        END,
+                        run_id = :run_id
+                    WHERE id = :id
+                    """
+                ),
+                {"id": item_id, "run_id": run_id, "run_status": run_status},
+            )
+            await session.commit()
+            return {
+                "id": item_id,
+                "priority": 0,
+                "message": "Item already has an active run",
+                "run_id": run_id,
+                "run_status": run_status,
+            }
         await session.execute(
-            text("UPDATE content_bank SET priority = 0, status = 'queued', locked_at = NULL WHERE id = :id"),
+            text("UPDATE content_bank SET priority = 0, status = 'queued', locked_at = NULL, run_id = NULL WHERE id = :id"),
             {"id": item_id},
         )
         if concept_id:
