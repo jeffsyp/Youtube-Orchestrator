@@ -9,8 +9,10 @@ Setup required:
 4. Token is saved to youtube_token.json automatically
 """
 
+import errno
 import json
 import os
+import time
 
 import structlog
 from dotenv import load_dotenv
@@ -20,6 +22,27 @@ logger = structlog.get_logger()
 
 YOUTUBE_CLIENT_SECRETS = os.getenv("YOUTUBE_CLIENT_SECRETS_FILE", "client_secrets.json")
 YOUTUBE_TOKEN_FILE = os.getenv("YOUTUBE_TOKEN_FILE", "youtube_token.json")
+UPLOAD_RETRY_ATTEMPTS = 3
+
+
+def _is_retryable_upload_error(exc: Exception) -> bool:
+    """Return True for transient upload transport errors worth retrying."""
+    if isinstance(exc, (BrokenPipeError, ConnectionResetError, TimeoutError)):
+        return True
+    if isinstance(exc, OSError) and getattr(exc, "errno", None) in {
+        errno.EPIPE,
+        errno.ECONNRESET,
+        errno.ETIMEDOUT,
+        errno.ECONNABORTED,
+    }:
+        return True
+    message = str(exc).lower()
+    return any(fragment in message for fragment in [
+        "broken pipe",
+        "connection reset",
+        "timed out",
+        "temporarily unavailable",
+    ])
 
 
 def is_upload_configured(youtube_token_file: str | None = None) -> bool:
@@ -152,19 +175,40 @@ def upload_video(
 
     log.info("uploading video to youtube")
 
-    media = MediaFileUpload(video_path, chunksize=10 * 1024 * 1024, resumable=True)
-    request = youtube.videos().insert(
-        part="snippet,status",
-        body=body,
-        media_body=media,
-    )
-
-    # Execute with resumable upload
     response = None
-    while response is None:
-        status, response = request.next_chunk()
-        if status:
-            log.info("upload progress", percent=int(status.progress() * 100))
+    last_error = None
+    for attempt in range(1, UPLOAD_RETRY_ATTEMPTS + 1):
+        media = MediaFileUpload(video_path, chunksize=10 * 1024 * 1024, resumable=True)
+        request = youtube.videos().insert(
+            part="snippet,status",
+            body=body,
+            media_body=media,
+        )
+
+        try:
+            response = None
+            while response is None:
+                status, response = request.next_chunk(num_retries=3)
+                if status:
+                    log.info("upload progress", percent=int(status.progress() * 100), attempt=attempt)
+            break
+        except Exception as exc:
+            last_error = exc
+            if not _is_retryable_upload_error(exc) or attempt >= UPLOAD_RETRY_ATTEMPTS:
+                raise
+            backoff_seconds = 2 ** (attempt - 1)
+            log.warning(
+                "upload chunk failed, retrying",
+                attempt=attempt,
+                max_attempts=UPLOAD_RETRY_ATTEMPTS,
+                wait_seconds=backoff_seconds,
+                error=str(exc),
+            )
+            time.sleep(backoff_seconds)
+            youtube = _get_youtube_client(youtube_token_file=youtube_token_file)
+
+    if response is None:
+        raise RuntimeError(f"YouTube upload failed after retries: {last_error}")
 
     video_id = response["id"]
     log.info("video uploaded", video_id=video_id)
