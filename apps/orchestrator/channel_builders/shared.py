@@ -16,6 +16,8 @@ import wave
 import numpy as np
 import structlog
 
+from packages.clients.veo import generate_video_async as veo_generate_video_async
+
 logger = structlog.get_logger()
 
 # Shared constants
