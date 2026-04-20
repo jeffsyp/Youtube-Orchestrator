@@ -428,6 +428,9 @@ def _extract_ranked_subject_name(line: str, fallback: str = "subject") -> str:
 
 
 def _impact_mode_for_comparison(title: str, brief: str, narration_lines: list[str], scenes_meta: list[dict]) -> bool:
+    if _specimen_test_mode_for_comparison(title, brief, narration_lines, scenes_meta):
+        return False
+
     blob = " ".join(
         [
             title,
@@ -469,6 +472,129 @@ def _impact_mode_for_comparison(title: str, brief: str, narration_lines: list[st
     )
 
 
+def _specimen_test_mode_for_comparison(title: str, brief: str, narration_lines: list[str], scenes_meta: list[dict]) -> bool:
+    if not _is_locked_test_comparison({"title": title, "brief": brief}, scenes_meta, narration_lines):
+        return False
+
+    blob = " ".join(
+        [
+            title,
+            brief,
+            *[str(line) for line in narration_lines],
+            *[
+                f"{scene.get('image_prompt', '')} {scene.get('video_prompt', '')}"
+                for scene in scenes_meta
+                if isinstance(scene, dict)
+            ],
+        ]
+    ).lower()
+
+    sample_shape_terms = [
+        "same block",
+        "same cube",
+        "same slab",
+        "same plate",
+        "same sheet",
+        "same rod",
+        "same bar",
+        "same beam",
+        "same panel",
+        "same tile",
+        "same sample",
+        "same object",
+        "same phone",
+        "same bottle",
+        "same cup",
+        "same pane",
+        "same material",
+        "same piece",
+        "identical block",
+        "identical sample",
+        "identical object",
+    ]
+    material_terms = [
+        "material",
+        "materials",
+        "metal",
+        "metals",
+        "wood",
+        "ice",
+        "glass",
+        "plastic",
+        "rubber",
+        "concrete",
+        "steel",
+        "aluminum",
+        "aluminium",
+        "titanium",
+        "tungsten",
+        "graphite",
+        "carbon",
+        "ceramic",
+        "stone",
+        "brick",
+        "foam",
+        "aerogel",
+        "copper",
+        "gold",
+        "silver",
+    ]
+    reaction_terms = [
+        "burn through",
+        "burns through",
+        "melt",
+        "melts",
+        "melting",
+        "melt through",
+        "dissolve",
+        "dissolves",
+        "dissolving",
+        "corrode",
+        "corrodes",
+        "corrosion",
+        "acid",
+        "lava",
+        "flame",
+        "fire",
+        "torch",
+        "plasma",
+        "laser",
+        "freeze",
+        "freezes",
+        "frozen",
+        "boil",
+        "boils",
+        "boiling",
+        "ignite",
+        "ignites",
+        "vaporize",
+        "vaporizes",
+        "soften",
+        "softens",
+        "warp",
+        "warps",
+        "buckle",
+        "buckles",
+        "crack",
+        "cracks",
+        "shatter",
+        "shatters",
+        "survive",
+        "survives",
+        "resist",
+        "resists",
+        "holds shape",
+        "solidifies",
+        "solidify",
+    ]
+
+    has_sample_signal = any(term in blob for term in sample_shape_terms) or sum(
+        1 for term in material_terms if term in blob
+    ) >= 2
+    has_reaction_signal = any(term in blob for term in reaction_terms)
+    return has_sample_signal and has_reaction_signal
+
+
 def _method_ladder_mode_for_comparison(title: str, brief: str, narration_lines: list[str], scenes_meta: list[dict]) -> bool:
     blob = " ".join([title, brief, *[str(line) for line in narration_lines]]).lower()
     method_terms = [
@@ -505,6 +631,45 @@ def _method_ladder_line_payload(line: str) -> tuple[str, str]:
     return method.strip(), outcome.strip()
 
 
+def _ranked_line_result_text(line: str) -> str:
+    parts = [part.strip() for part in str(line or "").split(".") if part.strip()]
+    if len(parts) <= 1:
+        return ""
+    return ". ".join(parts[1:3]).strip()
+
+
+def _specimen_visual_reaction_text(line: str) -> str:
+    text = _ranked_line_result_text(line) or str(line or "").strip()
+    blob = text.lower()
+    if any(term in blob for term in ["under one second", "gone in under", "gone instantly", "near instant"]):
+        return "a violent steam burst and near-instant disappearance of most of the sample"
+    if any(term in blob for term in ["ignite", "thirty seconds to nothing", "burns through", "to nothing"]):
+        return "rapid ignition, black charring, cracking, and fast structural collapse"
+    if any(term in blob for term in ["two minutes", "lava wins", "softens", "deforms"]):
+        return "the block glowing orange, softening, rounding over, and visibly sagging under the sustained pour"
+    if any(term in blob for term in ["holds for several minutes", "holds for", "above most lava temps", "survives significantly longer"]):
+        return "the surface oxidizing and glowing while the block keeps most of its shape with only slow edge erosion"
+    if any(term in blob for term in ["solid rock on top", "lava lost", "slows", "cools", "barely reacts"]):
+        return "the lava stream slowing down and crusting into dark solid rock on top of an intact block while the block itself barely changes"
+    return text
+
+
+def _specimen_motion_change_text(line: str) -> str:
+    text = _ranked_line_result_text(line) or str(line or "").strip()
+    blob = text.lower()
+    if any(term in blob for term in ["under one second", "gone in under", "gone instantly", "near instant"]):
+        return "the sample flashing to steam, collapsing downward, and losing most of its visible mass almost immediately after contact"
+    if any(term in blob for term in ["ignite", "thirty seconds to nothing", "burns through", "to nothing"]):
+        return "the surface catching fire, blackening, cracking, and the block rapidly collapsing into ash and char while lava punches through"
+    if any(term in blob for term in ["two minutes", "lava wins", "softens", "deforms"]):
+        return "the block heating from dark to orange, edges rounding off, walls bowing, and the whole mass slowly slumping under the stream"
+    if any(term in blob for term in ["holds for several minutes", "holds for", "above most lava temps", "survives significantly longer"]):
+        return "the surface oxidizing, glowing, and shedding a little material while the block mostly keeps its square shape through the shot"
+    if any(term in blob for term in ["solid rock on top", "lava lost", "slows", "cools", "barely reacts"]):
+        return "a dark crust rapidly spreading across the top, the lava stream narrowing and thickening, and the block staying rigid while the lava hardens into rock"
+    return "the sample visibly changing under the hazard before the shot ends"
+
+
 def _impact_action_details(line: str, scene_meta: dict) -> tuple[str, str, str]:
     hint_blob = f"{line} {scene_meta.get('image_prompt', '')} {scene_meta.get('video_prompt', '')}".lower()
     if any(term in hint_blob for term in ["bite force", "bite", "jaw", "jaws"]):
@@ -539,10 +704,86 @@ def _impact_action_details(line: str, scene_meta: dict) -> tuple[str, str, str]:
 
 
 def _impact_result_text(line: str) -> str:
-    parts = [part.strip() for part in str(line or "").split(".") if part.strip()]
-    if len(parts) <= 1:
-        return ""
-    return ". ".join(parts[1:3]).strip()
+    return _ranked_line_result_text(line)
+
+
+def _default_specimen_test_plan(title: str, brief: str) -> dict[str, str]:
+    _subject = (brief or title or "the comparison").strip()
+    return {
+        "sample_shape": "oversized industrial test block",
+        "rig": "a large controlled industrial materials-test bay with one fixed applicator aimed at a heavy refractory platform",
+        "test_action": "the same test source engages the center of the mounted sample from the same angle every time",
+        "hook_frame": f"the untouched baseline sample is mounted in the rig before the test begins for {_subject}",
+    }
+
+
+def _specimen_test_uses_host(title: str, brief: str, narration_lines: list[str]) -> bool:
+    blob = " ".join([title, brief, *[str(line) for line in narration_lines]]).lower()
+    host_needed_patterns = [
+        r"\byou\b",
+        r"\byour\b",
+        r"\bperson\b",
+        r"\bhuman\b",
+        r"\bbody\b",
+        r"\bhand\b",
+        r"\bhands\b",
+        r"\bwear\b",
+        r"\bfit\b",
+        r"\bcarry\b",
+        r"\bcan you\b",
+        r"\bwould you\b",
+        r"\bhow long could you\b",
+    ]
+    return any(re.search(pattern, blob) for pattern in host_needed_patterns)
+
+
+def _infer_specimen_test_plan(title: str, brief: str, narration_lines: list[str]) -> dict[str, str]:
+    from packages.clients.claude import generate as claude_generate
+
+    default_plan = _default_specimen_test_plan(title, brief)
+    resp = claude_generate(
+        prompt=f"""Design the repeated visual experiment for this Hardcore Ranked concept.
+
+CONCEPT TITLE: {title}
+BRIEF: {brief}
+NARRATION:
+{chr(10).join(f"- {line}" for line in narration_lines)}
+
+Return ONLY JSON with these exact keys:
+{{
+  "sample_shape": "short noun phrase for one standardized test sample geometry",
+  "rig": "short noun phrase for the constant apparatus and environment",
+  "test_action": "one sentence describing the constant process or hazard applied to the sample",
+  "hook_frame": "one sentence describing the opening untouched baseline frame"
+}}
+
+RULES:
+- Infer the most natural repeated experiment from the concept.
+- Same rig, same camera, same sample geometry every time.
+- Bias toward a LARGE industrial-scale experiment with an oversized sample and very obvious visible reactions unless the concept specifically needs something tiny.
+- If comparing materials or substances, use identical blocks, plates, panels, rods, or another obvious standardized sample shape. Do NOT use humanoid figures.
+- Never use a person-shaped dummy unless the concept is explicitly about bodies or mannequins.
+- Make the apparatus visually obvious and physically believable.
+- Keep the answer compact and concrete.
+""",
+        max_tokens=300,
+    )
+
+    match = re.search(r"\{.*\}", resp, re.DOTALL)
+    if not match:
+        return default_plan
+
+    try:
+        parsed = json.loads(match.group())
+    except json.JSONDecodeError:
+        return default_plan
+
+    plan = dict(default_plan)
+    for key in ("sample_shape", "rig", "test_action", "hook_frame"):
+        value = str(parsed.get(key) or "").strip()
+        if value:
+            plan[key] = value.rstrip(". ")
+    return plan
 
 
 async def build_hardcore_ranked(run_id: int, concept: dict, output_dir: str, _update_step, db_url: str):
@@ -620,9 +861,12 @@ Return ONLY a JSON object:
 
     n_lines = len(narration_lines)
     is_locked_test_comparison = _is_locked_test_comparison(concept, scenes_meta, narration_lines)
-    is_impact_comparison = _impact_mode_for_comparison(title, concept.get("brief", ""), narration_lines, scenes_meta)
     is_method_ladder = _method_ladder_mode_for_comparison(title, concept.get("brief", ""), narration_lines, scenes_meta)
+    is_specimen_test = _specimen_test_mode_for_comparison(title, concept.get("brief", ""), narration_lines, scenes_meta)
+    is_impact_comparison = _impact_mode_for_comparison(title, concept.get("brief", ""), narration_lines, scenes_meta)
     has_explicit_scene_plan = _has_explicit_scene_plan(concept, scenes_meta, narration_lines)
+    specimen_test_plan: dict[str, str] | None = None
+    specimen_test_use_host = False
 
     explicit_image_prompts: list[str] = []
     explicit_video_prompts: list[str] = []
@@ -745,21 +989,27 @@ Return ONLY a JSON object:
 
         # Determine concept type so we pick the right base scene + scene-change strategy
         concept_type = "MOTION" if is_planet_jump_format else None
-        if not concept_type and is_impact_comparison:
-            concept_type = "IMPACT"
         if not concept_type and is_method_ladder:
             concept_type = "LOCKED_TEST"
+        if not concept_type and is_specimen_test:
+            concept_type = "SPECIMEN_TEST"
+        if not concept_type and is_impact_comparison:
+            concept_type = "IMPACT"
         if not concept_type:
             from packages.clients.claude import generate as claude_gen_base
             concept_type_resp = claude_gen_base(
             prompt=f"""Classify this Hardcore Ranked concept into ONE category:
 
 CONCEPT: {title}
+BRIEF: {concept.get("brief", "")}
+NARRATION:
+{chr(10).join(f"- {line}" for line in narration_lines)}
 
 CATEGORIES:
 - "MOTION" — comparing terrain/condition where character physically moves (run, swim, roll, jump, race). The SETTING is the constant, the SURFACE/MEDIUM changes per scene.
 - "EQUIPMENT" — comparing tools/methods (cook with X, build with Y, cut with Z). The CHARACTER ACTION stays similar, the TOOL changes per scene.
 - "CONDITION" — comparing extreme environments or states (survive at X temperature, perform at Y pressure). The CHARACTER is in varying environments.
+- "SPECIMEN_TEST" — one standardized sample/object is exposed to the SAME rig/process/hazard every time. The SAMPLE SHAPE and APPARATUS stay constant; only the material/object variant and its visible reaction change.
 - "IMPACT" — comparing how hard different subjects hit, bite, smash, crash, stomp, drop, or create damage. The TEST RIG is constant, the striker changes.
 - "QUANTITY" — comparing amounts/scales (how many X can fit in Y, how much Z is too much).
 
@@ -767,6 +1017,8 @@ Return ONLY the category name, nothing else.""",
             max_tokens=20,
             )
             concept_type = concept_type_resp.strip().upper().strip('"').split()[0] if concept_type_resp else "MOTION"
+        if concept_type in {"SPECIMEN", "SAMPLE", "SAMPLE_TEST", "MATERIAL_TEST"}:
+            concept_type = "SPECIMEN_TEST"
         logger.info("concept type classified", type=concept_type)
 
         brief = concept.get("brief", "")
@@ -796,6 +1048,29 @@ Return ONLY the category name, nothing else.""",
             "The lane markings, dust lane, debris berm, and test rig never change. "
             "This is a neutral pre-impact setup waiting for the ranked subject to hit the exact same target. "
             "Paleo-accurate / physically believable if a creature appears. No chibi faces, no cartoon game-art exaggeration, no stadium crowd, no text anywhere."
+            )
+        elif concept_type == "SPECIMEN_TEST":
+            specimen_test_plan = _infer_specimen_test_plan(title, brief, narration_lines)
+            specimen_test_use_host = _specimen_test_uses_host(title, brief, narration_lines)
+            variant_traits = "; ".join(character_variant.get("traits") or [])
+            _host_clause = (
+                f"A protected observation or control position at the edge shows the human-sized googly-eyed skeleton host actively operating or monitoring the rig, wearing {variant_traits or 'simple protective operator gear'}. "
+                if specimen_test_use_host
+                else ""
+            )
+            base_prompt = (
+            "Photorealistic. SINGLE IMAGE only — NOT a comic panel, NOT a poster, NOT a montage, NOT multiple panels. "
+            f"Locked LARGE-SCALE scientific specimen-test rig. Same side three-quarter camera on {specimen_test_plan['rig']}. "
+            f"At the center sits ONLY ONE standardized {specimen_test_plan['sample_shape']}, mounted in the same holder and orientation every time. "
+            "Do NOT show a lineup, shelf, array, or multiple comparison samples at once. One active test sample only. "
+            "Do NOT turn the tested sample into a humanoid dummy, creature, or random sculpture. "
+            f"The opening frame should show this baseline clearly: {specimen_test_plan['hook_frame']}. "
+            f"The repeated test action for later scenes is: {specimen_test_plan['test_action']}. "
+            "This should feel like a BIG industrial destruction test, not a tiny countertop demo. Make the sample and lava effects large, dramatic, and easy to read. "
+            "Keep the holder, platform, applicator, and reaction zone readable in one frame so the viewer instantly understands the experiment. "
+            "Do not include clocks, timers, readouts, labels, numbers, control-panel text, captions, or any other readable markings anywhere in frame. "
+            f"{_host_clause}"
+            "No text anywhere."
             )
         elif concept_type == "LOCKED_TEST":
             variant_traits = "; ".join(character_variant.get("traits") or [])
@@ -856,6 +1131,7 @@ CONCEPT-SPECIFIC VARIANT TRAITS: {'; '.join(character_variant.get("traits") or [
 CAMERA + SETTING based on concept type:
 - MOTION (races, jumps, rolls): Camera BEHIND character, looking down a track/path/slope. Starting-line energy.
 - LOCKED_TEST (one impossible destination/challenge, different methods): fixed side-view or cutaway experiment rig. Same destination, same chamber/shaft/lane, same camera. Only the method/tool changes.
+- SPECIMEN_TEST (same rig, same sample shape, different materials/results): locked side or three-quarter lab or industrial test-rig shot. Same holder/apparatus every time. Only the sample variant and its damage change.
 - IMPACT (hits, smashes, bites, drops): Locked side or three-quarter arena test-rig shot. Same strike wall/pressure plate every time. Same observation area. Same frame.
 - EQUIPMENT (cooking, building, testing tools): Side or three-quarter view. Setting matches the activity (kitchen for cooking, workbench for building, lab for testing). Tools/equipment clearly visible.
 - CONDITION (surviving extremes, temperatures): Character IN the environment, wide/medium shot. Environmental cues visible.
@@ -871,6 +1147,9 @@ Return ONLY the prompt.""",
         logger.info("base prompt", prompt=base_prompt[:100])
 
         base_scene_path = os.path.join(images_dir, "base_scene.png")
+        use_character_ref_for_base = os.path.exists(character_ref_path)
+        if concept_type == "SPECIMEN_TEST" and not specimen_test_use_host:
+            use_character_ref_for_base = False
         if use_manual_planet_refs:
             earth_ref = manual_planet_refs.get("earth")
             if not earth_ref:
@@ -879,7 +1158,7 @@ Return ONLY the prompt.""",
             logger.info("using approved manual grounded Earth reference as base scene", path=earth_ref)
         elif not os.path.exists(base_scene_path):
             # Use character reference image as input for consistent character
-            if os.path.exists(character_ref_path):
+            if use_character_ref_for_base:
                 frog_file = open(character_ref_path, "rb")
                 try:
                     resp = await edit_client.images.edit(
@@ -959,6 +1238,14 @@ Return ONLY the prompt.""",
 - Use physically believable anatomy and motion. No chibi faces, no crowd, no arcade-game splash-art posing.
 - The force difference must be visually obvious: light hits dent the plate a little, mid-tier hits crack it, top-tier hits blast the rig apart.
 - Bake the exact impact moment or immediate aftermath into the frame — not a portrait of the subject roaring for the camera."""
+    elif not has_explicit_scene_plan and concept_type == "SPECIMEN_TEST":
+        _edit_guidance = """SPECIMEN_TEST concept guidance:
+- Treat the scene as one repeated controlled specimen test. Same rig, same camera, same holder/tray/applicator, same sample geometry.
+- ONLY the tested material/object variant and its visible reaction change between scenes.
+- The constant process or hazard must be clearly visible engaging the sample.
+- The result must read instantly: igniting, melting, dissolving, cracking, solidifying, surviving, or otherwise reacting.
+- Never turn the sample into a humanoid dummy, creature, or unrelated sculpture unless the concept is explicitly about bodies/mannequins.
+- The viewer should instantly understand what is being tested and why this sample performed differently."""
     elif not has_explicit_scene_plan and concept_type == "CONDITION":
         _edit_guidance = """CONDITION concept guidance:
 - The ENVIRONMENT is the variable — each scene should clearly show the character IN that specific extreme condition
@@ -1000,6 +1287,36 @@ Return ONLY the prompt.""",
                 f"Show {visible_result}. "
                 f"The visual damage must match this narration: {result_text or 'the hit lands harder than the previous subject'}. "
                 "No crowd, no stylized aura, no cartoon expression, no text anywhere."
+            )
+        while len(edit_prompts) < n_lines:
+            edit_prompts.append(edit_prompts[-1])
+        edit_prompts = edit_prompts[:n_lines]
+    elif concept_type == "SPECIMEN_TEST":
+        specimen_test_plan = specimen_test_plan or _infer_specimen_test_plan(title, concept.get("brief", ""), narration_lines)
+        specimen_test_use_host = specimen_test_use_host or _specimen_test_uses_host(title, concept.get("brief", ""), narration_lines)
+        edit_prompts = [
+            "No changes — use the locked specimen-test rig as the hook frame."
+        ]
+        for i in range(1, n_lines):
+            line = narration_lines[i]
+            subject = _extract_ranked_subject_name(line, "tested sample")
+            visual_outcome = _specimen_visual_reaction_text(line)
+            edit_prompts.append(
+                (
+                    f"Same exact specimen-test rig, same camera, same holder, same applicator, same observation setup. "
+                    f"Replace only the tested sample with {subject}. "
+                    f"The tested piece must stay the SAME single standardized {specimen_test_plan['sample_shape']} in the same position and mounting, not a humanoid dummy, creature, or random sculpture. "
+                    "Keep ONLY ONE active test sample in frame. Remove any lineup or extra comparison pieces. "
+                    f"Show the constant test action clearly: {specimen_test_plan['test_action']}. "
+                    "Make this feel larger and more dramatic than a tabletop demo: bigger lava volume, clearer overflow, more visible cracking, smoke, sparks, sagging, crusting, or steam where appropriate. "
+                    + (
+                        "Keep the host only if they are actively operating or monitoring the rig; otherwise leave the frame focused on the experiment. "
+                        if specimen_test_use_host
+                        else "Do not add the skeleton host or any observer character unless they are actively doing something important. "
+                    )
+                    + f"Make the visible reaction show this exact physical outcome: {visual_outcome or 'it performs differently from the previous sample under the same test'}. "
+                    + "Keep the full rig readable so the comparison is obvious at a glance. Do not add any text, numbers, labels, captions, or screens anywhere. No text anywhere."
+                )
             )
         while len(edit_prompts) < n_lines:
             edit_prompts.append(edit_prompts[-1])
@@ -1139,6 +1456,26 @@ Return ONLY a JSON array of {n_lines} strings. Line 0 should be "No changes — 
                             "Do not change the environment or convert it into poster art. "
                             f"{edit_prompts[i]}"
                         )
+                    elif concept_type == "SPECIMEN_TEST":
+                        specimen_test_plan = specimen_test_plan or _infer_specimen_test_plan(title, concept.get("brief", ""), narration_lines)
+                        specimen_test_use_host = specimen_test_use_host or _specimen_test_uses_host(title, concept.get("brief", ""), narration_lines)
+                        edit_instruction = (
+                            (
+                                "Treat the input image as a LOCKED scientific specimen-test template. "
+                                "Preserve the exact same camera angle, crop, rig, holder, tray, applicator, and observation position. "
+                                f"Preserve the tested piece as the same single standardized {specimen_test_plan['sample_shape']} in the same mounted orientation. "
+                                "Keep only one active test sample in frame. Remove any lineup or extra comparison pieces. "
+                                "Keep the experiment feeling large and dramatic, with obvious effects from the lava or hazard. "
+                                + (
+                                    "If the host is present, keep them only as the same active operator/monitor. "
+                                    if specimen_test_use_host
+                                    else "Do not add the skeleton host or any idle observer. "
+                                )
+                                + "Never turn it into a humanoid dummy, creature, or unrelated sculpture. "
+                                + "Do not change the environment or convert it into poster art. "
+                                + f"{edit_prompts[i]}"
+                            )
+                        )
                     else:
                         edit_instruction = (
                             f"The character must look IDENTICAL to the input image — same suit, same helmet, same body proportions, same colors. "
@@ -1200,6 +1537,21 @@ Return ONLY a JSON array of {n_lines} strings. Line 0 should be "No changes — 
                             "PASS if the test rig clearly stays the same and only the ranked subject plus the amount of impact damage changes. "
                             "FAIL if Image 2 turns into poster art, a different environment, a close-up that loses the rig, or a generic action splash with no consistent test setup. "
                             "Answer PASS or FAIL with one short reason."
+                        )
+                    elif concept_type == "SPECIMEN_TEST":
+                        specimen_test_use_host = specimen_test_use_host or _specimen_test_uses_host(title, concept.get("brief", ""), narration_lines)
+                        review_prompt = (
+                            (
+                                "Image 1 is the locked specimen-test rig template. Image 2 should preserve the SAME rig, camera angle, crop, holder, applicator, and standardized sample geometry. "
+                                + (
+                                    "The skeleton host may remain only as the same active operator or monitor. "
+                                    if specimen_test_use_host
+                                    else "There does not need to be any host character in frame. "
+                                )
+                                + "PASS if the experiment still clearly reads as the same repeated test and only the sample material/object plus its reaction changed. "
+                                + "FAIL if the TESTED SAMPLE becomes a humanoid dummy, creature, random sculpture, lineup of extra samples, poster art, unrelated environment, or if the apparatus disappears. "
+                                + "Answer PASS or FAIL with one short reason."
+                            )
                         )
                     else:
                         review_prompt = (
@@ -1397,6 +1749,40 @@ Return ONLY a JSON array of {n_lines} strings. Line 0 should be "No changes — 
                 f"The damage escalation must match this line: {result_text or 'harder than the previous subject'}. "
                 "Keep the strike wall and observation booth visible so the comparison stays constant. "
                 "Make the motion violent and decisive, not a slow zoom or idle pose. No scene cuts."
+            )
+        while len(anim_prompts) < n_lines:
+            anim_prompts.append(anim_prompts[-1])
+    elif concept_type == "SPECIMEN_TEST":
+        specimen_test_plan = specimen_test_plan or _infer_specimen_test_plan(title, concept.get("brief", ""), narration_lines)
+        specimen_test_use_host = specimen_test_use_host or _specimen_test_uses_host(title, concept.get("brief", ""), narration_lines)
+        anim_prompts = [
+            (
+                f"Locked large-scale specimen-test rig. The skeleton host actively watches or operates the untouched standardized {specimen_test_plan['sample_shape']} while the apparatus waits idle. Keep the full rig and sample visible. Never generate any text, captions, numbers, labels, timers, or overlays. No scene cuts."
+                if specimen_test_use_host
+                else f"Locked large-scale specimen-test rig. Show the untouched standardized {specimen_test_plan['sample_shape']} mounted inside the industrial apparatus before the pour starts. Fill the frame with the rig and sample, not an observer. Never generate any text, captions, numbers, labels, timers, or overlays. No scene cuts."
+            )
+        ]
+        for i in range(1, n_lines):
+            line = narration_lines[i]
+            subject = _extract_ranked_subject_name(line, "tested sample")
+            visual_outcome = _specimen_visual_reaction_text(line)
+            motion_change = _specimen_motion_change_text(line)
+            anim_prompts.append(
+                (
+                    f"Same exact specimen-test rig and same camera. The test begins the same way as every other scene: {specimen_test_plan['test_action']}. "
+                    f"The tested sample is now {subject}, but it must stay the same single standardized {specimen_test_plan['sample_shape']} mounted the same way. "
+                    "Keep only one active sample in frame for the whole shot. Make the experiment feel big and violent, with obvious lava effects, overflow, sparks, cracking, crusting, or steam. "
+                    + (
+                        "If the host appears, they must be actively operating or reacting to the rig, not just standing there. "
+                        if specimen_test_use_host
+                        else "Do not add the skeleton host or any idle observer. "
+                    )
+                    + f"Show this exact physical outcome visually, without words on screen: {visual_outcome or 'it reacts differently from the previous sample under the same test'}. "
+                    + f"The shot must not stay static: start with the sample clearly intact, then visibly show {motion_change}. "
+                    + "By the end of the clip, the sample must be in a clearly different physical state than at the start. Do not just show lava pouring onto an unchanged block. "
+                    + "Never generate any text, captions, numbers, labels, timers, UI, or subtitle-like overlays inside the video itself. "
+                    + "Keep the apparatus, holder, and reaction zone readable together in one shot. No scene cuts."
+                )
             )
         while len(anim_prompts) < n_lines:
             anim_prompts.append(anim_prompts[-1])
