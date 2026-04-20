@@ -27,6 +27,31 @@ def _strip_code_block(text: str) -> str:
     return text.strip()
 
 
+_DIALOGUE_VERB_PATTERN = re.compile(
+    r"\b("
+    r"says|said|yells|yelled|asks|asked|blurts|mutters|whispers|shouts|shouted|"
+    r"screams|screamed|laughs|laughing|snaps|snapped|groans|groaned|taunts|taunted|"
+    r"replies|replied|calls out|called out|mocks|mocked|goes|cuts in|cut in"
+    r")\b",
+    re.IGNORECASE,
+)
+
+
+def _scene_video_prompt_has_dialogue(video_prompt: str | None) -> bool:
+    """Return True when a scene prompt explicitly cues spoken dialogue."""
+    if not isinstance(video_prompt, str):
+        return False
+    return bool(_DIALOGUE_VERB_PATTERN.search(video_prompt))
+
+
+def _concept_has_native_dialogue(concept: dict) -> bool:
+    """Require every scene in native-dialogue concepts to explicitly include speech."""
+    scenes = concept.get("scenes")
+    if not isinstance(scenes, list) or not scenes:
+        return False
+    return all(_scene_video_prompt_has_dialogue(scene.get("video_prompt")) for scene in scenes)
+
+
 def _extract_nightnight_characters(text: str) -> list[str]:
     """Return known anime character names mentioned in text, in reading order."""
     matches = []
@@ -1736,7 +1761,7 @@ async def _generate_no_narration_drafts(
 
     No two-phase needed — Claude returns complete concepts with scenes[].
     """
-    from packages.prompts.concept_drafts import build_no_narration_prompt
+    from packages.prompts.concept_drafts import CHARACTER_DIALOGUE_CHANNELS, build_no_narration_prompt
     from packages.clients.claude import generate
 
     system, user = build_no_narration_prompt(
@@ -1750,11 +1775,31 @@ async def _generate_no_narration_drafts(
 
     logger.info("generating no-narration concepts", channel=channel_name, count=count)
 
-    resp = _strip_code_block(generate(prompt=user, system=system, model="claude-sonnet-4-6", max_tokens=6000))
+    enforce_dialogue = channel_id in CHARACTER_DIALOGUE_CHANNELS
+    concepts = []
+    max_attempts = 3 if enforce_dialogue else 1
+    for attempt in range(1, max_attempts + 1):
+        resp = _strip_code_block(generate(prompt=user, system=system, model="claude-sonnet-4-6", max_tokens=6000))
 
-    concepts = json.loads(resp)
-    if not isinstance(concepts, list):
-        concepts = [concepts]
+        batch = json.loads(resp)
+        if not isinstance(batch, list):
+            batch = [batch]
+
+        if enforce_dialogue:
+            raw_count = len(batch)
+            batch = [concept for concept in batch if _concept_has_native_dialogue(concept)]
+            if len(batch) != raw_count:
+                logger.info(
+                    "discarded non-speaking character-dialogue concepts",
+                    channel=channel_name,
+                    attempt=attempt,
+                    kept=len(batch),
+                    discarded=raw_count - len(batch),
+                )
+
+        concepts.extend(batch)
+        if len(concepts) >= count:
+            break
 
     logger.info("no-narration concepts generated", channel=channel_name, count=len(concepts))
 

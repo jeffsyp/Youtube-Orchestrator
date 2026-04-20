@@ -1448,6 +1448,7 @@ SATISFYING_CHANNELS = {15}  # Very Clean Very Good
 # Character dialogue channels — story-driven content where characters speak their own lines
 # These need context/narrative that can't be told with pure visual slapstick
 CHARACTER_DIALOGUE_CHANNELS = {
+    16,  # CrabRaveShorts — game meme banter skits
     14,  # ToonGunk — cartoon/pop culture facts
     17,  # Smooth Brain Academy — science explainers
     18,  # What If City — hypothetical scenarios
@@ -1545,6 +1546,22 @@ THATS A MEME DIVERSITY RULES (CRITICAL):
   6. public etiquette failure
 - Every title should feel like a sentence someone instantly recognizes from real life and wants to send to a friend.
 """
+    elif channel_id == 16:
+        channel_diversity_block = """
+
+CRABRAVESHORTS PLAYER-VOICE RULES (CRITICAL):
+- These are GAME SKITS, not silent memes now. The humor should land because the dialogue sounds exactly like real players in VC or Discord.
+- Use clipped, reactive gamer speech: "bro", "nah", "yo", "no shot", "you are trolling", "we are stacked", "split the loot", "full buy", "eco", "rotate", "one tap", "griefed", "free win".
+- NEVER write polished sitcom dialogue or full formal sentences. If a real player would not say it mid-match, do not write it.
+- Prefer fragments, interruptions, repeats, and half-finished thoughts over clean grammar. "yo wait wait" beats "please stop for a moment."
+- Players should sound like they are reacting live while moving, not narrating the joke for the audience afterward.
+- Use game-specific vocabulary naturally:
+  * Minecraft: stacked, full diamond, split the loot, strip mine, griefed, spawn, chest, pick, redstone
+  * Valorant: eco, full buy, one tap, rotate, spike, whiffed
+  * League: gank, inting, diff, flash, ult, troll
+- At least 3 concepts in the batch should center on two-player conflict, betrayal, blame, or instant voice-chat reaction.
+- The funniest CrabRave concepts should feel like a real lobby meltdown someone clipped, not an outsider explaining a game joke.
+"""
 
     is_satisfying = channel_id in SATISFYING_CHANNELS
     is_character_dialogue = channel_id in CHARACTER_DIALOGUE_CHANNELS
@@ -1570,6 +1587,7 @@ SCENE COUNT BY STRATEGY:
     _DEFAULT_STYLE = "Simple crude cartoon — thick wobbly outlines, flat bold colors, exaggerated round heads, simple bodies. Deliberately ugly and charming like a funny doodle. NOT noir, NOT graphic novel, NOT serious."
     _channel_style = get_channel_art_style(channel_id) if channel_id else _DEFAULT_STYLE
     art_style_field = f',\n    "art_style": "{_channel_style}"' if (is_character_dialogue or not is_satisfying) else ""
+    system_mode_label = "native-dialogue" if is_character_dialogue else "no-narration"
 
     if is_character_dialogue:
         style_guidance = f"""CHARACTER DIALOGUE SHORTS FORMAT — CHARACTERS SPEAK THEIR OWN LINES:
@@ -1594,9 +1612,12 @@ SCENE FLOW IS CRITICAL:
 
 DIALOGUE STYLE:
 - Casual and reactive: "Bro what?" not "I cannot believe this"
+- Prefer broken-up real speech over complete polished sentences. Fragments, overlap, and repeating a word are good when it sounds human.
 - Characters react to what just happened: disbelief, smugness, devastation
 - The PUNCHLINE is always the last line of dialogue — it should subvert expectations
 - Absurd specific details make it funnier: "eating HIS limited edition hot cheetos" not "eating his food"
+
+{channel_diversity_block}
 
 PROVEN PATTERNS:
 1. Betrayal → escalation → the betrayer acts like nothing happened (punchline is the audacity)
@@ -1620,8 +1641,10 @@ CHANNEL CONTEXT: This is for "{channel_name}" ({niche}). Every concept must fit 
   GOOD: "Guy leans forward into the microphone smugly and says yeah he is guilty, shrugs his shoulders. Courtroom murmur, dramatic dun dun sound."
   GOOD: "Guy slams his hands on the table and yells but you are my best friend, tears fly off his face. Table slam, crowd gasps."
   GOOD: "Guy sips his coffee, raises one eyebrow and says can I help you in a confused annoyed tone. Coffee sip, dead silence, cricket chirp."
+  GOOD: "Minecraft guy panic-jumps and blurts yo wait wait where'd the stack go, voice cracking mid-sentence. Pickaxe clank, inventory rustle, cave echo."
   BAD: "Camera slowly zooms out" (boring — nothing moves)
   BAD: "Guy looks sad" (no dialogue, no physical action)
+  BAD: "Player keeps mining while dramatic music plays." (still mute, still not a dialogue scene)
   RULE: One character speaks per scene. Keep dialogue under 10 words. Describe their physical reaction while speaking.
 - "duration": 3-4 seconds per scene. Use as few scenes as the chosen format_strategy needs. Total video 12-16 seconds, 5 scenes max."""
     elif is_satisfying:
@@ -1728,7 +1751,7 @@ CHARACTERS MUST BE SPECIFIC:
 CHANNEL ART STYLE: {_channel_style}
 Every image_prompt MUST start with this art style description."""
 
-    system = f"""You create viral no-narration YouTube Shorts for "{channel_name}" — {niche}.
+    system = f"""You create viral {system_mode_label} YouTube Shorts for "{channel_name}" — {niche}.
 
 {style_guidance}
 

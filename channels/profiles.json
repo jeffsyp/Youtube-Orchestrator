@@ -44,13 +44,13 @@
   "16": {
     "slug": "crabrave-shorts",
     "category": "Gaming",
-    "draft_mode": "no_narration",
+    "draft_mode": "dialogue_short",
     "provider_strategy": "grok",
-    "audio_policy": "native_sfx",
+    "audio_policy": "native_dialogue",
     "intro_policy": "cold_open",
     "anchor_policy": "none",
-    "primary_formats": ["single_frame", "attack_result"],
-    "core_lane": "game meme slapstick",
+    "primary_formats": ["attack_result", "mini_story"],
+    "core_lane": "game meme player-banter skits",
     "art_style": "Simple crude cartoon with thick wobbly outlines and flat colors, like a funny doodle comic. Game-character silhouettes should stay instantly readable, but rendered with exaggerated expressions, stubby proportions, and oversized heads. HUD elements like health bars, chat boxes, and kill feeds should also look hand-doodled. NOT realistic, NOT polished game art — crude and funny."
   },
   "17": {
