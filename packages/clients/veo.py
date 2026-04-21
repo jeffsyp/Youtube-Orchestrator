@@ -31,6 +31,22 @@ load_dotenv(override=True)
 logger = structlog.get_logger()
 
 _CLOUD_PLATFORM_SCOPE = ["https://www.googleapis.com/auth/cloud-platform"]
+_TRANSIENT_VEO_TOKENS = (
+    "service is currently unavailable",
+    "currently unavailable",
+    "temporarily unavailable",
+    "try again later",
+    "unavailable",
+    "code': 14",
+    '"code": 14',
+    "code=14",
+    "code': 13",
+    '"code": 13',
+    "code=13",
+    "internal error",
+    "deadline exceeded",
+    "timed out",
+)
 
 
 def _bool_env(name: str) -> bool:
@@ -169,6 +185,34 @@ def _vertex_output_prefix(bucket: str) -> tuple[str, str]:
     return prefix, f"gs://{bucket}/{prefix}"
 
 
+def _veo_error_text(err: Any) -> str:
+    if err is None:
+        return ""
+    if isinstance(err, str):
+        return err
+    if isinstance(err, dict):
+        try:
+            return json.dumps(err, sort_keys=True)
+        except Exception:
+            return str(err)
+
+    code = getattr(err, "code", None)
+    message = getattr(err, "message", None)
+    if code is not None or message is not None:
+        payload = {}
+        if code is not None:
+            payload["code"] = code
+        if message is not None:
+            payload["message"] = message
+        return str(payload)
+    return str(err)
+
+
+def _is_transient_veo_error(err: Any) -> bool:
+    text = _veo_error_text(err).lower()
+    return any(token in text for token in _TRANSIENT_VEO_TOKENS)
+
+
 def _download_result_video(client: genai.Client, op: Any, output_path: str, output_gcs_uri: str | None) -> str:
     if _use_vertex():
         result_dump = {}
@@ -222,110 +266,134 @@ def generate_video(
     timeout_seconds: int = 900,
 ) -> dict[str, Any]:
     """Generate a Veo clip and save it locally."""
-
-    client = _build_client()
-    log = logger.bind(model=model, duration_seconds=duration_seconds, aspect_ratio=aspect_ratio, vertex=_use_vertex())
-    log.info(
-        "submitting veo generation",
-        image=bool(image_path),
-        video=bool(video_path),
-        last_frame=bool(last_frame_path),
-    )
-
-    output_gcs_uri: str | None = None
-    source_image: types.Image | None = None
-    source_video: types.Video | None = None
-    last_frame_image: types.Image | None = None
-
-    if _use_vertex():
-        bucket = _gcs_bucket_name()
-        _ensure_bucket(bucket)
-        prefix, output_gcs_uri = _vertex_output_prefix(bucket)
-        if image_path:
-            source_image = _image_for_vertex(image_path, bucket, f"{prefix}inputs/start{os.path.splitext(image_path)[1] or '.png'}")
-        if video_path:
-            source_video = _video_for_vertex(video_path, bucket, f"{prefix}inputs/source{os.path.splitext(video_path)[1] or '.mp4'}")
-        if last_frame_path:
-            last_frame_image = _image_for_vertex(last_frame_path, bucket, f"{prefix}inputs/end{os.path.splitext(last_frame_path)[1] or '.png'}")
-    else:
-        if image_path:
-            mime_type, _ = mimetypes.guess_type(image_path)
-            source_image = types.Image.from_file(location=image_path, mime_type=mime_type or "image/png")
-        if video_path:
-            mime_type, _ = mimetypes.guess_type(video_path)
-            source_video = types.Video.from_file(location=video_path, mime_type=mime_type or "video/mp4")
-        if last_frame_path:
-            mime_type, _ = mimetypes.guess_type(last_frame_path)
-            last_frame_image = types.Image.from_file(location=last_frame_path, mime_type=mime_type or "image/png")
-
     if image_path and video_path:
         raise ValueError("Pass either image_path or video_path to Veo, not both.")
 
-    source = types.GenerateVideosSource(
-        prompt=prompt,
-        image=source_image,
-        video=source_video,
-    )
-    config_kwargs: dict[str, Any] = {
-        "aspect_ratio": aspect_ratio,
-        "resolution": resolution,
-        "duration_seconds": duration_seconds,
-        "number_of_videos": 1,
-        "output_gcs_uri": output_gcs_uri,
-    }
-    if negative_prompt:
-        config_kwargs["negative_prompt"] = negative_prompt
-    if seed is not None:
-        config_kwargs["seed"] = seed
-    if last_frame_image:
-        config_kwargs["last_frame"] = last_frame_image
-    if generate_audio:
-        config_kwargs["generate_audio"] = True
+    max_attempts = 3
+    last_error: Exception | None = None
 
-    config = types.GenerateVideosConfig(**config_kwargs)
-
-    try:
-        op = client.models.generate_videos(
+    for attempt in range(1, max_attempts + 1):
+        client = _build_client()
+        log = logger.bind(
             model=model,
-            source=source,
-            config=config,
+            duration_seconds=duration_seconds,
+            aspect_ratio=aspect_ratio,
+            vertex=_use_vertex(),
+            attempt=attempt,
         )
-    except Exception as e:
-        msg = str(e)
-        if last_frame_path and not _use_vertex() and "currently not supported" in msg.lower():
-            raise RuntimeError(
-                "Veo start/end-frame interpolation is not supported on the Gemini API path. "
-                "Use Vertex AI credentials plus GCS-backed inputs."
-            ) from e
-        raise
+        log.info(
+            "submitting veo generation",
+            image=bool(image_path),
+            video=bool(video_path),
+            last_frame=bool(last_frame_path),
+        )
 
-    start = time.time()
-    log.info("veo submitted", operation=getattr(op, "name", None), output_gcs_uri=output_gcs_uri)
+        output_gcs_uri: str | None = None
+        source_image: types.Image | None = None
+        source_video: types.Video | None = None
+        last_frame_image: types.Image | None = None
 
-    while not op.done:
-        time.sleep(10)
-        op = client.operations.get(op)
+        if _use_vertex():
+            bucket = _gcs_bucket_name()
+            _ensure_bucket(bucket)
+            prefix, output_gcs_uri = _vertex_output_prefix(bucket)
+            if image_path:
+                source_image = _image_for_vertex(image_path, bucket, f"{prefix}inputs/start{os.path.splitext(image_path)[1] or '.png'}")
+            if video_path:
+                source_video = _video_for_vertex(video_path, bucket, f"{prefix}inputs/source{os.path.splitext(video_path)[1] or '.mp4'}")
+            if last_frame_path:
+                last_frame_image = _image_for_vertex(last_frame_path, bucket, f"{prefix}inputs/end{os.path.splitext(last_frame_path)[1] or '.png'}")
+        else:
+            if image_path:
+                mime_type, _ = mimetypes.guess_type(image_path)
+                source_image = types.Image.from_file(location=image_path, mime_type=mime_type or "image/png")
+            if video_path:
+                mime_type, _ = mimetypes.guess_type(video_path)
+                source_video = types.Video.from_file(location=video_path, mime_type=mime_type or "video/mp4")
+            if last_frame_path:
+                mime_type, _ = mimetypes.guess_type(last_frame_path)
+                last_frame_image = types.Image.from_file(location=last_frame_path, mime_type=mime_type or "image/png")
+
+        source = types.GenerateVideosSource(
+            prompt=prompt,
+            image=source_image,
+            video=source_video,
+        )
+        config_kwargs: dict[str, Any] = {
+            "aspect_ratio": aspect_ratio,
+            "resolution": resolution,
+            "duration_seconds": duration_seconds,
+            "number_of_videos": 1,
+            "output_gcs_uri": output_gcs_uri,
+        }
+        if negative_prompt:
+            config_kwargs["negative_prompt"] = negative_prompt
+        if seed is not None:
+            config_kwargs["seed"] = seed
+        if last_frame_image:
+            config_kwargs["last_frame"] = last_frame_image
+        if generate_audio:
+            config_kwargs["generate_audio"] = True
+
+        config = types.GenerateVideosConfig(**config_kwargs)
+
+        try:
+            op = client.models.generate_videos(
+                model=model,
+                source=source,
+                config=config,
+            )
+        except Exception as e:
+            msg = str(e)
+            if last_frame_path and not _use_vertex() and "currently not supported" in msg.lower():
+                raise RuntimeError(
+                    "Veo start/end-frame interpolation is not supported on the Gemini API path. "
+                    "Use Vertex AI credentials plus GCS-backed inputs."
+                ) from e
+            if _is_transient_veo_error(e) and attempt < max_attempts:
+                wait = min(20 * attempt, 60)
+                log.warning("veo transient submit failure — retrying", wait=wait, error=_veo_error_text(e)[:300])
+                time.sleep(wait)
+                last_error = RuntimeError(f"Veo failed: {_veo_error_text(e)}")
+                continue
+            raise
+
+        start = time.time()
+        log.info("veo submitted", operation=getattr(op, "name", None), output_gcs_uri=output_gcs_uri)
+
+        while not op.done:
+            time.sleep(10)
+            op = client.operations.get(op)
+            elapsed = time.time() - start
+            log.info("veo polling", operation=getattr(op, "name", None), elapsed=int(elapsed))
+            if elapsed > timeout_seconds:
+                raise RuntimeError(f"Veo generation timed out after {timeout_seconds}s")
+
+        if getattr(op, "error", None):
+            error_text = _veo_error_text(op.error)
+            if _is_transient_veo_error(op.error) and attempt < max_attempts:
+                wait = min(20 * attempt, 60)
+                log.warning("veo transient operation failure — retrying", wait=wait, error=error_text[:300])
+                time.sleep(wait)
+                last_error = RuntimeError(f"Veo failed: {error_text}")
+                continue
+            raise RuntimeError(f"Veo failed: {error_text}")
+
+        path = _download_result_video(client, op, output_path, output_gcs_uri)
         elapsed = time.time() - start
-        log.info("veo polling", operation=getattr(op, "name", None), elapsed=int(elapsed))
-        if elapsed > timeout_seconds:
-            raise RuntimeError(f"Veo generation timed out after {timeout_seconds}s")
+        log.info("veo saved", path=path, elapsed=f"{elapsed:.1f}s")
+        return {
+            "path": path,
+            "operation": getattr(op, "name", None),
+            "elapsed_seconds": elapsed,
+            "model": model,
+            "image_path": image_path,
+            "video_path": video_path,
+            "last_frame_path": last_frame_path,
+            "output_gcs_uri": output_gcs_uri,
+        }
 
-    if getattr(op, "error", None):
-        raise RuntimeError(f"Veo failed: {op.error}")
-
-    path = _download_result_video(client, op, output_path, output_gcs_uri)
-    elapsed = time.time() - start
-    log.info("veo saved", path=path, elapsed=f"{elapsed:.1f}s")
-    return {
-        "path": path,
-        "operation": getattr(op, "name", None),
-        "elapsed_seconds": elapsed,
-        "model": model,
-        "image_path": image_path,
-        "video_path": video_path,
-        "last_frame_path": last_frame_path,
-        "output_gcs_uri": output_gcs_uri,
-    }
+    raise last_error or RuntimeError("Veo retry loop exhausted")
 
 
 async def generate_video_async(**kwargs: Any) -> dict[str, Any]:
