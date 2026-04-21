@@ -277,15 +277,33 @@ async def retry_content_bank_item(item_id: int):
     """Re-queue a failed content bank item for retry."""
     async with async_session() as session:
         result = await session.execute(
-            text("SELECT id, status, concept_id FROM content_bank WHERE id = :id"),
+            text("""
+                SELECT cb.id,
+                       cb.status,
+                       cb.concept_id,
+                       cb.run_id,
+                       cr.status AS run_status
+                FROM content_bank cb
+                LEFT JOIN content_runs cr ON cr.id = cb.run_id
+                WHERE cb.id = :id
+            """),
             {"id": item_id},
         )
         item = result.fetchone()
         if not item:
             raise HTTPException(status_code=404, detail="Item not found")
 
-        if item[1] not in ("failed", "rejected"):
-            raise HTTPException(status_code=400, detail=f"Cannot retry item with status '{item[1]}'")
+        item_status = item[1]
+        run_status = item[4]
+        retryable_statuses = {"failed", "rejected"}
+        if item_status not in retryable_statuses and run_status not in retryable_statuses:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Cannot retry item with status '{item_status}'"
+                    + (f" and run status '{run_status}'" if run_status else "")
+                ),
+            )
 
         await session.execute(
             text("UPDATE content_bank SET status = 'queued', locked_at = NULL, error = NULL, run_id = NULL WHERE id = :id"),
