@@ -36,6 +36,10 @@ _DIALOGUE_VERB_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
+_CRABRAVE_TYPED_CHAT_SHORTHAND_RE = re.compile(
+    r"\b(?:[A-Z]{3,}|[A-Z]{2,})(?:\s+[A-Z]{2,}){1,}\b"
+)
+
 
 def _scene_video_prompt_has_dialogue(video_prompt: str | None) -> bool:
     """Return True when a scene prompt explicitly cues spoken dialogue."""
@@ -50,6 +54,26 @@ def _concept_has_native_dialogue(concept: dict) -> bool:
     if not isinstance(scenes, list) or not scenes:
         return False
     return all(_scene_video_prompt_has_dialogue(scene.get("video_prompt")) for scene in scenes)
+
+
+def _concept_has_natural_player_dialogue(concept: dict, *, channel_id: int) -> bool:
+    """Reject typed all-chat shorthand that sounds robotic when voiced."""
+    if channel_id != 16:
+        return True
+
+    scenes = concept.get("scenes")
+    if not isinstance(scenes, list) or not scenes:
+        return False
+
+    for scene in scenes:
+        if not isinstance(scene, dict):
+            return False
+        video_prompt = str(scene.get("video_prompt") or "")
+        if not video_prompt:
+            return False
+        if _CRABRAVE_TYPED_CHAT_SHORTHAND_RE.search(video_prompt):
+            return False
+    return True
 
 
 def _extract_nightnight_characters(text: str) -> list[str]:
@@ -1795,6 +1819,16 @@ async def _generate_no_narration_drafts(
                     attempt=attempt,
                     kept=len(batch),
                     discarded=raw_count - len(batch),
+                )
+            natural_count = len(batch)
+            batch = [concept for concept in batch if _concept_has_natural_player_dialogue(concept, channel_id=channel_id)]
+            if len(batch) != natural_count:
+                logger.info(
+                    "discarded typed-shorthand player-dialogue concepts",
+                    channel=channel_name,
+                    attempt=attempt,
+                    kept=len(batch),
+                    discarded=natural_count - len(batch),
                 )
 
         concepts.extend(batch)

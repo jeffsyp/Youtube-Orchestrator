@@ -1553,10 +1553,12 @@ CRABRAVESHORTS PLAYER-VOICE RULES (CRITICAL):
 - These are GAME SKITS, not silent memes now. The humor should land because the dialogue sounds exactly like real players in VC or Discord.
 - Use clipped, reactive gamer speech: "bro", "nah", "yo", "no shot", "you are trolling", "we are stacked", "split the loot", "full buy", "eco", "rotate", "one tap", "griefed", "free win".
 - NEVER write polished sitcom dialogue or full formal sentences. If a real player would not say it mid-match, do not write it.
+- Write the dialogue how a person would actually SAY it out loud, not how someone would TYPE it in all-chat. Bad: "JUNG COME JUNG COME HES LOW". Good: "Jung, come mid, he's one."
 - Prefer fragments, interruptions, repeats, and half-finished thoughts over clean grammar. "yo wait wait" beats "please stop for a moment."
 - Players should sound like they are reacting live while moving, not narrating the joke for the audience afterward.
 - Recognition alone is NOT enough. "Everyone knows this situation" is only the setup. The concept still needs a sharper payoff: a humiliating reveal, insane audacity, immediate karma, or a line so specific it feels clip-worthy.
 - Reject bland gamer pain. A title that is only "friend steals loot" or "teammate throws" is too generic unless the ending has a distinctive twist people would actually send to a friend.
+- If the joke depends on a gameplay action, the visuals MUST show the action clearly. Do not replace the key beat with a random reaction close-up. The viewer should literally see the steal, gank, misplay, trap, escape, or grief happen in sequence.
 - Use game-specific vocabulary naturally:
   * Minecraft: stacked, full diamond, split the loot, strip mine, griefed, spawn, chest, pick, redstone
   * Valorant: eco, full buy, one tap, rotate, spike, whiffed
@@ -1617,7 +1619,7 @@ This is for "{channel_name}" ({niche}). The story needs context that pure visual
 
 THE GOLDEN RULES:
 1. CHARACTERS SPEAK — NO narrator, NO TTS voiceover. Each scene has ONE character who says a short line of dialogue. The dialogue goes in the video_prompt so Grok generates the character actually saying it.
-2. ONE CHARACTER PER SCENE — Grok handles voices best when there's only one character speaking. Close-up shots of whoever is talking.
+2. ONE SPEAKER PER SCENE — Grok handles voices best when only one character is talking at a time. Silent background characters are allowed when the gameplay beat needs them.
 3. SHORT PUNCHY LINES — Each character says 3-10 words max. "Yeah, he's guilty." not "I would like to testify that the defendant is in fact guilty of the crime." Short lines sound natural, long lines sound robotic.
 4. THE DIALOGUE IS THE COMEDY — Lines should be funny, absurd, or shocking on their own. Casual tone like someone talking to a friend, not a script being read.
 5. SHOW DON'T TELL — If a character goes to prison, show them being dragged away. Don't skip to the next location with a hard cut.
@@ -1635,6 +1637,7 @@ SCENE FLOW IS CRITICAL:
 DIALOGUE STYLE:
 - Casual and reactive: "Bro what?" not "I cannot believe this"
 - Prefer broken-up real speech over complete polished sentences. Fragments, overlap, and repeating a word are good when it sounds human.
+- Never write typed gamer shorthand in the spoken line. Use commas, contractions, and normal speech rhythm so the model says it like a person.
 - Characters react to what just happened: disbelief, smugness, devastation
 - The PUNCHLINE is always the last line of dialogue — it should subvert expectations
 - Absurd specific details make it funnier: "eating HIS limited edition hot cheetos" not "eating his food"
@@ -1658,17 +1661,20 @@ WHAT DOESN'T WORK:
 CHANNEL CONTEXT: This is for "{channel_name}" ({niche}). Every concept must fit this channel's world and niche."""
 
         scene_format = f"""Each scene needs:
-- "image_prompt": Start with "{_channel_style}". ONE character per scene (the one speaking). Close-up or medium-close framing. Exaggerated facial expression matching the dialogue. The background still needs enough specific game-world detail to instantly prove the franchise. If the concept is League of Legends, literally say "Summoner's Rift", "lane", "river brush", "jungle entrance", "stone turret base", "minimap corner", "health bar", etc. Add "One character only. NO text anywhere." at the end.
-  GOOD: "Simple crude cartoon... Close-up of Ahri on Summoner's Rift mid lane, cracked stone path and river brush behind her, low doodled health bar overhead. One character only. NO text anywhere."
+- "image_prompt": Start with "{_channel_style}". Keep ONE clearly dominant speaker in the foreground, but silent background players/enemies/props are allowed when they make the joke readable. Use the widest framing needed to show the actual beat; not every scene should be a face-only close-up. The background still needs enough specific game-world detail to instantly prove the franchise. If the concept is League of Legends, literally say "Summoner's Rift", "lane", "river brush", "jungle entrance", "stone turret base", "minimap corner", "health bar", etc. Add "One speaking character in the foreground. Background characters allowed as silent silhouettes. NO text anywhere." at the end.
+  GOOD: "Simple crude cartoon... Ahri in the foreground on Summoner's Rift mid lane, cracked stone path and river brush behind her, low doodled health bar overhead, enemy silhouette barely alive in the distance. One speaking character in the foreground. Background characters allowed as silent silhouettes. NO text anywhere."
+  GOOD: "Simple crude cartoon... Lee Sin bursting from river brush onto mid lane, Ahri and the low enemy visible as tiny background silhouettes, kill-feed icons popping near the lane. One speaking character in the foreground. Background characters allowed as silent silhouettes. NO text anywhere."
   BAD: "Simple crude cartoon... Close-up of a worried mage in a forest. One character only. NO text anywhere."
 - "video_prompt": Describe what the character DOES and SAYS. The dialogue must be written naturally in the prompt so Grok generates the character speaking it. Also include sound effects.
   GOOD: "Guy leans forward into the microphone smugly and says yeah he is guilty, shrugs his shoulders. Courtroom murmur, dramatic dun dun sound."
   GOOD: "Guy slams his hands on the table and yells but you are my best friend, tears fly off his face. Table slam, crowd gasps."
   GOOD: "Guy sips his coffee, raises one eyebrow and says can I help you in a confused annoyed tone. Coffee sip, dead silence, cricket chirp."
   GOOD: "Minecraft guy panic-jumps and blurts yo wait wait where'd the stack go, voice cracking mid-sentence. Pickaxe clank, inventory rustle, cave echo."
+  GOOD: "Mid laner spam-pings toward river brush and blurts jung, come mid, he's one, hurry. Ping spam, spell crackle, minion chatter."
   BAD: "Camera slowly zooms out" (boring — nothing moves)
   BAD: "Guy looks sad" (no dialogue, no physical action)
   BAD: "Player keeps mining while dramatic music plays." (still mute, still not a dialogue scene)
+  BAD: "Player screams JUNG COME JUNG COME HES LOW." (typed shorthand, sounds robotic when voiced)
   RULE: One character speaks per scene. Keep dialogue under 10 words. Describe their physical reaction while speaking.
 - "duration": 3-4 seconds per scene. Use as few scenes as the chosen format_strategy needs. Total video 12-16 seconds, 5 scenes max."""
     elif is_satisfying:

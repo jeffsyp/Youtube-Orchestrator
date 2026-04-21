@@ -10,6 +10,11 @@ _LEAGUE_KILL_TROPHY_RE = re.compile(
     re.IGNORECASE,
 )
 _LEAGUE_GENERIC_TROPHY_RE = re.compile(r"\btrophy\b", re.IGNORECASE)
+_LEAGUE_STEAL_AND_RECALL_RE = re.compile(
+    r"(?:steal|stole|takes? the kill|kill steal|took the kill).*(?:recall|recalled)|"
+    r"(?:recall|recalled).*(?:steal|stole|takes? the kill|kill steal)",
+    re.IGNORECASE,
+)
 
 _CRABRAVE_GAME_RULES = (
     {
@@ -241,6 +246,75 @@ def _augment_art_style(art_style: str, rule_name: str) -> str:
     return _normalize_space(f"{text} {addon}")
 
 
+def _looks_like_league_jungle_steal_and_recall(concept: Mapping[str, object]) -> bool:
+    title = str(concept.get("title") or "")
+    brief = str(concept.get("brief") or "")
+    search_space = f"{title} {brief}".lower()
+    if "league" not in search_space and "jungler" not in search_space:
+        return False
+    if not any(term in search_space for term in ("jungler", "gank", "lane")):
+        return False
+    return bool(_LEAGUE_STEAL_AND_RECALL_RE.search(search_space))
+
+
+def _build_scene_prompt(style: str, description: str) -> str:
+    return _normalize_space(
+        f"{style} {description} One speaking character in the foreground. "
+        "Background characters allowed as silent silhouettes. NO text anywhere."
+    )
+
+
+def _rewrite_league_jungle_steal_and_recall(concept: Mapping[str, object]) -> dict:
+    rewritten = dict(concept)
+    style = str(rewritten.get("art_style") or "").strip()
+    if not style:
+        style = "Simple crude cartoon with thick wobbly outlines and flat colors, like a funny doodle comic."
+
+    rewritten["format_strategy"] = "mini_story"
+    rewritten["scenes"] = [
+        {
+            "duration": 3,
+            "image_prompt": _build_scene_prompt(
+                style,
+                "Summoner's Rift mid lane from a medium gameplay angle: panicked mid laner in the foreground spam-pinging "
+                "toward river brush, cracked stone lane path and allied turret base in frame, low enemy champion barely "
+                "alive in the background with an almost-empty health bar and a doodled minimap corner visible.",
+            ),
+            "video_prompt": (
+                "Mid laner spam-pings toward river brush and blurts jung, come mid, he's one, hurry. "
+                "Ping spam, spell crackle, minion chatter."
+            ),
+        },
+        {
+            "duration": 3,
+            "image_prompt": _build_scene_prompt(
+                style,
+                "Summoner's Rift mid lane at the river choke: jungler exploding out of river brush in the foreground as the "
+                "low enemy pops into a kill-feed burst, gold pop icons and damage sparks visible, mid laner reaching in from "
+                "the background like the last hit got stolen.",
+            ),
+            "video_prompt": (
+                "Jungler dashes out of brush, snipes the last hit, and laughs easy, easy, I got him. "
+                "Dash thump, kill ping, gold pop."
+            ),
+        },
+        {
+            "duration": 4,
+            "image_prompt": _build_scene_prompt(
+                style,
+                "Summoner's Rift mid lane under the allied turret: furious mid laner in the foreground pointing at a blue "
+                "recall ring while the jungler is already channeling recall in the background with fresh gold pop icons still "
+                "floating nearby, lane stones, turret base, and health-bar HUD cues still visible.",
+            ),
+            "video_prompt": (
+                "Mid laner points at the recall ring and blurts wait, you took it and recalled? "
+                "Recall hum, awkward silence."
+            ),
+        },
+    ]
+    return rewritten
+
+
 def normalize_game_meme_concept(concept: Mapping | None, *, channel_id: int) -> dict:
     normalized = dict(concept or {})
     if channel_id != 16:
@@ -267,6 +341,10 @@ def normalize_game_meme_concept(concept: Mapping | None, *, channel_id: int) -> 
     anchor = str(rule["anchor"])
     keywords = tuple(rule["keywords"])
     rule_name = str(rule.get("name") or "")
+
+    if rule_name == "league" and _looks_like_league_jungle_steal_and_recall(normalized):
+        normalized = _rewrite_league_jungle_steal_and_recall(normalized)
+        scenes = normalized.get("scenes") if isinstance(normalized.get("scenes"), list) else scenes
 
     art_style = str(normalized.get("art_style") or "").strip()
     if art_style:
