@@ -317,7 +317,7 @@ async def run_pipeline(run_id: int, concept: dict):
         # Route to channel-specific builder if one exists
         from apps.orchestrator.channel_builders import get_channel_builder
         channel_id = concept.get("channel_id", 0)
-        custom_builder = get_channel_builder(channel_id)
+        custom_builder = get_channel_builder(channel_id, concept)
         if custom_builder:
             await custom_builder(run_id, concept, output_dir, _update_step, db_url)
             return

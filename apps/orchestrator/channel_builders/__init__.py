@@ -48,9 +48,28 @@ CHANNEL_BUILDERS = {
 }
 
 
-def get_channel_builder(channel_id: int):
+def _normalize_builder_slug(raw: object) -> str | None:
+    if raw is None:
+        return None
+    text = str(raw).strip().lower()
+    if not text:
+        return None
+    return text.replace("-", "_").replace(" ", "_")
+
+
+def get_channel_builder(channel_id: int, concept: dict | None = None):
     """Return the custom builder for a channel, or None for default pipeline."""
-    builder_slug = get_channel_builder_slug(channel_id)
+    concept = concept or {}
+
+    override = concept.get("builder_override")
+    if override is not None:
+        if isinstance(override, int) or (isinstance(override, str) and override.strip().isdigit()):
+            return CHANNEL_BUILDERS.get(int(override))
+        override_slug = _normalize_builder_slug(override)
+        if override_slug:
+            return BUILDER_REGISTRY.get(override_slug)
+
+    builder_slug = _normalize_builder_slug(get_channel_builder_slug(channel_id))
     if builder_slug:
         return BUILDER_REGISTRY.get(builder_slug)
     return CHANNEL_BUILDERS.get(channel_id)

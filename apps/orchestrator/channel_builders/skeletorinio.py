@@ -449,6 +449,10 @@ def _build_style_profile(concept: dict) -> dict:
     }
 
 
+def _should_use_character_ref(concept: dict) -> bool:
+    return not bool(concept.get("skip_character_ref"))
+
+
 def _is_domain_power_concept(title: str, brief: str) -> bool:
     text = f"{title} {brief}".lower()
     artifact_terms = [
@@ -920,6 +924,10 @@ async def build_skeletorinio(run_id: int, concept: dict, output_dir: str, _updat
     narration_lines = concept.get("narration", [])
     brief = concept.get("brief", title)
     era = concept.get("era", "")
+    runtime_channel_id = int(concept.get("channel_id") or CHANNEL_ID)
+    runtime_music_path = str(concept.get("music_path") or MUSIC_PATH)
+    runtime_tags = concept.get("tags") if isinstance(concept.get("tags"), list) and concept.get("tags") else TAGS
+    use_character_ref = _should_use_character_ref(concept)
 
     narr_dir = os.path.join(output_dir, "narration")
     segments_dir = os.path.join(output_dir, "segments")
@@ -963,16 +971,18 @@ async def build_skeletorinio(run_id: int, concept: dict, output_dir: str, _updat
     anchor_path = os.path.join(images_dir, "style_anchor.png")
     style_profile = _build_style_profile(concept)
     art_style_prompt = style_profile["art_style"]
-    character_variant = concept.get("character_variant") if isinstance(concept.get("character_variant"), dict) else None
-    if not character_variant:
-        await _update_step("designing character variant")
-        character_variant = _build_character_variant(title, brief, era)
-    concept["character_variant"] = character_variant
-    variant_path = os.path.join(output_dir, "character_variant.json")
-    with open(variant_path, "w") as vf:
-        json.dump(character_variant, vf, indent=2)
+    character_variant = None
+    if use_character_ref:
+        character_variant = concept.get("character_variant") if isinstance(concept.get("character_variant"), dict) else None
+        if not character_variant:
+            await _update_step("designing character variant")
+            character_variant = _build_character_variant(title, brief, era)
+        concept["character_variant"] = character_variant
+        variant_path = os.path.join(output_dir, "character_variant.json")
+        with open(variant_path, "w") as vf:
+            json.dump(character_variant, vf, indent=2)
 
-    if not os.path.exists(anchor_path) and os.path.exists(SKELETON_REF):
+    if use_character_ref and not os.path.exists(anchor_path) and os.path.exists(SKELETON_REF):
         # Generate a concept-specific Skeletorinio variant IN the first scene — this becomes the style anchor
         # so all subsequent scenes share the same era, lighting, character scale, and accessory profile.
         _oai = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"), timeout=120.0)
@@ -1010,9 +1020,20 @@ async def build_skeletorinio(run_id: int, concept: dict, output_dir: str, _updat
             logger.warning("style anchor fallback to bare skeletorinio ref", error=str(_e)[:80])
 
     # ─── STEP 4: Unified pipeline — uses style anchor (skeleton IN scene) for all edits ───
-    image_rules = style_profile["image_rules"] + _variant_rules_text(character_variant)
+    base_image_rules = str(concept.get("image_rules") or style_profile["image_rules"])
+    if use_character_ref and character_variant:
+        image_rules = base_image_rules + _variant_rules_text(character_variant)
+    else:
+        image_rules = base_image_rules
     clips_dir, clip_paths, n_clips, line_clip_map = await generate_and_animate_scenes(
-        narration_lines, concept, image_rules, art_style_prompt, output_dir, _update_step, run_id=run_id, character_ref_path=anchor_path,
+        narration_lines,
+        concept,
+        image_rules,
+        art_style_prompt,
+        output_dir,
+        _update_step,
+        run_id=run_id,
+        character_ref_path=anchor_path if use_character_ref else None,
     )
 
     # ─── STEP 4: Build segments from clip map ───
@@ -1026,7 +1047,7 @@ async def build_skeletorinio(run_id: int, concept: dict, output_dir: str, _updat
     await _update_step("building intro")
     actual_teaser_dur = build_intro_teasers(
         n_lines, narr_dir, clips_dir, segments_dir, line_clip_map,
-        channel_id=CHANNEL_ID, concept=concept,
+        channel_id=runtime_channel_id, concept=concept,
     )
 
     await _update_step("concatenating")
@@ -1035,8 +1056,8 @@ async def build_skeletorinio(run_id: int, concept: dict, output_dir: str, _updat
 
     await _update_step("building audio")
     audio_path, seg_starts = build_numpy_audio(
-        n_lines, narr_dir, MUSIC_PATH, actual_teaser_dur, seg_durations, total_dur, output_dir,
-        channel_id=CHANNEL_ID, concept=concept,
+        n_lines, narr_dir, runtime_music_path, actual_teaser_dur, seg_durations, total_dur, output_dir,
+        channel_id=runtime_channel_id, concept=concept,
     )
 
     await _update_step("combining")
@@ -1047,5 +1068,5 @@ async def build_skeletorinio(run_id: int, concept: dict, output_dir: str, _updat
         word_data = json.load(f)
     add_subtitles(combined, word_data, seg_starts, output_dir)
 
-    await update_database(run_id, CHANNEL_ID, title, output_dir, db_url, TAGS)
+    await update_database(run_id, runtime_channel_id, title, output_dir, db_url, runtime_tags)
     logger.info("skeletorinio complete", run_id=run_id, title=title, duration=f"{total_dur:.0f}s")
