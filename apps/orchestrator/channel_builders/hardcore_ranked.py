@@ -430,6 +430,8 @@ def _extract_ranked_subject_name(line: str, fallback: str = "subject") -> str:
 def _impact_mode_for_comparison(title: str, brief: str, narration_lines: list[str], scenes_meta: list[dict]) -> bool:
     if _specimen_test_mode_for_comparison(title, brief, narration_lines, scenes_meta):
         return False
+    if _pull_test_mode_for_comparison(title, brief, narration_lines, scenes_meta):
+        return False
 
     blob = " ".join(
         [
@@ -470,6 +472,68 @@ def _impact_mode_for_comparison(title: str, brief: str, narration_lines: list[st
     return _is_locked_test_comparison({"title": title, "brief": brief}, scenes_meta, narration_lines) and any(
         term in blob for term in impact_terms
     )
+
+
+def _pull_test_mode_for_comparison(title: str, brief: str, narration_lines: list[str], scenes_meta: list[dict]) -> bool:
+    if not _is_locked_test_comparison({"title": title, "brief": brief}, scenes_meta, narration_lines):
+        return False
+
+    blob = " ".join(
+        [
+            title,
+            brief,
+            *[str(line) for line in narration_lines],
+            *[
+                f"{scene.get('image_prompt', '')} {scene.get('video_prompt', '')}"
+                for scene in scenes_meta
+                if isinstance(scene, dict)
+            ],
+        ]
+    ).lower()
+
+    pull_terms = [
+        "pull",
+        "pulls",
+        "pulling",
+        "drag",
+        "drags",
+        "dragging",
+        "tow",
+        "tows",
+        "towing",
+        "haul",
+        "hauls",
+        "hauling",
+    ]
+    load_terms = [
+        "truck",
+        "semi",
+        "trailer",
+        "car",
+        "cart",
+        "sled",
+        "wagon",
+        "crate",
+        "boat",
+        "ship",
+        "plane",
+        "jet",
+        "load",
+        "weight",
+    ]
+    rig_terms = [
+        "rope",
+        "harness",
+        "tow strap",
+        "tow line",
+        "chain",
+        "cable",
+        "hitch",
+    ]
+    has_pull_signal = any(term in blob for term in pull_terms)
+    has_load_signal = any(term in blob for term in load_terms)
+    has_rig_signal = any(term in blob for term in rig_terms)
+    return has_pull_signal and (has_load_signal or has_rig_signal)
 
 
 def _specimen_test_mode_for_comparison(title: str, brief: str, narration_lines: list[str], scenes_meta: list[dict]) -> bool:
@@ -707,6 +771,44 @@ def _impact_result_text(line: str) -> str:
     return _ranked_line_result_text(line)
 
 
+def _pull_test_result_text(line: str) -> str:
+    return _ranked_line_result_text(line)
+
+
+def _pull_action_details(line: str) -> tuple[str, str, str]:
+    result_text = _pull_test_result_text(line)
+    blob = f"{line} {result_text}".lower()
+    if any(term in blob for term in ["doesn't even notice", "does not even notice", "laughs", "doesn't move", "does not move"]):
+        return (
+            "leaning into the same tow harness with everything it has while the line never fully tightens",
+            "the rope stays mostly slack and the truck does not move at all",
+            "leans hard into the harness, paws or braces for traction, but the tow line barely tightens and the truck stays completely still",
+        )
+    if any(term in blob for term in ["rocks once", "rocks", "twitches", "budges", "tiny budge"]):
+        return (
+            "digging in against the same tow line until it snaps taut for one hard yank",
+            "the truck jerks once, a wheel twitches, and then everything settles back down",
+            "surges into the harness, the rope goes fully tight, the truck jolts once with a visible wheel twitch, then stops again",
+        )
+    if any(term in blob for term in ["one inch", "1 inch", "it moved", "inches", "tiny roll", "barely moves"]):
+        return (
+            "straining continuously against the same tow line with full-body traction",
+            "the truck creeps forward a tiny amount, scraping the floor and leaving a short dust streak behind the tire",
+            "leans low, keeps the harness fully tight, claws or hooves digging in while the truck creeps forward a tiny visible amount",
+        )
+    if any(term in blob for term in ["rolls clean", "drags it clean", "drags it", "rolls", "moves it clean", "full drag"]):
+        return (
+            "powering forward with the same tow harness fully loaded",
+            "the truck wheels roll clearly and the whole truck starts following behind under steady pull",
+            "explodes into the pull, the tow line stays bar-tight, the tires begin rolling, and the whole truck follows behind in one continuous drag",
+        )
+    return (
+        "throwing its weight into the same tow harness on the same traction lane",
+        "the tow line tightens and the truck movement changes in a visibly measurable way",
+        "leans into the harness, the tow line snaps tight, traction debris kicks up, and the truck response is clearly visible in frame",
+    )
+
+
 def _default_specimen_test_plan(title: str, brief: str) -> dict[str, str]:
     _subject = (brief or title or "the comparison").strip()
     return {
@@ -863,6 +965,7 @@ Return ONLY a JSON object:
     is_locked_test_comparison = _is_locked_test_comparison(concept, scenes_meta, narration_lines)
     is_method_ladder = _method_ladder_mode_for_comparison(title, concept.get("brief", ""), narration_lines, scenes_meta)
     is_specimen_test = _specimen_test_mode_for_comparison(title, concept.get("brief", ""), narration_lines, scenes_meta)
+    is_pull_test = _pull_test_mode_for_comparison(title, concept.get("brief", ""), narration_lines, scenes_meta)
     is_impact_comparison = _impact_mode_for_comparison(title, concept.get("brief", ""), narration_lines, scenes_meta)
     has_explicit_scene_plan = _has_explicit_scene_plan(concept, scenes_meta, narration_lines)
     specimen_test_plan: dict[str, str] | None = None
@@ -993,6 +1096,8 @@ Return ONLY a JSON object:
             concept_type = "LOCKED_TEST"
         if not concept_type and is_specimen_test:
             concept_type = "SPECIMEN_TEST"
+        if not concept_type and is_pull_test:
+            concept_type = "PULL_TEST"
         if not concept_type and is_impact_comparison:
             concept_type = "IMPACT"
         if not concept_type:
@@ -1010,6 +1115,7 @@ CATEGORIES:
 - "EQUIPMENT" — comparing tools/methods (cook with X, build with Y, cut with Z). The CHARACTER ACTION stays similar, the TOOL changes per scene.
 - "CONDITION" — comparing extreme environments or states (survive at X temperature, perform at Y pressure). The CHARACTER is in varying environments.
 - "SPECIMEN_TEST" — one standardized sample/object is exposed to the SAME rig/process/hazard every time. The SAMPLE SHAPE and APPARATUS stay constant; only the material/object variant and its visible reaction change.
+- "PULL_TEST" — the SAME tow/traction rig repeats every time. The SAME truck/load, hitch, rope, and lane stay constant; only the puller changes and the amount of movement changes.
 - "IMPACT" — comparing how hard different subjects hit, bite, smash, crash, stomp, drop, or create damage. The TEST RIG is constant, the striker changes.
 - "QUANTITY" — comparing amounts/scales (how many X can fit in Y, how much Z is too much).
 
@@ -1019,6 +1125,8 @@ Return ONLY the category name, nothing else.""",
             concept_type = concept_type_resp.strip().upper().strip('"').split()[0] if concept_type_resp else "MOTION"
         if concept_type in {"SPECIMEN", "SAMPLE", "SAMPLE_TEST", "MATERIAL_TEST"}:
             concept_type = "SPECIMEN_TEST"
+        if concept_type in {"PULL", "PULLING", "TRACTION", "TOW", "TUG", "TOW_TEST", "TRACTION_TEST"}:
+            concept_type = "PULL_TEST"
         logger.info("concept type classified", type=concept_type)
 
         brief = concept.get("brief", "")
@@ -1048,6 +1156,15 @@ Return ONLY the category name, nothing else.""",
             "The lane markings, dust lane, debris berm, and test rig never change. "
             "This is a neutral pre-impact setup waiting for the ranked subject to hit the exact same target. "
             "Paleo-accurate / physically believable if a creature appears. No chibi faces, no cartoon game-art exaggeration, no stadium crowd, no text anywhere."
+            )
+        elif concept_type == "PULL_TEST":
+            base_prompt = (
+            "Photorealistic. SINGLE IMAGE only — NOT a comic panel, NOT a cartoon poster, NOT a game splash screen. "
+            "Locked scientific traction-test lane. Same side three-quarter camera on a full-size semi truck or heavy industrial load attached to one fixed hitch and tow line in the center-right of frame. "
+            "The lane markings, tow line, dust lane, truck position, hitch point, and wheel alignment never change. "
+            "This is a neutral pre-pull setup waiting for the ranked subject to pull the exact same load from the exact same starting point. "
+            "Keep the full truck, hitch, and rope readable in one frame so the experiment is instantly obvious. "
+            "No crash wall, no impact plate, no stadium crowd, no text anywhere."
             )
         elif concept_type == "SPECIMEN_TEST":
             specimen_test_plan = _infer_specimen_test_plan(title, brief, narration_lines)
@@ -1111,6 +1228,11 @@ Return ONLY the category name, nothing else.""",
                     "CAMERA: Locked side three-quarter scientific test-arena view. Same strike wall or pressure plate centered in frame, "
                     "same protected observation booth with the googly-eyed skeleton host off to one side for scale, same floor markings, same dust lane."
                 )
+            elif concept_type == "PULL_TEST":
+                _camera = (
+                    "CAMERA: Locked side three-quarter traction-test view. Same truck or heavy load, same hitch point, same tow line lane, same floor markings, same frame. "
+                    "The full pulling setup must stay readable so the viewer instantly understands the experiment."
+                )
             elif concept_type == "EQUIPMENT":
                 _camera = "CAMERA: Side or three-quarter view showing the character interacting with the equipment/tool and the subject of the experiment clearly visible. The setting should match the activity (kitchen, workbench, outdoors, etc.)."
             elif concept_type == "CONDITION":
@@ -1132,6 +1254,7 @@ CAMERA + SETTING based on concept type:
 - MOTION (races, jumps, rolls): Camera BEHIND character, looking down a track/path/slope. Starting-line energy.
 - LOCKED_TEST (one impossible destination/challenge, different methods): fixed side-view or cutaway experiment rig. Same destination, same chamber/shaft/lane, same camera. Only the method/tool changes.
 - SPECIMEN_TEST (same rig, same sample shape, different materials/results): locked side or three-quarter lab or industrial test-rig shot. Same holder/apparatus every time. Only the sample variant and its damage change.
+- PULL_TEST (same truck/load, different pullers): locked side or three-quarter traction-test lane. Same truck/load, hitch point, rope, and camera. Only the puller and visible movement change.
 - IMPACT (hits, smashes, bites, drops): Locked side or three-quarter arena test-rig shot. Same strike wall/pressure plate every time. Same observation area. Same frame.
 - EQUIPMENT (cooking, building, testing tools): Side or three-quarter view. Setting matches the activity (kitchen for cooking, workbench for building, lab for testing). Tools/equipment clearly visible.
 - CONDITION (surviving extremes, temperatures): Character IN the environment, wide/medium shot. Environmental cues visible.
@@ -1149,6 +1272,8 @@ Return ONLY the prompt.""",
         base_scene_path = os.path.join(images_dir, "base_scene.png")
         use_character_ref_for_base = os.path.exists(character_ref_path)
         if concept_type == "SPECIMEN_TEST" and not specimen_test_use_host:
+            use_character_ref_for_base = False
+        if concept_type == "PULL_TEST":
             use_character_ref_for_base = False
         if use_manual_planet_refs:
             earth_ref = manual_planet_refs.get("earth")
@@ -1238,6 +1363,13 @@ Return ONLY the prompt.""",
 - Use physically believable anatomy and motion. No chibi faces, no crowd, no arcade-game splash-art posing.
 - The force difference must be visually obvious: light hits dent the plate a little, mid-tier hits crack it, top-tier hits blast the rig apart.
 - Bake the exact impact moment or immediate aftermath into the frame — not a portrait of the subject roaring for the camera."""
+    elif not has_explicit_scene_plan and concept_type == "PULL_TEST":
+        _edit_guidance = """PULL_TEST concept guidance:
+- Treat the scene as a LOCKED traction-test rig. Same truck/load, same hitch point, same tow line, same lane markings, same camera.
+- ONLY the puller and the amount of movement change between scenes.
+- Keep the full towing setup readable in one frame so the viewer instantly understands the experiment.
+- The result must be obvious at a glance: slack rope and no movement, one hard twitch, a tiny inch of movement, or the truck fully rolling.
+- Show species-appropriate pulling posture and harnessing, not a random portrait or impact pose."""
     elif not has_explicit_scene_plan and concept_type == "SPECIMEN_TEST":
         _edit_guidance = """SPECIMEN_TEST concept guidance:
 - Treat the scene as one repeated controlled specimen test. Same rig, same camera, same holder/tray/applicator, same sample geometry.
@@ -1287,6 +1419,28 @@ Return ONLY the prompt.""",
                 f"Show {visible_result}. "
                 f"The visual damage must match this narration: {result_text or 'the hit lands harder than the previous subject'}. "
                 "No crowd, no stylized aura, no cartoon expression, no text anywhere."
+            )
+        while len(edit_prompts) < n_lines:
+            edit_prompts.append(edit_prompts[-1])
+        edit_prompts = edit_prompts[:n_lines]
+    elif concept_type == "PULL_TEST":
+        edit_prompts = [
+            "No changes — use the locked truck-pull rig as the hook frame."
+        ]
+        for i in range(1, n_lines):
+            line = narration_lines[i]
+            subject = _extract_ranked_subject_name(line, "puller")
+            pull_pose, visible_result, _ = _pull_action_details(line)
+            result_text = _pull_test_result_text(line)
+            edit_prompts.append(
+                f"Same exact traction-test lane, same truck/load, same hitch point, same tow line, same wheel position, same floor markings, same camera. "
+                f"Replace only the active puller with {subject}. "
+                "Show the puller attached to the same tow harness or rope in a species-appropriate way, leaning into the pull with full-body effort. "
+                "Keep the full towing setup readable in one frame — do not remove the truck, rope, hitch, or lane. "
+                f"Show {pull_pose}. "
+                f"The visible result must read as: {visible_result}. "
+                f"The truck response must match this narration: {result_text or 'the load reacts differently from the previous puller'}. "
+                "No impact plate, no crash-wall pose, no poster framing, no text anywhere."
             )
         while len(edit_prompts) < n_lines:
             edit_prompts.append(edit_prompts[-1])
@@ -1456,6 +1610,14 @@ Return ONLY a JSON array of {n_lines} strings. Line 0 should be "No changes — 
                             "Do not change the environment or convert it into poster art. "
                             f"{edit_prompts[i]}"
                         )
+                    elif concept_type == "PULL_TEST":
+                        edit_instruction = (
+                            "Treat the input image as a LOCKED scientific traction-test template. "
+                            "Preserve the exact same camera angle, crop, truck/load position, wheelbase position, hitch point, tow line placement, floor markings, and dust lane. "
+                            "Keep the truck, tow line, and pull lane fully readable in frame. "
+                            "Do not remove the towing rig or turn this into an impact plate, portrait, or poster image. "
+                            f"{edit_prompts[i]}"
+                        )
                     elif concept_type == "SPECIMEN_TEST":
                         specimen_test_plan = specimen_test_plan or _infer_specimen_test_plan(title, concept.get("brief", ""), narration_lines)
                         specimen_test_use_host = specimen_test_use_host or _specimen_test_uses_host(title, concept.get("brief", ""), narration_lines)
@@ -1536,6 +1698,13 @@ Return ONLY a JSON array of {n_lines} strings. Line 0 should be "No changes — 
                             "Image 1 is the locked impact-test arena template. Image 2 should preserve the SAME arena, strike wall, observation booth, camera angle, crop, and floor layout. "
                             "PASS if the test rig clearly stays the same and only the ranked subject plus the amount of impact damage changes. "
                             "FAIL if Image 2 turns into poster art, a different environment, a close-up that loses the rig, or a generic action splash with no consistent test setup. "
+                            "Answer PASS or FAIL with one short reason."
+                        )
+                    elif concept_type == "PULL_TEST":
+                        review_prompt = (
+                            "Image 1 is the locked truck-pull / traction-test template. Image 2 should preserve the SAME truck or load, the SAME hitch point, the SAME tow line lane, the SAME camera angle, crop, and floor layout. "
+                            "PASS if the towing rig clearly stays the same and only the puller plus the amount of truck movement changes. "
+                            "FAIL if Image 2 removes the truck or rope, turns the setup into an impact arena, loses the full towing rig, or becomes a generic portrait/action splash with no consistent pull test. "
                             "Answer PASS or FAIL with one short reason."
                         )
                     elif concept_type == "SPECIMEN_TEST":
@@ -1749,6 +1918,24 @@ Return ONLY a JSON array of {n_lines} strings. Line 0 should be "No changes — 
                 f"The damage escalation must match this line: {result_text or 'harder than the previous subject'}. "
                 "Keep the strike wall and observation booth visible so the comparison stays constant. "
                 "Make the motion violent and decisive, not a slow zoom or idle pose. No scene cuts."
+            )
+        while len(anim_prompts) < n_lines:
+            anim_prompts.append(anim_prompts[-1])
+    elif concept_type == "PULL_TEST":
+        anim_prompts = [
+            "Locked truck-pull test lane. Show the untouched truck/load, hitch, and tow line before the attempt starts. Keep the whole towing rig readable in one frame. No scene cuts."
+        ]
+        for i in range(1, n_lines):
+            line = narration_lines[i]
+            subject = _extract_ranked_subject_name(line, "puller")
+            _, visible_result, motion_prompt = _pull_action_details(line)
+            result_text = _pull_test_result_text(line)
+            anim_prompts.append(
+                f"Same exact traction-test lane and same camera. {subject} is fully committed to the pull: {motion_prompt}. "
+                f"Show {visible_result}. "
+                f"The truck response must match this line: {result_text or 'the load reacts differently from the previous puller'}. "
+                "Keep the truck, hitch, and tow line visible so the comparison is instantly readable. "
+                "No scene cuts."
             )
         while len(anim_prompts) < n_lines:
             anim_prompts.append(anim_prompts[-1])
