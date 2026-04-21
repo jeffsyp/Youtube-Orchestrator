@@ -755,6 +755,17 @@ def _validate_nightnight_script_audio(
         )
 
 
+def _get_simpler_format_strategy(format_strategy: str | None) -> str | None:
+    normalized = normalize_format_strategy(format_strategy)
+    if normalized == "full_story":
+        return "mini_story"
+    if normalized == "mini_story":
+        return "attack_result"
+    if normalized == "attack_result":
+        return "single_frame"
+    return None
+
+
 async def build_nightnight(run_id: int, concept: dict, output_dir: str, _update_step, db_url: str):
     """Full NightNightShorts video build using unified pipeline."""
     title = concept.get("title", "Untitled")
@@ -971,6 +982,7 @@ async def build_nightnight(run_id: int, concept: dict, output_dir: str, _update_
 
     rewrite_attempt = 0
     max_rewrite_attempts = 3
+    format_fallback_attempted = False
     while True:
         try:
             _validate_nightnight_script_text(
@@ -981,7 +993,29 @@ async def build_nightnight(run_id: int, concept: dict, output_dir: str, _update_
             )
             break
         except ValueError as exc:
-            if concept.get("script_locked") or rewrite_attempt >= max_rewrite_attempts:
+            if concept.get("script_locked"):
+                raise
+            if rewrite_attempt >= max_rewrite_attempts:
+                fallback_strategy = _get_simpler_format_strategy(format_strategy)
+                if not format_fallback_attempted and fallback_strategy:
+                    previous_format = format_strategy
+                    format_strategy = fallback_strategy
+                    format_spec = get_format_strategy_spec(format_strategy)
+                    format_description = FORMAT_STRATEGY_DESCRIPTIONS[format_strategy]
+                    concept["format_strategy"] = format_strategy
+                    rewrite_attempt = 0
+                    format_fallback_attempted = True
+                    await _update_step("simplifying story format")
+                    narration_lines, title = _generate_script(
+                        rewrite_reason=(
+                            f"{exc} The {previous_format} version kept failing validation. "
+                            f"Rewrite the same premise as a tighter {format_strategy} with fewer beats, "
+                            "a cleaner midpoint turn, and a more obvious payoff."
+                        ),
+                        previous_lines=narration_lines,
+                        rewrite_attempt=0,
+                    )
+                    continue
                 raise
             rewrite_attempt += 1
             await _update_step("rewriting script")
