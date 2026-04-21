@@ -31,7 +31,8 @@ from packages.utils.concept_formats import (
 logger = structlog.get_logger()
 
 CHANNEL_ID = 28
-VOICE_ID = "TX3LPaxmHKxFdv7VOQHJ"
+VOICE_ID = "TxGEqnHWrfWFTfGW9XjX"  # Josh
+VOICE_SETTINGS = {"stability": 0.6, "similarity_boost": 0.8, "speed": 0.97}
 MUSIC_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "..", "assets", "music", "dark", "rising.mp3")
 TAGS = ["anime", "what if", "shorts", "viral", "nightnightshorts"]
 
@@ -114,6 +115,9 @@ GLOBAL RULES FOR BOTH FORMATS:
 - Prefer the post-hook lines to stay under 12 words unless a canon name requires extra words
 - Punchy, fast-paced, funny or hype
 - Line 1 must tell the viewer EXACTLY what the video is about out loud. Shorts viewers do not see the title.
+- If the written title is long, the spoken hook may use the SHORTEST clear version instead of reciting every franchise word.
+- GOOD: "What if Light used the Death Note on Hisoka?"
+- BAD: saying the full title word-for-word when a shorter hook is cleaner and more natural.
 - Use SPECIFIC canon names, attacks, locations, and reactions. Never generic anime filler words.
 - Every line must be VISUALLY DRAWABLE in a single still image. Prefer physical verbs and visible props. Avoid abstract-only lines like "everyone realizes", "he decides", "they beg", or "it becomes obvious" unless the line also includes a visible physical proof.
 - If a line contains a setup action and then a reaction, phrase it so the setup can be shown FIRST and the reaction SECOND in separate visuals. Example: "Gojo jogs backward behind Satotz; Gon and Killua nearly trip staring." The weird action happens first, then the reaction.
@@ -129,6 +133,12 @@ GLOBAL RULES FOR BOTH FORMATS:
 - GOOD: "Light expects Hisoka to die. Hisoka stands back up smiling."
 - GOOD: "Gojo's Infinity stops the cards in midair."
 - BAD: "Texture Surprise activates. Bungee Gum reacts." with no plain-English explanation.
+- MINI-STORY RULE: after the hook, the script must feel like a CRAZY SCENE CLIP CHAIN, not a lore recap.
+- Someone does something impossible, the canon world answers, the situation TURNS, and the final beat lands visibly.
+- Do NOT spend two post-hook lines in a row just explaining feelings, themes, or who is rattled.
+- Every post-hook line should either change who has control, reveal a new rule, escalate the damage, or force a new tactic.
+- By line 3 or 4, there must be a STORY TURN: counterattack, survival reveal, power reversal, target change, timer, betrayal, failed plan, or canon-rule backfire.
+- The last line must show the ENDING ON SCREEN. Avoid internal-summary endings like "he realizes", "she is rattled", or "the notebook met someone" unless the line also contains a visible physical payoff.
 - MULTIPLE CHARACTERS ARE FINE, but avoid writing lines whose payoff depends on two characters physically touching in one shot. Prefer beats that can stage the attacker/setup first and the victim/result second.
 - If a line implies "A hits B", "A knocks B out", "A grabs B", or "A hands B something", phrase it so the planner can show separated cause→effect beats instead of literal contact.
 - For matchup/fight lines, the safest default is often "named move/setup" first and "loser aftermath/result" second.
@@ -144,6 +154,16 @@ FORMAT A — ANIME CROSSOVER "WHAT IF":
 
 EVERY SCRIPT MUST HAVE A STORY ARC — NOT A LIST OF MOMENTS:
 The script must read as a sequence where EACH line builds on the last. Not vignettes, not a description, not a list of "things that happen." A story.
+
+STORY ENGINE REQUIREMENT:
+- A strong crossover answers four questions fast:
+  1. what impossible thing happens first,
+  2. how the canon world answers,
+  3. what insane twist or survival move changes the story,
+  4. what final ending image nobody expected.
+- If line 2 already tells the viewer the exact rest of the video, the premise is too flat.
+- GOOD: Light writes the name, Hisoka dies, Hisoka restarts his heart, Light tries again, Hisoka turns the hunt around.
+- BAD: Light writes the name, Hisoka revives, Light feels scared. That is explanation, not a story.
 
 USE THE ACTUAL CANON EVENTS FROM THE SHOW:
 The scenario must progress through the REAL phases/fights/tests of the source material. Don't invent generic "Phase One: a tunnel" — name the specific canonical events fans know.
@@ -323,7 +343,9 @@ STRONG_ACTION_MARKERS = (
     "sprint", "sprints", "jog", "jogs", "run", "runs", "dash", "dashes",
     "die", "dies", "kill", "kills", "drops dead", "restart", "restarts", "revive", "revives",
     "stands back up", "gets back up",
-    "hit", "hits", "fold", "folds", "rush", "rushes",
+    "hit", "hits", "fold", "folds", "rush", "rushes", "licks", "pins", "burns", "rips",
+    "dodge", "dodges", "walk", "walks", "step", "steps", "approach", "approaches",
+    "steal", "steals", "pluck", "plucks",
 )
 
 REACTION_ONLY_MARKERS = (
@@ -366,6 +388,9 @@ DEATH_OR_REVIVAL_MARKERS = (
 PLAIN_LANGUAGE_DEATH_MARKERS = (
     "dies",
     "drops dead",
+    "the death note kills",
+    "kills anyone whose name",
+    "the person dies",
     "heart stops",
     "falls dead",
     "dead on the floor",
@@ -388,33 +413,72 @@ PLAIN_LANGUAGE_COMEBACK_MARKERS = (
     "back on her feet",
 )
 
+STORY_TURN_MARKERS = (
+    "but", "instead", "until", "then", "suddenly", "tries again", "writes again",
+    "won't stay dead", "stands back up", "gets back up", "comes back",
+    "backfires", "counter", "counters", "reverses", "turns on", "survives",
+    "dodges", "snatches", "steals", "rips", "burns", "pins",
+)
+
+ABSTRACT_ENDING_MARKERS = (
+    "realizes", "rattled", "interested than before", "finally met someone",
+    "finally met", "enjoyed it", "understands", "learns", "knows now",
+)
+
+FINAL_VISUAL_MARKERS = (
+    "hands", "hand", "shoves", "shove", "burns", "burn", "rips", "rip",
+    "pins", "pin", "drops", "drop", "kneels", "kneel", "crashes", "crash",
+    "collapses", "collapse", "explodes", "explode", "wins", "win", "loses",
+    "lose", "dragged", "drags", "blasts", "blast", "snaps", "snap", "stamps", "stamp",
+)
+
 
 def _has_strong_action(line: str) -> bool:
     lowered = line.lower()
-    return any(marker in lowered for marker in STRONG_ACTION_MARKERS)
+    return any(_contains_marker(lowered, marker) for marker in STRONG_ACTION_MARKERS)
 
 
 def _is_reaction_only_line(line: str) -> bool:
     lowered = line.lower()
-    return any(marker in lowered for marker in REACTION_ONLY_MARKERS) and not _has_strong_action(line)
+    return any(_contains_marker(lowered, marker) for marker in REACTION_ONLY_MARKERS) and not _has_strong_action(line)
 
 
 def _is_passive_premise(title: str, brief: str) -> bool:
     lowered = f"{title} {brief}".lower()
-    return any(marker in lowered for marker in PASSIVE_PREMISE_MARKERS)
+    return any(_contains_marker(lowered, marker) for marker in PASSIVE_PREMISE_MARKERS)
 
 
 def _needs_explicit_death_comeback_explanation(brief: str, key_facts: str) -> bool:
     lowered = f"{brief} {key_facts}".lower()
-    if "death note" not in lowered:
+    if not _contains_marker(lowered, "death note"):
         return False
-    return any(marker in lowered for marker in DEATH_OR_REVIVAL_MARKERS)
+    return any(_contains_marker(lowered, marker) for marker in DEATH_OR_REVIVAL_MARKERS)
 
 
 def _has_marker(lines: list[str], markers: tuple[str, ...], *, window: slice | None = None) -> bool:
     target_lines = lines[window] if window is not None else lines
     lowered = " ".join(target_lines).lower()
-    return any(marker in lowered for marker in markers)
+    return any(_contains_marker(lowered, marker) for marker in markers)
+
+
+def _contains_marker(text: str, marker: str) -> bool:
+    return re.search(rf"(?<![a-z0-9]){re.escape(marker)}(?![a-z0-9])", text) is not None
+
+
+def _has_story_turn(lines: list[str]) -> bool:
+    if len(lines) < 4:
+        return True
+    return _has_marker(lines, STORY_TURN_MARKERS, window=slice(2, None))
+
+
+def _has_final_visual_payoff(line: str) -> bool:
+    lowered = line.lower()
+    return _has_strong_action(line) or any(_contains_marker(lowered, marker) for marker in FINAL_VISUAL_MARKERS)
+
+
+def _is_abstract_ending_line(line: str) -> bool:
+    lowered = line.lower()
+    return any(_contains_marker(lowered, marker) for marker in ABSTRACT_ENDING_MARKERS) and not _has_final_visual_payoff(line)
 
 
 def _validate_nightnight_script_text(
@@ -475,6 +539,18 @@ def _validate_nightnight_script_text(
             "Replace them with visible power use, collisions, or canon-rule breakage."
         )
 
+    if format_strategy in {"mini_story", "full_story"} and not _has_story_turn(narration_lines):
+        raise ValueError(
+            "NightNight mini stories need a real midpoint turn. Add a counter, survival reveal, "
+            "new tactic, betrayal, or canon-rule reversal by line 3 or 4."
+        )
+
+    if _is_abstract_ending_line(narration_lines[-1]):
+        raise ValueError(
+            "NightNight ending is too abstract. Finish on a visible final beat or verdict, "
+            "not just a theme/reaction summary."
+        )
+
     if _needs_explicit_death_comeback_explanation(brief, key_facts):
         early_window = slice(0, min(len(narration_lines), 4))
         has_death = _has_marker(narration_lines, PLAIN_LANGUAGE_DEATH_MARKERS, window=early_window)
@@ -499,9 +575,14 @@ def _validate_nightnight_script_audio(
         total_duration += get_duration(narr_path)
 
     max_duration = float(format_spec["max_duration"])
-    if total_duration > max_duration:
+    channel_max_duration = max_duration
+    if format_strategy == "mini_story":
+        # NightNight needs a little extra room for canon names plus the plain-English rule
+        # that makes crossover twists followable for cold viewers.
+        channel_max_duration = max(max_duration, 28.0)
+    if total_duration > channel_max_duration:
         raise ValueError(
-            f"NightNight narration is too long for {format_strategy} ({total_duration:.1f}s > {max_duration:.1f}s). "
+            f"NightNight narration is too long for {format_strategy} ({total_duration:.1f}s > {channel_max_duration:.1f}s). "
             "Tighten the script before image generation."
         )
 
@@ -573,6 +654,7 @@ async def build_nightnight(run_id: int, concept: dict, output_dir: str, _update_
                 "\nSecond-pass correction:\n"
                 "- Be shorter and sharper than the previous draft.\n"
                 "- No line may exceed 15 words.\n"
+                "- If the hook or ending is too long, use the shortest clear spoken version.\n"
                 "- Every post-hook line should contain a distinct visible move, blast, counter, aura burst, collapse, or impact.\n"
             )
         resp = claude_generate(
@@ -631,7 +713,7 @@ async def build_nightnight(run_id: int, concept: dict, output_dir: str, _update_
     await _update_step("generating narration")
     await generate_narration_with_timestamps(
         narration_lines, narr_dir, output_dir, VOICE_ID, _update_step,
-        voice_settings={"stability": 0.4, "similarity_boost": 0.8, "speed": 1.1},
+        voice_settings=VOICE_SETTINGS,
     )
     _validate_nightnight_script_audio(narration_lines, narr_dir, format_strategy)
 

@@ -95,6 +95,22 @@ def _extract_nightnight_characters(text: str) -> list[str]:
     return ordered
 
 
+_NIGHTNIGHT_STORY_TURN_MARKERS = (
+    "but", "instead", "until", "then", "suddenly", "counter", "counters",
+    "survives", "comes back", "stands back up", "gets back up", "revives",
+    "restarts", "backfires", "turns on", "changes the target", "tries again",
+    "betrays", "steals", "snatches", "breaks the rule", "breaks the test",
+)
+
+
+def _nightnight_pitch_has_story_turn(concept: dict) -> bool:
+    text_blob = " ".join(
+        str(concept.get(field) or "")
+        for field in ("title", "brief", "key_facts", "structure")
+    ).lower()
+    return any(marker in text_blob for marker in _NIGHTNIGHT_STORY_TURN_MARKERS)
+
+
 def _diversify_nightnight_concepts(concepts: list[dict], past_titles: list[str], remaining: int) -> list[dict]:
     """Prefer fresher NightNight concepts instead of repeating the same anchors."""
     if remaining <= 0 or len(concepts) <= remaining:
@@ -135,6 +151,7 @@ def _diversify_nightnight_concepts(concepts: list[dict], past_titles: list[str],
             "characters": characters,
             "lead_character": lead_character,
             "franchises": franchises,
+            "has_story_turn": _nightnight_pitch_has_story_turn(concept),
         })
 
     selected = []
@@ -154,6 +171,7 @@ def _diversify_nightnight_concepts(concepts: list[dict], past_titles: list[str],
             overused_penalty = 1 if lead in NIGHTNIGHT_OVERUSED_CHARACTERS else 0
 
             return (
+                1 if item["has_story_turn"] else 0,
                 1 if not overused_penalty else 0,
                 1 if not (overused_penalty and selected_overused_leads) else 0,
                 fresh_lead,

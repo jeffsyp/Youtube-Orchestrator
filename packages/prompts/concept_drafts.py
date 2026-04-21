@@ -181,6 +181,33 @@ NATURE RECEIPTS CONCEPT RULES (CRITICAL):
 - The best Nature Receipts ideas feel like tiny wildlife disaster documentaries, not random animal Mad Libs.
 """
 
+    nightnight_pitch_block = ""
+    if channel_name.lower() == "nightnightshorts":
+        nightnight_pitch_block = """
+
+NIGHTNIGHTSHORTS CONCEPT RULES (CRITICAL):
+- These are narrated ANIME STORY shorts now, not just crossover premises and not stat-sheet fight debates.
+- The best NightNight concepts feel like the craziest non-canon scene you would instantly click, understand, and retell.
+- Every pitch needs a STORY ENGINE, not just a mashup:
+  1. exact scenario / canon event,
+  2. first impossible move,
+  3. host-world answer or counter,
+  4. twist / survival / reversal,
+  5. final payoff image.
+- In a batch of 5, at least 3 concepts must clearly imply a midpoint turn in the brief or structure.
+- Avoid flat premises where line 2 already tells the viewer the whole video:
+  BAD: "Light writes Hisoka. Hisoka revives. Light is scared."
+  GOOD: "Light writes Hisoka. Hisoka dies, restarts his heart, and turns the hunt back on Light."
+- Prefer scenarios people would NEVER see in the real anime, but can follow instantly with zero lore context.
+- Use SPECIFIC canon events, tests, arcs, locations, bosses, tournaments, or battles — not generic "X enters Y universe."
+- KEY FACTS must explain any special rule in plain English. If the twist depends on one power or mechanic, spell out what it DOES.
+- STRUCTURE should read like a sequence of escalating beats, not a vibe description.
+- Strong story shapes:
+  - outsider invades canon event → canon rule hits them → outsider breaks it → stronger canon answer → insane ending
+  - villain uses signature trick → target survives or counters weirdly → villain changes plan → final reversal
+  - matchup starts simple → one named move lands → opponent reveals a weirder answer → decisive ending
+"""
+
     coldcase_pitch_block = ""
     if channel_name.lower() == "coldcasecartoons":
         coldcase_pitch_block = """
@@ -236,7 +263,7 @@ WHAT MAKES A GOOD CONCEPT:
 - Avoid timid framing like "you didn't mean to", "you never wanted this", "somehow this happened" unless that reluctance is the actual joke. Prefer domination, escalation, spectacle, catastrophe, flexing, transformation, or absurd world-scale consequences.
 - If the concept involves power, mythology, combat, space, animals, disasters, or extreme comparisons, push it toward the wildest visually obvious version rather than the safest small one.
 - If the concept is about becoming a final boss, raid boss, dungeon lord, chosen tyrant, or world-ending threat, do NOT pitch it as cozy administration, city-building, tourism, or paperwork. Pitch escalating fights, stronger challengers, bigger powers, phase changes, summons, armies, and an undefeated ending.
-{hardcore_ranked_pitch_block}{schmoney_facts_pitch_block}{skeletorinio_pitch_block}{one_on_ones_pitch_block}{nature_receipts_pitch_block}{coldcase_pitch_block}
+{hardcore_ranked_pitch_block}{schmoney_facts_pitch_block}{skeletorinio_pitch_block}{one_on_ones_pitch_block}{nature_receipts_pitch_block}{coldcase_pitch_block}{nightnight_pitch_block}
 
 FORMAT STRATEGY (choose the SIMPLEST one that still makes the idea work):
 - "single_frame" = the whole premise works as one instantly legible image plus an optional tiny aftermath
