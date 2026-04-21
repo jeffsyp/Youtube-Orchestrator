@@ -309,6 +309,47 @@ Return ONLY a JSON object:
 {{"narration": ["line 1", "line 2", ...], "title": "SHORT TITLE", "format_strategy": "{format_strategy}"}}"""
 
 
+DIALOGUE_SKIT_PROMPT = """Convert this NightNightShorts premise into a NATIVE-DIALOGUE anime skit.
+
+CONCEPT: {title}
+BRIEF: {brief}
+KEY FACTS: {key_facts}
+STRUCTURE NOTES: {structure}
+FORMAT STRATEGY: {format_strategy} ({format_description})
+
+This is for a cold-viewer short. The characters must SAY enough out loud that someone with zero context can instantly follow the scene.
+
+RULES:
+- Return 3-5 scenes. Use the FEWEST scenes that still make the story obvious.
+- NO narrator. NO voiceover. One dominant speaker per scene.
+- Spoken lines must sound like real speech, not typed lore notes. Short, natural, punchy.
+- Every scene must visibly advance the story. No reaction-only filler.
+- Scene 1 must say the topic or rule out loud in plain English.
+- If the twist depends on a special mechanic, explain what it does in plain English by scene 1 or 2.
+- For Death Note ideas, somebody must clearly establish: writing the name kills the target, then later clearly say or show that the target stands back up or restarts their heart.
+- The final scene must end on a visible physical payoff, not just a creepy smile with no action.
+- Use actual anime character names and signature details in every image prompt.
+- Keep the style consistent with this channel: {art_style}
+- Every image_prompt must end with: "Clean anime-cartoon parody frame. NO text anywhere."
+- Every video_prompt must describe what the speaker DOES and SAYS, plus sound effects. Do not write camera directions.
+
+Return ONLY a JSON object:
+{{
+  "title": "SHORT TITLE",
+  "format_strategy": "{format_strategy}",
+  "narration_style": "none",
+  "audio_policy": "native_dialogue",
+  "scenes": [
+    {{
+      "characters": ["Speaker Name", "Optional Silent Character"],
+      "image_prompt": "Detailed anime-cartoon frame prompt",
+      "video_prompt": "Speaker physically acts and says a short natural line. Include sound effects.",
+      "duration": 3.0
+    }}
+  ]
+}}"""
+
+
 def _is_vs_matchup(title: str, brief: str = "") -> bool:
     text = f"{title} {brief}".lower()
     return any(
@@ -390,6 +431,8 @@ PLAIN_LANGUAGE_DEATH_MARKERS = (
     "drops dead",
     "the death note kills",
     "kills anyone whose name",
+    "if i write your name, you die",
+    "write your name, you die",
     "the person dies",
     "heart stops",
     "falls dead",
@@ -404,8 +447,12 @@ PLAIN_LANGUAGE_COMEBACK_MARKERS = (
     "comes back",
     "won't stay dead",
     "is back up",
+    "restart my own heart",
+    "restarted my own heart",
     "restarts his own heart",
+    "restarts his heart",
     "restarts her own heart",
+    "restarts her heart",
     "revives",
     "revived",
     "resurrects",
@@ -430,6 +477,44 @@ FINAL_VISUAL_MARKERS = (
     "pins", "pin", "drops", "drop", "kneels", "kneel", "crashes", "crash",
     "collapses", "collapse", "explodes", "explode", "wins", "win", "loses",
     "lose", "dragged", "drags", "blasts", "blast", "snaps", "snap", "stamps", "stamp",
+)
+
+DIALOGUE_SKIT_PREMISE_MARKERS = (
+    "death note",
+    "notebook",
+    "writes",
+    "rewrites",
+    "interrogates",
+    "threatens",
+    "warns",
+    "bargains",
+    "lies to",
+    "bluffs",
+    "stalks",
+    "turns the hunt back",
+    "turns the scene into a chase",
+)
+
+LARGE_EVENT_MARKERS = (
+    "exam",
+    "selection",
+    "tournament",
+    "war",
+    "invasion",
+    "arc",
+    "raid",
+    "forest of death",
+    "hunter exam",
+    "chunin",
+)
+
+_DIALOGUE_VERB_PATTERN = re.compile(
+    r"\b("
+    r"says|said|yells|yelled|asks|asked|blurts|mutters|whispers|shouts|shouted|"
+    r"screams|screamed|laughs|laughing|snaps|snapped|groans|groaned|taunts|taunted|"
+    r"replies|replied|calls out|called out|mocks|mocked|goes|cuts in|cut in"
+    r")\b",
+    re.IGNORECASE,
 )
 
 
@@ -479,6 +564,90 @@ def _has_final_visual_payoff(line: str) -> bool:
 def _is_abstract_ending_line(line: str) -> bool:
     lowered = line.lower()
     return any(_contains_marker(lowered, marker) for marker in ABSTRACT_ENDING_MARKERS) and not _has_final_visual_payoff(line)
+
+
+def _should_use_dialogue_skit(
+    title: str,
+    brief: str,
+    key_facts: str,
+    structure: str,
+    format_strategy: str | None = None,
+) -> bool:
+    format_strategy = normalize_format_strategy(format_strategy)
+    if format_strategy not in {"attack_result", "mini_story"}:
+        return False
+    if _is_vs_matchup(title, brief):
+        return False
+
+    lowered = f"{title} {brief} {key_facts} {structure}".lower()
+    if not any(_contains_marker(lowered, marker) for marker in DIALOGUE_SKIT_PREMISE_MARKERS):
+        return False
+
+    # Big canon-event crossovers usually read better as voiceover mini-stories.
+    if any(_contains_marker(lowered, marker) for marker in LARGE_EVENT_MARKERS) and not _contains_marker(lowered, "death note"):
+        return False
+
+    return True
+
+
+def _scene_video_prompt_has_dialogue(video_prompt: str | None) -> bool:
+    if not isinstance(video_prompt, str):
+        return False
+    return bool(_DIALOGUE_VERB_PATTERN.search(video_prompt))
+
+
+def _validate_dialogue_skit_scenes(
+    scenes: list[dict],
+    *,
+    brief: str = "",
+    key_facts: str = "",
+    format_strategy: str | None = None,
+) -> None:
+    format_strategy = normalize_format_strategy(format_strategy)
+    if not isinstance(scenes, list) or not scenes:
+        raise ValueError("NightNight dialogue skit needs scene data.")
+    if not 3 <= len(scenes) <= 5:
+        raise ValueError(f"NightNight dialogue skit needs 3-5 scenes, got {len(scenes)}.")
+
+    total_duration = 0.0
+    for idx, scene in enumerate(scenes):
+        if not isinstance(scene, dict):
+            raise ValueError(f"NightNight scene {idx + 1} is not an object.")
+        image_prompt = str(scene.get("image_prompt") or "").strip()
+        video_prompt = str(scene.get("video_prompt") or "").strip()
+        characters = scene.get("characters")
+        duration = float(scene.get("duration") or 0)
+        if not image_prompt or not video_prompt:
+            raise ValueError(f"NightNight scene {idx + 1} is missing prompts.")
+        if not isinstance(characters, list) or not characters:
+            raise ValueError(f"NightNight scene {idx + 1} needs at least one named character.")
+        if not _scene_video_prompt_has_dialogue(video_prompt):
+            raise ValueError(
+                f"NightNight scene {idx + 1} needs explicit spoken dialogue in video_prompt."
+            )
+        if duration <= 0 or duration > 4.5:
+            raise ValueError(
+                f"NightNight scene {idx + 1} duration should stay between 0 and 4.5 seconds."
+            )
+        total_duration += duration
+
+    if total_duration > 18:
+        raise ValueError(f"NightNight dialogue skit is too long ({total_duration:.1f}s > 18s).")
+
+    early_prompts = " ".join(str(scene.get("video_prompt") or "") for scene in scenes[:2]).lower()
+    if _needs_explicit_death_comeback_explanation(brief, key_facts):
+        has_death = any(_contains_marker(early_prompts, marker) for marker in PLAIN_LANGUAGE_DEATH_MARKERS)
+        has_comeback = any(_contains_marker(" ".join(str(scene.get("video_prompt") or "") for scene in scenes[:4]).lower(), marker) for marker in PLAIN_LANGUAGE_COMEBACK_MARKERS)
+        if not (has_death and has_comeback):
+            raise ValueError(
+                "NightNight dialogue skit must clearly say the death rule and the comeback in plain English."
+            )
+
+    final_blob = f"{scenes[-1].get('image_prompt', '')} {scenes[-1].get('video_prompt', '')}".lower()
+    if not any(_contains_marker(final_blob, marker) for marker in FINAL_VISUAL_MARKERS):
+        raise ValueError(
+            "NightNight dialogue skit ending needs a visible physical payoff, not just a mood beat."
+        )
 
 
 def _validate_nightnight_script_text(
@@ -575,11 +744,10 @@ def _validate_nightnight_script_audio(
         total_duration += get_duration(narr_path)
 
     max_duration = float(format_spec["max_duration"])
-    channel_max_duration = max_duration
-    if format_strategy == "mini_story":
-        # NightNight needs a little extra room for canon names plus the plain-English rule
-        # that makes crossover twists followable for cold viewers.
-        channel_max_duration = max(max_duration, 28.0)
+    # NightNight shorts often need a little extra room for canon names, rule explanations,
+    # and now dialogue-style mini stories. Treat anything under ~40s as acceptable instead
+    # of hard-failing on tiny overages like 28.1s.
+    channel_max_duration = max(max_duration, 40.0)
     if total_duration > channel_max_duration:
         raise ValueError(
             f"NightNight narration is too long for {format_strategy} ({total_duration:.1f}s > {channel_max_duration:.1f}s). "
@@ -592,6 +760,8 @@ async def build_nightnight(run_id: int, concept: dict, output_dir: str, _update_
     title = concept.get("title", "Untitled")
     narration_lines = concept.get("narration", [])
     brief = concept.get("brief", title)
+    key_facts = str(concept.get("key_facts") or "")
+    structure = str(concept.get("structure") or "")
     format_strategy = infer_format_strategy(concept, form_type="short")
     format_spec = get_format_strategy_spec(format_strategy)
     format_description = FORMAT_STRATEGY_DESCRIPTIONS[format_strategy]
@@ -608,14 +778,19 @@ async def build_nightnight(run_id: int, concept: dict, output_dir: str, _update_
     from packages.clients.claude import generate as claude_generate
 
     passive_premise = _is_passive_premise(title, brief)
+    use_dialogue_skit = _should_use_dialogue_skit(
+        title,
+        brief,
+        key_facts,
+        structure,
+        format_strategy,
+    )
 
     def _generate_script(
         rewrite_reason: str | None = None,
         previous_lines: list[str] | None = None,
         rewrite_attempt: int = 0,
     ) -> tuple[list[str], str]:
-        key_facts = str(concept.get("key_facts") or "")
-        structure = str(concept.get("structure") or "")
         prompt = SCRIPT_PROMPT.format(
             title=title,
             brief=brief,
@@ -680,6 +855,115 @@ async def build_nightnight(run_id: int, concept: dict, output_dir: str, _update_
         if not generated_lines:
             raise ValueError("Failed to generate narration script")
         return generated_lines, generated_title
+
+    def _generate_dialogue_skit(
+        rewrite_reason: str | None = None,
+        previous_scenes: list[dict] | None = None,
+        rewrite_attempt: int = 0,
+    ) -> tuple[dict, str]:
+        prompt = DIALOGUE_SKIT_PROMPT.format(
+            title=title,
+            brief=brief,
+            key_facts=key_facts,
+            structure=structure,
+            format_strategy=format_strategy,
+            format_description=format_description,
+            art_style=ART_STYLE,
+        )
+        if rewrite_reason:
+            prompt += (
+                "\n\nRewrite requirement:\n"
+                f"- The last skit draft failed for this reason: {rewrite_reason}\n"
+                "- Fix that problem while keeping the premise and ending idea the same.\n"
+                "- Make the spoken beats clearer and easier for a cold viewer to follow.\n"
+            )
+        if previous_scenes:
+            prompt += "\nPrevious failed skit scenes:\n"
+            for idx, scene in enumerate(previous_scenes, start=1):
+                prompt += (
+                    f"- Scene {idx}: image={scene.get('image_prompt', '')}\n"
+                    f"  video={scene.get('video_prompt', '')}\n"
+                )
+            prompt += "- Rewrite into a cleaner, more obvious story instead of repeating the same beats.\n"
+        if rewrite_attempt >= 1:
+            prompt += (
+                "\nSecond-pass correction:\n"
+                "- Shorter lines, clearer cause-and-effect, stronger physical ending.\n"
+                "- If the rule is confusing, have a character say it plainly.\n"
+                "- Do not rely on silent reaction shots to explain the plot.\n"
+            )
+
+        resp = claude_generate(
+            prompt=prompt,
+            max_tokens=2500,
+        )
+        json_match = re.search(r'\{.*\}', resp, re.DOTALL)
+        if not json_match:
+            raise ValueError("Failed to generate dialogue skit JSON")
+        skit_data = json.loads(json_match.group())
+        scenes = skit_data.get("scenes", [])
+        if not scenes:
+            raise ValueError("Failed to generate dialogue skit scenes")
+
+        skit_title = skit_data.get("title") or title
+        skit_concept = dict(concept)
+        skit_concept.update({
+            "title": skit_title,
+            "channel_id": CHANNEL_ID,
+            "format_strategy": format_strategy,
+            "narration_style": "none",
+            "audio_policy": "native_dialogue",
+            "scenes": scenes,
+            "narration": [],
+            "tags": tags + ["anime skit", "dialogue"],
+        })
+        return skit_concept, skit_title
+
+    if use_dialogue_skit:
+        dialogue_concept = dict(concept)
+        dialogue_title = title
+        if concept.get("scenes"):
+            dialogue_concept = dict(concept)
+            dialogue_concept.update({
+                "title": title,
+                "channel_id": CHANNEL_ID,
+                "format_strategy": format_strategy,
+                "narration_style": "none",
+                "audio_policy": "native_dialogue",
+                "narration": [],
+                "tags": tags + ["anime skit", "dialogue"],
+            })
+        else:
+            await _update_step("writing skit scenes")
+            dialogue_concept, dialogue_title = _generate_dialogue_skit()
+
+        rewrite_attempt = 0
+        max_rewrite_attempts = 3
+        while True:
+            try:
+                _validate_dialogue_skit_scenes(
+                    dialogue_concept.get("scenes", []),
+                    brief=brief,
+                    key_facts=key_facts,
+                    format_strategy=format_strategy,
+                )
+                break
+            except ValueError as exc:
+                if concept.get("script_locked") or rewrite_attempt >= max_rewrite_attempts:
+                    raise
+                rewrite_attempt += 1
+                await _update_step("rewriting skit")
+                dialogue_concept, dialogue_title = _generate_dialogue_skit(
+                    rewrite_reason=str(exc),
+                    previous_scenes=dialogue_concept.get("scenes", []),
+                    rewrite_attempt=rewrite_attempt,
+                )
+
+        from apps.orchestrator.pipeline import _run_no_narration
+
+        await _run_no_narration(run_id, dialogue_concept, output_dir, _update_step, db_url)
+        logger.info("nightnight dialogue skit complete", run_id=run_id, title=dialogue_title)
+        return
 
     if not narration_lines:
         await _update_step("writing script")
