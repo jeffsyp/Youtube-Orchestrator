@@ -80,6 +80,11 @@ MOOD MATCHING:
 - BUT even calm scenes should be funny — the character doing something dumb, confused, or out of place
 - Every prompt must end with "Clean anime-cartoon parody frame. NO text anywhere."
 
+TEXT SAFETY — CRITICAL:
+- NEVER render subtitles, captions, dialogue lettering, speech bubbles, manga sound effects, floating labels, UI text, or any readable letters/numbers inside the image.
+- Characters may be speaking or yelling, but their words must NOT appear visually on screen.
+- If a scene implies spoken dialogue, show the mouth shape and body language only. The added subtitles will handle the words later.
+
 VS MATCHUPS / ANIME DUELS:
 - If the concept title or narration is a direct matchup ("X vs Y", "X versus Y", "who wins"), DO NOT use visitor/host-world logic
 - In matchup mode, BOTH named fighters are co-stars and should appear in most battle scenes
@@ -829,6 +834,11 @@ async def build_nightnight(run_id: int, concept: dict, output_dir: str, _update_
                 "- Fix that problem while keeping the title idea and canon event the same.\n"
                 "- Make the script more engaging, more power-heavy, and more visually literal.\n"
             )
+            if "line 2 needs a clear power/action beat early" in rewrite_reason:
+                prompt += (
+                    "- Line 2 must already show the signature power being used, blocked, or colliding with something on screen.\n"
+                    "- Do not spend line 2 on setup, confusion, or soft reaction. Make it an immediate impossible action beat.\n"
+                )
         if previous_lines:
             prompt += (
                 "\nPrevious failed draft:\n"
@@ -982,7 +992,6 @@ async def build_nightnight(run_id: int, concept: dict, output_dir: str, _update_
 
     rewrite_attempt = 0
     max_rewrite_attempts = 3
-    format_fallback_attempted = False
     while True:
         try:
             _validate_nightnight_script_text(
@@ -997,14 +1006,13 @@ async def build_nightnight(run_id: int, concept: dict, output_dir: str, _update_
                 raise
             if rewrite_attempt >= max_rewrite_attempts:
                 fallback_strategy = _get_simpler_format_strategy(format_strategy)
-                if not format_fallback_attempted and fallback_strategy:
+                if fallback_strategy:
                     previous_format = format_strategy
                     format_strategy = fallback_strategy
                     format_spec = get_format_strategy_spec(format_strategy)
                     format_description = FORMAT_STRATEGY_DESCRIPTIONS[format_strategy]
                     concept["format_strategy"] = format_strategy
                     rewrite_attempt = 0
-                    format_fallback_attempted = True
                     await _update_step("simplifying story format")
                     narration_lines, title = _generate_script(
                         rewrite_reason=(
