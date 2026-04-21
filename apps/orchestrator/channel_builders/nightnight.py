@@ -94,6 +94,8 @@ SCRIPT_PROMPT = """Write a narration script for a NightNightShorts anime short.
 
 CONCEPT: {title}
 BRIEF: {brief}
+KEY FACTS: {key_facts}
+STRUCTURE NOTES: {structure}
 
 NIGHTNIGHT HAS TWO VALID FORMATS:
 1. ANIME CROSSOVER "WHAT IF" — one character enters a specific canon arc/event from another anime
@@ -122,6 +124,11 @@ GLOBAL RULES FOR BOTH FORMATS:
 - Every reaction line must be EARNED by a stronger action line immediately before it.
 - GROK-SAFE WRITING: each line should describe ONE dominant animated event. Avoid packing multiple equally important actions into one line. If two big things happen, split them across two lines.
 - Prefer clean cause→effect beats over crowded semicolon stacks. A viewer should instantly know what the clip is supposed to animate.
+- COLD VIEWER RULE: assume the viewer got dropped into the short with zero context. If the joke depends on one special power, rule, or canon mechanic, the script must explain that rule in plain English before or during the payoff.
+- Do NOT rely on raw fandom jargon alone. Named abilities are fine, but the viewer must also understand what they DO.
+- GOOD: "Light expects Hisoka to die. Hisoka stands back up smiling."
+- GOOD: "Gojo's Infinity stops the cards in midair."
+- BAD: "Texture Surprise activates. Bungee Gum reacts." with no plain-English explanation.
 - MULTIPLE CHARACTERS ARE FINE, but avoid writing lines whose payoff depends on two characters physically touching in one shot. Prefer beats that can stage the attacker/setup first and the victim/result second.
 - If a line implies "A hits B", "A knocks B out", "A grabs B", or "A hands B something", phrase it so the planner can show separated cause→effect beats instead of literal contact.
 - For matchup/fight lines, the safest default is often "named move/setup" first and "loser aftermath/result" second.
@@ -179,6 +186,9 @@ FORMAT-SCALED STRUCTURE (pick the FEWEST beats that still land):
 - attack_result: arrival or attack setup, then one clean consequence/punchline.
 - mini_story: arrival → canon collision → escalation → payoff.
 - full_story: use more canon phases, but every beat must still advance and stay visually literal.
+- If the whole crossover hinges on ONE special mechanic, spell that mechanic out in simple language by line 2 or 3.
+  GOOD: "Light writes Hisoka's name. Hisoka dies — then restarts his own heart."
+  BAD: "Texture Surprise. Bungee Gum. More Bungee Gum." without ever explaining the twist.
 - For arrival lines, establish the visitor's weird behavior cleanly BEFORE background characters start freaking out. The audience needs one clean beat of "what is he doing?" before the reaction beat.
 - The final beat should still end on a sharp anticlimax or verdict: license shoved across the desk, trophy handed over, guards bolting a gate, winner standing over rubble, etc.
 
@@ -311,6 +321,8 @@ STRONG_ACTION_MARKERS = (
     "stretch", "stretches", "swallow", "swallows", "bite", "bites", "explode", "explodes",
     "rebound", "rebounds", "block", "blocks", "slash", "slashes", "cut", "cuts",
     "sprint", "sprints", "jog", "jogs", "run", "runs", "dash", "dashes",
+    "die", "dies", "kill", "kills", "drops dead", "restart", "restarts", "revive", "revives",
+    "stands back up", "gets back up",
     "hit", "hits", "fold", "folds", "rush", "rushes",
 )
 
@@ -333,6 +345,49 @@ PASSIVE_PREMISE_MARKERS = (
     "refuses to move",
 )
 
+DEATH_OR_REVIVAL_MARKERS = (
+    "death note",
+    "dies",
+    "die",
+    "dead",
+    "heart attack",
+    "restart his own heart",
+    "restart her own heart",
+    "revive",
+    "revives",
+    "revived",
+    "resurrect",
+    "resurrection",
+    "stands back up",
+    "gets back up",
+    "comes back",
+)
+
+PLAIN_LANGUAGE_DEATH_MARKERS = (
+    "dies",
+    "drops dead",
+    "heart stops",
+    "falls dead",
+    "dead on the floor",
+    "kills him",
+    "kills her",
+)
+
+PLAIN_LANGUAGE_COMEBACK_MARKERS = (
+    "stands back up",
+    "gets back up",
+    "comes back",
+    "won't stay dead",
+    "is back up",
+    "restarts his own heart",
+    "restarts her own heart",
+    "revives",
+    "revived",
+    "resurrects",
+    "back on his feet",
+    "back on her feet",
+)
+
 
 def _has_strong_action(line: str) -> bool:
     lowered = line.lower()
@@ -349,7 +404,26 @@ def _is_passive_premise(title: str, brief: str) -> bool:
     return any(marker in lowered for marker in PASSIVE_PREMISE_MARKERS)
 
 
-def _validate_nightnight_script_text(narration_lines: list[str], format_strategy: str | None = None) -> None:
+def _needs_explicit_death_comeback_explanation(brief: str, key_facts: str) -> bool:
+    lowered = f"{brief} {key_facts}".lower()
+    if "death note" not in lowered:
+        return False
+    return any(marker in lowered for marker in DEATH_OR_REVIVAL_MARKERS)
+
+
+def _has_marker(lines: list[str], markers: tuple[str, ...], *, window: slice | None = None) -> bool:
+    target_lines = lines[window] if window is not None else lines
+    lowered = " ".join(target_lines).lower()
+    return any(marker in lowered for marker in markers)
+
+
+def _validate_nightnight_script_text(
+    narration_lines: list[str],
+    format_strategy: str | None = None,
+    *,
+    brief: str = "",
+    key_facts: str = "",
+) -> None:
     format_strategy = normalize_format_strategy(format_strategy)
     format_spec = get_format_strategy_spec(format_strategy)
     min_lines = int(format_spec["min_lines"])
@@ -401,6 +475,16 @@ def _validate_nightnight_script_text(narration_lines: list[str], format_strategy
             "Replace them with visible power use, collisions, or canon-rule breakage."
         )
 
+    if _needs_explicit_death_comeback_explanation(brief, key_facts):
+        early_window = slice(0, min(len(narration_lines), 4))
+        has_death = _has_marker(narration_lines, PLAIN_LANGUAGE_DEATH_MARKERS, window=early_window)
+        has_comeback = _has_marker(narration_lines, PLAIN_LANGUAGE_COMEBACK_MARKERS, window=early_window)
+        if not (has_death and has_comeback):
+            raise ValueError(
+                "NightNight crossover needs the death/comeback rule explained in plain English early. "
+                "Say the victim dies, then clearly say they stand back up or restart their heart."
+            )
+
 
 def _validate_nightnight_script_audio(
     narration_lines: list[str],
@@ -449,9 +533,13 @@ async def build_nightnight(run_id: int, concept: dict, output_dir: str, _update_
         previous_lines: list[str] | None = None,
         rewrite_attempt: int = 0,
     ) -> tuple[list[str], str]:
+        key_facts = str(concept.get("key_facts") or "")
+        structure = str(concept.get("structure") or "")
         prompt = SCRIPT_PROMPT.format(
             title=title,
             brief=brief,
+            key_facts=key_facts,
+            structure=structure,
             format_strategy=format_strategy,
             format_description=format_description,
             min_lines=int(format_spec["min_lines"]),
@@ -519,7 +607,12 @@ async def build_nightnight(run_id: int, concept: dict, output_dir: str, _update_
     max_rewrite_attempts = 3
     while True:
         try:
-            _validate_nightnight_script_text(narration_lines, format_strategy)
+            _validate_nightnight_script_text(
+                narration_lines,
+                format_strategy,
+                brief=brief,
+                key_facts=str(concept.get("key_facts") or ""),
+            )
             break
         except ValueError as exc:
             if concept.get("script_locked") or rewrite_attempt >= max_rewrite_attempts:

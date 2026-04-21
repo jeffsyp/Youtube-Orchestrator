@@ -1507,6 +1507,9 @@ NIGHTNIGHTSHORTS CHARACTER ROTATION RULES (CRITICAL):
 - Prefer underused anime characters from a wider roster such as: Ichigo, Aizen, Yuji, Sukuna, Megumi, Todo, Denji, Makima, Power, Eren, Levi, Reiner, Gon, Killua, Hisoka, Meruem, Edward Elric, Roy Mustang, Mob, Reigen, Lelouch, Frieren, Fern, Aqua, Subaru, Rimuru, Jotaro, Dio, Yusuke, Hiei, Kakashi, Madara, Itachi, Vegeta, Piccolo, Sanji, Zoro.
 - Mix HEROES and VILLAINS. Mix MAIN CHARACTERS and fan-favorite side characters.
 - A batch that leans on Goku/Saitama/Naruto/Light again is a FAIL unless the ideas are radically stronger than the alternatives.
+- Cold-viewer rule: the brief and key_facts must make the twist understandable to someone who does NOT know the lore. If the crossover depends on one special power/rule, explain that rule in plain English.
+- GOOD key_facts: "Light writes Hisoka's name, Hisoka dies, then restarts his own heart and stands back up."
+- BAD key_facts: "Texture Surprise activates and Bungee Gum reacts." with no plain-English explanation of why that matters.
 """
     elif channel_id == 25:
         channel_diversity_block = """
