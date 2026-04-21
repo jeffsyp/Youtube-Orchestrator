@@ -340,7 +340,7 @@ VISUAL TYPES:
    - "prompt": MUST start with "{art_style}" then describe EXACTLY what the narration describes
    - "video_prompt": MOTION ONLY — how the image animates. GOOD: "camera slowly zooms in", "particles float upward", "character turns head". Keep it simple — one motion.
    If the narration describes a scene, a concept, an analogy, a person, a place, an action — use "grok". Motion keeps viewers engaged. Still images lose attention.
-2. "diagram" — Informational graphic rendered by gpt-image-1.5 (great at text, diagrams, charts). STILL IMAGE.
+2. "diagram" — Informational graphic rendered by the configured OpenAI image model (great at text, diagrams, charts). STILL IMAGE.
    - "prompt": MUST start with "{art_style}" then describe the diagram/chart. Include exact text, labels, numbers to display.
    - Use for: flowcharts, process diagrams, comparisons, key stats/numbers, term definitions, before/after, step-by-step breakdowns.
    - The diagram MUST match the same art style as the rest of the video. If the video is hand-drawn whiteboard style, the diagram should look hand-drawn on a whiteboard too. If the video is cartoon style, the diagram should be cartoon style. No switching to a different aesthetic.

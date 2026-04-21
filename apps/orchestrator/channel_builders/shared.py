@@ -16,9 +16,11 @@ import wave
 import numpy as np
 import structlog
 
+from packages.clients.grok import get_openai_image_edit_kwargs, get_openai_image_model
 from packages.clients.veo import generate_video_async as veo_generate_video_async
 
 logger = structlog.get_logger()
+OPENAI_IMAGE_MODEL = get_openai_image_model()
 
 # Shared constants
 WIDTH, HEIGHT = 1080, 1920
@@ -793,12 +795,10 @@ Return ONLY a JSON array of objects.""",
                 # Keep edit prompt SHORT — the reference image handles character/style.
                 # Long prompts (art_style + channel_rules) cause gpt-image to override the reference.
                 resp = await client.images.edit(
-                    model="gpt-image-1.5",
+                    model=OPENAI_IMAGE_MODEL,
                     image=style_ref,
                     prompt=f"{era_prefix}{ref_style_prefix} {img_prompt} NO text anywhere.",
-                    size="1024x1536",
-                    quality="medium",
-                    input_fidelity="high",
+                    **get_openai_image_edit_kwargs(size="1024x1536", quality="medium"),
                 )
                 style_ref.close()
                 if resp.data and resp.data[0].b64_json:
@@ -812,12 +812,10 @@ Return ONLY a JSON array of objects.""",
                     try:
                         style_ref_retry = open(_edit_ref_path, "rb")
                         resp = await client.images.edit(
-                            model="gpt-image-1.5",
+                            model=OPENAI_IMAGE_MODEL,
                             image=style_ref_retry,
                             prompt=f"{era_prefix}{ref_style_prefix} {img_prompt} NO text anywhere.",
-                            size="1024x1536",
-                            quality="medium",
-                            input_fidelity="high",
+                            **get_openai_image_edit_kwargs(size="1024x1536", quality="medium"),
                         )
                         style_ref_retry.close()
                         if resp.data and resp.data[0].b64_json:
@@ -894,12 +892,10 @@ Answer PASS or FAIL with specific reason."""},
                         try:
                             style_ref2 = open(_edit_ref_path, "rb")
                             resp2 = await client.images.edit(
-                                model="gpt-image-1.5",
+                                model=OPENAI_IMAGE_MODEL,
                                 image=style_ref2,
                                 prompt=_regen_prompt,
-                                size="1024x1536",
-                                quality="medium",
-                                input_fidelity="high",
+                                **get_openai_image_edit_kwargs(size="1024x1536", quality="medium"),
                             )
                             style_ref2.close()
                             if resp2.data and resp2.data[0].b64_json:
@@ -994,12 +990,10 @@ Answer PASS or FAIL with specific reason."""},
                                 try:
                                     ref_file = open(_edit_ref_path, "rb")
                                     resp = await client.images.edit(
-                                        model="gpt-image-1.5",
+                                        model=OPENAI_IMAGE_MODEL,
                                         image=ref_file,
                                         prompt=_deny_prompt,
-                                        size="1024x1536",
-                                        quality="medium",
-                                        input_fidelity="high",
+                                        **get_openai_image_edit_kwargs(size="1024x1536", quality="medium"),
                                     )
                                     ref_file.close()
                                     if resp.data and resp.data[0].b64_json:

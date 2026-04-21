@@ -18,6 +18,7 @@ from packages.clients.channel_profiles import (
     get_channel_video_provider,
     get_channel_video_resolution,
 )
+from packages.clients.grok import get_openai_image_edit_kwargs, get_openai_image_model
 from packages.utils.hardcore_ranked_language import normalize_hardcore_ranked_viewer_text
 
 from apps.orchestrator.channel_builders.shared import (
@@ -36,6 +37,7 @@ from apps.orchestrator.channel_builders.shared import (
 )
 
 logger = structlog.get_logger()
+OPENAI_IMAGE_MODEL = get_openai_image_model()
 
 # Channel-specific constants
 CHANNEL_ID = 26
@@ -204,12 +206,10 @@ async def _add_native_scene_label_with_model(edit_client, image_path: str, plane
         img_file = open(image_path, "rb")
         try:
             resp = await edit_client.images.edit(
-                model="gpt-image-1.5",
+                model=OPENAI_IMAGE_MODEL,
                 image=img_file,
                 prompt=prompt,
-                size="1024x1536",
-                quality="medium",
-                input_fidelity="high",
+                **get_openai_image_edit_kwargs(size="1024x1536", quality="medium"),
             )
         finally:
             img_file.close()
@@ -250,12 +250,10 @@ async def _build_character_variant_ref(edit_client, base_ref_path: str, variant:
     base_file = open(base_ref_path, "rb")
     try:
         resp = await edit_client.images.edit(
-            model="gpt-image-1.5",
+            model=OPENAI_IMAGE_MODEL,
             image=base_file,
             prompt=prompt,
-            size="1024x1536",
-            quality="medium",
-            input_fidelity="high",
+            **get_openai_image_edit_kwargs(size="1024x1536", quality="medium"),
         )
     finally:
         base_file.close()
@@ -297,12 +295,10 @@ async def _adapt_manual_world_ref_for_variant(
     source_file = open(source_path, "rb")
     try:
         resp = await edit_client.images.edit(
-            model="gpt-image-1.5",
+            model=OPENAI_IMAGE_MODEL,
             image=source_file,
             prompt=prompt,
-            size="1024x1536",
-            quality="medium",
-            input_fidelity="high",
+            **get_openai_image_edit_kwargs(size="1024x1536", quality="medium"),
         )
     finally:
         source_file.close()
@@ -1287,12 +1283,10 @@ Return ONLY the prompt.""",
                 frog_file = open(character_ref_path, "rb")
                 try:
                     resp = await edit_client.images.edit(
-                    model="gpt-image-1.5",
+                    model=OPENAI_IMAGE_MODEL,
                     image=frog_file,
                     prompt=f"Place this exact character into the scene. {base_prompt}",
-                    size="1024x1536",
-                    quality="medium",
-                    input_fidelity="high",
+                    **get_openai_image_edit_kwargs(size="1024x1536", quality="medium"),
                     )
                     frog_file.close()
                     if resp.data and resp.data[0].b64_json:
@@ -1328,7 +1322,7 @@ Return ONLY the prompt.""",
             first_scene.get("fact_label", "SPACE FACT"),
             )
 
-        # Edit base scene for each liquid/variable — gpt-image-1.5 edit with input_fidelity=high
+        # Edit base scene for each liquid/variable with the configured OpenAI image model.
         await _update_step("creating scene variants")
 
         from packages.clients.claude import generate as claude_gen_edits
@@ -1575,7 +1569,7 @@ Return ONLY a JSON array of {n_lines} strings. Line 0 should be "No changes — 
                         fresh_base = open(ref_source, "rb")
                         try:
                             resp = await edit_client.images.edit(
-                                model="gpt-image-1.5",
+                                model=OPENAI_IMAGE_MODEL,
                                 image=fresh_base,
                                 prompt=(
                                     "Create a fresh photorealistic scene from the SAME ranked experiment project. "
@@ -1584,9 +1578,7 @@ Return ONLY a JSON array of {n_lines} strings. Line 0 should be "No changes — 
                                     "Do not turn this into unrelated poster art or a random new environment. "
                                     f"{edit_prompts[i]}"
                                 ),
-                                size="1024x1536",
-                                quality="medium",
-                                input_fidelity="high",
+                                **get_openai_image_edit_kwargs(size="1024x1536", quality="medium"),
                             )
                             fresh_base.close()
                             if resp.data and resp.data[0].b64_json:
@@ -1647,12 +1639,10 @@ Return ONLY a JSON array of {n_lines} strings. Line 0 should be "No changes — 
                         )
                     if concept_type != "LOCKED_TEST":
                         resp = await edit_client.images.edit(
-                            model="gpt-image-1.5",
+                            model=OPENAI_IMAGE_MODEL,
                             image=base_file,
                             prompt=edit_instruction,
-                            size="1024x1536",
-                            quality="medium",
-                            input_fidelity="high",
+                            **get_openai_image_edit_kwargs(size="1024x1536", quality="medium"),
                         )
                         base_file.close()
                         if resp.data and resp.data[0].b64_json:
@@ -1823,10 +1813,10 @@ Return ONLY a JSON array of {n_lines} strings. Line 0 should be "No changes — 
                             base_file = open(base_scene_path, "rb")
                             try:
                                 resp = await edit_client.images.edit(
-                                    model="gpt-image-1.5",
+                                    model=OPENAI_IMAGE_MODEL,
                                     image=base_file,
                                     prompt=f"Same scene, same camera angle. {edit_prompts[i]} User feedback: {fb_text}. NO text anywhere.",
-                                    size="1024x1536", quality="medium", input_fidelity="high",
+                                    **get_openai_image_edit_kwargs(size="1024x1536", quality="medium"),
                                 )
                                 base_file.close()
                                 if resp.data and resp.data[0].b64_json:

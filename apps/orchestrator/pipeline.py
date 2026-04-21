@@ -428,7 +428,7 @@ No markdown, just the JSON array."""
             except Exception as e:
                 logger.warning("auto-split failed", beat=i, error=str(e)[:100])
 
-        # 2. Generate visuals per beat — gpt-image-1.5 images + Grok video clips
+        # 2. Generate visuals per beat — OpenAI image-model images + Grok video clips
         await _update_step("generating visuals")
         images_dir = os.path.join(output_dir, "images")
         clips_dir = os.path.join(output_dir, "clips")
@@ -472,7 +472,7 @@ No markdown, just the JSON array."""
                         # Landscape — Grok 2K is fine, gets scaled to 1920x1080
                         grok_gen_image(prompt=prompt, output_path=img_path)
                     else:
-                        # Portrait/shorts — use gpt-image-1.5 at native 1024x1536
+                        # Portrait/shorts — use the configured OpenAI image model at native 1024x1536
                         # to avoid quality loss from stretching/cropping Grok's 2K images
                         generate_image_dalle(prompt=prompt, output_path=img_path, size="1024x1536")
                     logger.info("image generated", beat=i, attempt=attempt, portrait=not is_long_form)
@@ -1389,7 +1389,7 @@ async def _run_no_narration(run_id: int, concept: dict, output_dir: str, _update
                     edit_prompt = f"Edit this image: {scene_prompt}. Keep the same art style and setting."
                     await edit_image_dalle_async(prompt=edit_prompt, input_image_path=prev_last_frame, output_path=img_path, size=img_size)
                 else:
-                    await _update_step(f"generating scene {i + 1}/{len(scenes)} — calling gpt-image-1.5")
+                    await _update_step(f"generating scene {i + 1}/{len(scenes)} — calling OpenAI image model")
                     from packages.clients.grok import generate_image_dalle_async
                     await generate_image_dalle_async(prompt=scene_prompt, output_path=img_path, size=img_size)
                 await _update_step(f"scene {i + 1}/{len(scenes)} image done ({_scene_t.time()-_scene_start:.0f}s)")
@@ -2368,7 +2368,7 @@ PROMPT: (only if NO) a corrected image prompt with detailed visual description o
         for i, path in img_results:
             visual_paths[i] = {"type": "image", "path": path}
 
-    # Generate diagram visuals with gpt-image-1.5 (handles text/charts well)
+    # Generate diagram visuals with the configured OpenAI image model.
     if diagram_indices:
         from concurrent.futures import ThreadPoolExecutor as _DiagramTPE
 
@@ -2428,7 +2428,7 @@ PROMPT: (only if NO) a corrected image prompt with detailed visual description o
             dur = max(1, min(int(line_audio[i]["duration"]) + 1, 10))
 
             # Step 1: Generate the image
-            await _log(f"{video_provider} clip line {i} — calling gpt-image-1.5 ({dur}s target)")
+            await _log(f"{video_provider} clip line {i} — calling OpenAI image model ({dur}s target)")
             img_path = os.path.join(images_dir, f"line_{i}.png")
             if not os.path.exists(img_path):
                 _prompt = visuals[i].get("prompt") or visuals[i].get("image_prompt", "")

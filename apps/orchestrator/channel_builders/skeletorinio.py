@@ -9,6 +9,7 @@ import os
 import re
 
 import structlog
+from packages.clients.grok import get_openai_image_edit_kwargs, get_openai_image_model
 
 from apps.orchestrator.channel_builders.shared import (
     generate_narration_with_timestamps,
@@ -23,6 +24,7 @@ from apps.orchestrator.channel_builders.shared import (
 )
 
 logger = structlog.get_logger()
+OPENAI_IMAGE_MODEL = get_openai_image_model()
 
 # Channel-specific constants
 CHANNEL_ID = 18
@@ -980,7 +982,7 @@ async def build_skeletorinio(run_id: int, concept: dict, output_dir: str, _updat
         _ref = open(SKELETON_REF, "rb")
         try:
             _resp = await _oai.images.edit(
-                model="gpt-image-1.5",
+                model=OPENAI_IMAGE_MODEL,
                 image=_ref,
                 prompt=(
                     f"{era_part}Transform this exact base Skeletorinio reference into the concept-specific variant for this video: {title}. "
@@ -992,9 +994,7 @@ async def build_skeletorinio(run_id: int, concept: dict, output_dir: str, _updat
                     "The character is FULL ADULT HUMAN HEIGHT — same size as real people around him. "
                     f"{style_profile['anchor_world_line']}"
                 ),
-                size="1024x1536",
-                quality="medium",
-                input_fidelity="high",
+                **get_openai_image_edit_kwargs(size="1024x1536", quality="medium"),
             )
             _ref.close()
             if _resp.data and _resp.data[0].b64_json:

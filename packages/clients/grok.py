@@ -15,6 +15,7 @@ logger = structlog.get_logger()
 
 XAI_API_KEY = os.getenv("XAI_API_KEY")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+OPENAI_IMAGE_MODEL = (os.getenv("OPENAI_IMAGE_MODEL") or "gpt-image-2").strip() or "gpt-image-2"
 
 # Lazy semaphore — created on first use in the current event loop
 _IMAGE_SEMAPHORE = None
@@ -24,6 +25,22 @@ def _get_image_semaphore():
     if _IMAGE_SEMAPHORE is None:
         _IMAGE_SEMAPHORE = asyncio.Semaphore(5)
     return _IMAGE_SEMAPHORE
+
+
+def get_openai_image_model() -> str:
+    """Return the configured OpenAI image model slug."""
+    return OPENAI_IMAGE_MODEL
+
+
+def get_openai_image_edit_kwargs(*, size: str, quality: str) -> dict:
+    """Return edit kwargs compatible with the configured OpenAI image model."""
+    kwargs = {
+        "size": size,
+        "quality": quality,
+    }
+    if get_openai_image_model() != "gpt-image-2":
+        kwargs["input_fidelity"] = "high"
+    return kwargs
 
 
 # ─── Adaptive rate limiter ───
@@ -84,7 +101,7 @@ def generate_image_dalle(
     size: str = "1024x1536",
     quality: str = "medium",
 ) -> str:
-    """Generate an image with gpt-image-1.5 (sync wrapper for backward compat)."""
+    """Generate an image with the configured OpenAI image model."""
     import asyncio
     try:
         loop = asyncio.get_event_loop()
@@ -103,8 +120,9 @@ def _generate_image_dalle_sync(prompt, output_path, size="1024x1536", quality="m
     if not OPENAI_API_KEY:
         raise RuntimeError("OPENAI_API_KEY not set in environment")
 
-    log = logger.bind(prompt=prompt[:100], size=size)
-    log.info("generating gpt-image-1.5")
+    model_name = get_openai_image_model()
+    log = logger.bind(prompt=prompt[:100], size=size, model=model_name)
+    log.info("generating OpenAI image")
 
     import base64 as _b64
     import time as _time
@@ -116,7 +134,7 @@ def _generate_image_dalle_sync(prompt, output_path, size="1024x1536", quality="m
         try:
             _start = _time.time()
             resp = client.images.generate(
-                model="gpt-image-1.5",
+                model=model_name,
                 prompt=prompt,
                 size=size,
                 quality=quality,
@@ -124,20 +142,20 @@ def _generate_image_dalle_sync(prompt, output_path, size="1024x1536", quality="m
             )
             elapsed = _time.time() - _start
             from packages.clients.usage_tracker import track
-            track("gpt-image-1.5", success=True, elapsed=elapsed)
+            track(model_name, success=True, elapsed=elapsed)
             img_data = _b64.b64decode(resp.data[0].b64_json)
             os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
             with open(output_path, "wb") as f:
                 f.write(img_data)
-            log.info("gpt-image-1.5 saved", path=output_path, size=len(img_data))
+            log.info("OpenAI image saved", path=output_path, size=len(img_data))
             return output_path
         except Exception as e:
             from packages.clients.usage_tracker import track
-            track("gpt-image-1.5", success=False)
+            track(model_name, success=False)
             err = str(e)
             if "429" in err or "rate" in err.lower() or "too many" in err.lower():
                 wait = 10 * (attempt + 1)
-                log.warning("gpt-image rate limited, waiting", attempt=attempt, wait=wait)
+                log.warning("OpenAI image rate limited, waiting", attempt=attempt, wait=wait)
                 _time.sleep(wait)
                 continue
             if "safety" in err.lower() or "content" in err.lower() or "rejected" in err.lower() or "moderation" in err.lower():
@@ -147,7 +165,7 @@ def _generate_image_dalle_sync(prompt, output_path, size="1024x1536", quality="m
                 continue
             raise
 
-    raise RuntimeError(f"gpt-image-1.5 failed after 6 attempts for: {original_prompt[:100]}")
+    raise RuntimeError(f"{model_name} failed after 6 attempts for: {original_prompt[:100]}")
 
 
 async def generate_image_grok_async(
@@ -180,14 +198,15 @@ async def generate_image_dalle_async(
         raise RuntimeError("OPENAI_API_KEY not set in environment")
 
     # Log semaphore queue position
-    log = logger.bind(prompt=prompt[:80], size=size)
+    model_name = get_openai_image_model()
+    log = logger.bind(prompt=prompt[:80], size=size, model=model_name)
     sem = _get_image_semaphore()
     sem_waiting = sem._value
     if sem_waiting == 0:
-        log.info("gpt-image queued (semaphore full, waiting for slot)")
+        log.info("OpenAI image queued (semaphore full, waiting for slot)")
 
     async with _get_image_semaphore():
-        log.info("gpt-image started", semaphore_available=_get_image_semaphore()._value)
+        log.info("OpenAI image started", semaphore_available=_get_image_semaphore()._value)
 
         import base64 as _b64
         from openai import AsyncOpenAI
@@ -199,11 +218,11 @@ async def generate_image_dalle_async(
             try:
                 import time as _t
                 start = _t.time()
-                log.info("gpt-image calling OpenAI API", attempt=attempt)
+                log.info("OpenAI image calling API", attempt=attempt)
 
                 resp = await asyncio.wait_for(
                     client.images.generate(
-                        model="gpt-image-1.5",
+                        model=model_name,
                         prompt=prompt,
                         size=size,
                         quality=quality,
@@ -214,29 +233,29 @@ async def generate_image_dalle_async(
 
                 elapsed = _t.time() - start
                 from packages.clients.usage_tracker import track
-                track("gpt-image-1.5", success=True, elapsed=elapsed)
+                track(model_name, success=True, elapsed=elapsed)
                 img_data = _b64.b64decode(resp.data[0].b64_json)
                 os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
                 with open(output_path, "wb") as f:
                     f.write(img_data)
-                log.info("gpt-image saved", path=output_path, size=len(img_data), elapsed=f"{elapsed:.1f}s")
+                log.info("OpenAI image saved", path=output_path, size=len(img_data), elapsed=f"{elapsed:.1f}s")
                 return output_path
             except asyncio.TimeoutError:
                 from packages.clients.usage_tracker import track
-                track("gpt-image-1.5", success=False, elapsed=90)
-                log.error("gpt-image TIMEOUT after 90s", attempt=attempt)
+                track(model_name, success=False, elapsed=90)
+                log.error("OpenAI image TIMEOUT after 90s", attempt=attempt)
                 if attempt < 5:
                     await asyncio.sleep(5)
                     continue
-                raise RuntimeError(f"gpt-image-1.5 timed out after 6 attempts for: {original_prompt[:100]}")
+                raise RuntimeError(f"{model_name} timed out after 6 attempts for: {original_prompt[:100]}")
             except Exception as e:
                 from packages.clients.usage_tracker import track
-                track("gpt-image-1.5", success=False)
+                track(model_name, success=False)
                 err = str(e)
-                log.warning("gpt-image error", attempt=attempt, error=err[:150])
+                log.warning("OpenAI image error", attempt=attempt, error=err[:150])
                 if "429" in err or "rate" in err.lower() or "too many" in err.lower():
                     wait = 10 * (attempt + 1)
-                    log.warning("gpt-image rate limited, waiting", wait=wait)
+                    log.warning("OpenAI image rate limited, waiting", wait=wait)
                     await asyncio.sleep(wait)
                     continue
                 if "safety" in err.lower() or "content" in err.lower() or "rejected" in err.lower() or "moderation" in err.lower():
@@ -247,7 +266,7 @@ async def generate_image_dalle_async(
                 raise
 
         # gpt-image exhausted — fall back to Grok Imagine (more permissive with IP names)
-        log.warning("gpt-image exhausted, falling back to Grok Imagine", prompt=original_prompt[:80])
+        log.warning("OpenAI image exhausted, falling back to Grok Imagine", prompt=original_prompt[:80])
         try:
             loop = asyncio.get_running_loop()
             await loop.run_in_executor(
@@ -260,7 +279,7 @@ async def generate_image_dalle_async(
             return output_path
         except Exception as grok_err:
             log.error("grok fallback also failed", error=str(grok_err)[:150])
-            raise RuntimeError(f"gpt-image-1.5 failed after 6 attempts for: {original_prompt[:100]}")
+            raise RuntimeError(f"{model_name} failed after 6 attempts for: {original_prompt[:100]}")
 
 
 async def edit_image_dalle_async(
@@ -270,72 +289,43 @@ async def edit_image_dalle_async(
     size: str = "1024x1536",
     quality: str = "medium",
 ) -> str:
-    """Edit an existing image with gpt-image-1.5 — keeps the scene, adds/changes elements."""
+    """Edit an existing image with the configured OpenAI image model."""
     if not OPENAI_API_KEY:
         raise RuntimeError("OPENAI_API_KEY not set in environment")
 
-    log = logger.bind(prompt=prompt[:80], size=size)
+    model_name = get_openai_image_model()
+    log = logger.bind(prompt=prompt[:80], size=size, model=model_name)
 
     async with _get_image_semaphore():
-        log.info("gpt-image edit started")
-
-        import base64 as _b64
+        log.info("OpenAI image edit started")
         from openai import AsyncOpenAI
 
         client = AsyncOpenAI(api_key=OPENAI_API_KEY, timeout=90.0)
-
-        # Read input image as base64
-        with open(input_image_path, "rb") as f:
-            input_b64 = _b64.b64encode(f.read()).decode()
-
-        # Detect media type
-        with open(input_image_path, "rb") as f:
-            header = f.read(4)
-        if header[:3] == b'\xff\xd8\xff':
-            media_type = "image/jpeg"
-        else:
-            media_type = "image/png"
 
         for attempt in range(6):
             try:
                 import time as _t
                 start = _t.time()
-                log.info("gpt-image edit calling API", attempt=attempt)
+                log.info("OpenAI image edit calling API", attempt=attempt)
 
-                # Use Responses API with image input for gpt-image-1.5 editing
-                resp = await asyncio.wait_for(
-                    client.responses.create(
-                        model="gpt-4o",
-                        input=[
-                            {
-                                "role": "user",
-                                "content": [
-                                    {
-                                        "type": "input_image",
-                                        "image_url": f"data:{media_type};base64,{input_b64}",
-                                    },
-                                    {
-                                        "type": "input_text",
-                                        "text": prompt,
-                                    },
-                                ],
-                            }
-                        ],
-                        tools=[{"type": "image_generation", "size": size}],
-                    ),
-                    timeout=120,
-                )
+                with open(input_image_path, "rb") as image_file:
+                    resp = await asyncio.wait_for(
+                        client.images.edit(
+                            model=model_name,
+                            image=image_file,
+                            prompt=prompt,
+                            **get_openai_image_edit_kwargs(size=size, quality=quality),
+                        ),
+                        timeout=120,
+                    )
 
                 elapsed = _t.time() - start
                 from packages.clients.usage_tracker import track
-                track("gpt-image-1.5-edit", success=True, elapsed=elapsed)
+                track(f"{model_name}-edit", success=True, elapsed=elapsed)
 
-                # Extract generated image from response
                 img_data = None
-                for item in resp.output:
-                    if hasattr(item, 'result') and item.type == "image_generation_call":
-                        img_data = _b64.b64decode(item.result)
-                        break
+                if resp.data and resp.data[0].b64_json:
+                    img_data = base64.b64decode(resp.data[0].b64_json)
 
                 if not img_data:
                     log.warning("no image in edit response", attempt=attempt)
@@ -347,17 +337,17 @@ async def edit_image_dalle_async(
                 os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
                 with open(output_path, "wb") as f:
                     f.write(img_data)
-                log.info("gpt-image edit saved", path=output_path, elapsed=f"{elapsed:.1f}s")
+                log.info("OpenAI image edit saved", path=output_path, elapsed=f"{elapsed:.1f}s")
                 return output_path
             except asyncio.TimeoutError:
-                log.error("gpt-image edit TIMEOUT", attempt=attempt)
+                log.error("OpenAI image edit TIMEOUT", attempt=attempt)
                 if attempt < 5:
                     await asyncio.sleep(5)
                     continue
-                raise RuntimeError(f"gpt-image edit timed out for: {prompt[:100]}")
+                raise RuntimeError(f"{model_name} edit timed out for: {prompt[:100]}")
             except Exception as e:
                 err = str(e)
-                log.warning("gpt-image edit error", attempt=attempt, error=err[:150])
+                log.warning("OpenAI image edit error", attempt=attempt, error=err[:150])
                 if "safety" in err.lower() or "rejected" in err.lower():
                     prompt = _rephrase_prompt(prompt, attempt)
                     await asyncio.sleep(2 * (attempt + 1))
@@ -367,7 +357,7 @@ async def edit_image_dalle_async(
                     continue
                 raise
 
-        raise RuntimeError(f"gpt-image edit failed after 6 attempts for: {prompt[:100]}")
+        raise RuntimeError(f"{model_name} edit failed after 6 attempts for: {prompt[:100]}")
 
 
 def _rephrase_prompt(prompt: str, attempt: int) -> str:
