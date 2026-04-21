@@ -198,6 +198,10 @@ NIGHTNIGHTSHORTS CONCEPT RULES (CRITICAL):
 - Avoid flat premises where line 2 already tells the viewer the whole video:
   BAD: "Light writes Hisoka. Hisoka revives. Light is scared."
   GOOD: "Light writes Hisoka. Hisoka dies, restarts his heart, and turns the hunt back on Light."
+- If the premise is basically a direct confrontation, trap, threat, bluff, or chase between a small cast, structure it so the beats could work as a SPEAKING SKIT too.
+- That means the key rule should be sayable out loud in plain English, and at least two beats should imply what the characters would actually say to each other in the scene.
+- GOOD skit-friendly shape: "Light writes the name and says the notebook kills anyone he writes. Hisoka dies, stands back up, then talks back and turns the chase on Light."
+- BAD skit-friendly shape: "Texture Surprise happens. Bungee Gum reacts. Light is rattled." This is lore shorthand, not a followable scene.
 - Prefer scenarios people would NEVER see in the real anime, but can follow instantly with zero lore context.
 - Use SPECIFIC canon events, tests, arcs, locations, bosses, tournaments, or battles — not generic "X enters Y universe."
 - KEY FACTS must explain any special rule in plain English. If the twist depends on one power or mechanic, spell out what it DOES.
