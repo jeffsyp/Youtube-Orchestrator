@@ -2036,11 +2036,18 @@ Return ONLY a JSON array of {n_lines} strings. Line 0 should be "No changes — 
     elif concept_type == "SPECIMEN_TEST":
         specimen_test_plan = specimen_test_plan or _infer_specimen_test_plan(title, concept.get("brief", ""), narration_lines)
         specimen_test_use_host = specimen_test_use_host or _specimen_test_uses_host(title, concept.get("brief", ""), narration_lines)
+        is_ballistic_liquid_test = _is_ballistic_liquid_test(title, concept.get("brief", ""), narration_lines)
         anim_prompts = [
             (
-                f"Locked large-scale specimen-test rig. The skeleton host actively watches or operates the untouched standardized {specimen_test_plan['sample_shape']} while the apparatus waits idle. Keep the full rig and sample visible. Never generate any text, captions, numbers, labels, timers, or overlays. No scene cuts."
-                if specimen_test_use_host
-                else f"Locked large-scale specimen-test rig. Show the untouched standardized {specimen_test_plan['sample_shape']} mounted inside the industrial apparatus before the pour starts. Fill the frame with the rig and sample, not an observer. Never generate any text, captions, numbers, labels, timers, or overlays. No scene cuts."
+                "Locked full-side ballistic lab shot on the long transparent pool-lane-style tank. "
+                "Hold the untouched setup for the whole clip as a calm readable baseline: one rifle, one lane, one liquid, no shot fired yet, no smoke cloud, no extra explosions. "
+                "Keep the repeating one-foot lane segments clearly visible for scale. Never generate any text, captions, numbers, labels, timers, or overlays. No scene cuts."
+                if is_ballistic_liquid_test
+                else (
+                    f"Locked large-scale specimen-test rig. The skeleton host actively watches or operates the untouched standardized {specimen_test_plan['sample_shape']} while the apparatus waits idle. Keep the full rig and sample visible. Never generate any text, captions, numbers, labels, timers, or overlays. No scene cuts."
+                    if specimen_test_use_host
+                    else f"Locked large-scale specimen-test rig. Show the untouched standardized {specimen_test_plan['sample_shape']} mounted inside the industrial apparatus before the pour starts. Fill the frame with the rig and sample, not an observer. Never generate any text, captions, numbers, labels, timers, or overlays. No scene cuts."
+                )
             )
         ]
         for i in range(1, n_lines):
@@ -2048,21 +2055,36 @@ Return ONLY a JSON array of {n_lines} strings. Line 0 should be "No changes — 
             subject = _extract_ranked_subject_name(line, "tested sample")
             visual_outcome = _specimen_visual_reaction_text(line)
             motion_change = _specimen_motion_change_text(line)
+            penetration_instruction, comparison_instruction = _ballistic_penetration_label(line)
             anim_prompts.append(
                 (
-                    f"Same exact specimen-test rig and same camera. The test begins the same way as every other scene: {specimen_test_plan['test_action']}. "
-                    f"The tested sample is now {subject}, but it must stay the same single standardized {specimen_test_plan['sample_shape']} mounted the same way. "
-                    "Keep only one active sample in frame for the whole shot. Make the experiment feel big and violent, with obvious lava effects, overflow, sparks, cracking, crusting, or steam. "
-                    + (
-                        "If the host appears, they must be actively operating or reacting to the rig, not just standing there. "
-                        if specimen_test_use_host
-                        else "Do not add the skeleton host or any idle observer. "
+                    "Same exact ballistic lab lane and same side-view camera. "
+                    f"The liquid lane is now {subject}, but it must stay the same single long transparent pool-lane-style tank with the same rifle, same entry point, and the same visible one-foot scale segments. "
+                    "For the first second, hold on the untouched setup so the viewer clearly sees the full lane and scale before the shot. "
+                    "Then fire EXACTLY ONE bullet. Show only one muzzle flash and one projectile. No burst fire, no second shot, no repeated impacts. "
+                    "The camera should smoothly track the single bullet in slow motion through the liquid after the setup beat, keeping the bullet and cavitation tunnel readable the whole time. "
+                    f"Make the bullet path clearly read as {penetration_instruction}. "
+                    f"The viewer should instantly understand that this scene represents {comparison_instruction}. "
+                    "Keep the liquid response physically believable: one cavitation tunnel, one pressure wave, one realistic splash or exit burst if it exits, not a giant explosion. "
+                    "Do not fill the frame with smoke, muzzle chaos, or debris that hides the bullet. "
+                    "If the bullet stops in the liquid, visibly show it slowing and halting at the correct depth. If it exits, show a single far-wall exit burst once. "
+                    "No scene cuts, no text, no overlays, no labels, no timers."
+                    if is_ballistic_liquid_test
+                    else (
+                        f"Same exact specimen-test rig and same camera. The test begins the same way as every other scene: {specimen_test_plan['test_action']}. "
+                        f"The tested sample is now {subject}, but it must stay the same single standardized {specimen_test_plan['sample_shape']} mounted the same way. "
+                        "Keep only one active sample in frame for the whole shot. Make the experiment feel big and violent, with obvious lava effects, overflow, sparks, cracking, crusting, or steam. "
+                        + (
+                            "If the host appears, they must be actively operating or reacting to the rig, not just standing there. "
+                            if specimen_test_use_host
+                            else "Do not add the skeleton host or any idle observer. "
+                        )
+                        + f"Show this exact physical outcome visually, without words on screen: {visual_outcome or 'it reacts differently from the previous sample under the same test'}. "
+                        + f"The shot must not stay static: start with the sample clearly intact, then visibly show {motion_change}. "
+                        + "By the end of the clip, the sample must be in a clearly different physical state than at the start. Do not just show lava pouring onto an unchanged block. "
+                        + "Never generate any text, captions, numbers, labels, timers, UI, or subtitle-like overlays inside the video itself. "
+                        + "Keep the apparatus, holder, and reaction zone readable together in one shot. No scene cuts."
                     )
-                    + f"Show this exact physical outcome visually, without words on screen: {visual_outcome or 'it reacts differently from the previous sample under the same test'}. "
-                    + f"The shot must not stay static: start with the sample clearly intact, then visibly show {motion_change}. "
-                    + "By the end of the clip, the sample must be in a clearly different physical state than at the start. Do not just show lava pouring onto an unchanged block. "
-                    + "Never generate any text, captions, numbers, labels, timers, UI, or subtitle-like overlays inside the video itself. "
-                    + "Keep the apparatus, holder, and reaction zone readable together in one shot. No scene cuts."
                 )
             )
         while len(anim_prompts) < n_lines:
