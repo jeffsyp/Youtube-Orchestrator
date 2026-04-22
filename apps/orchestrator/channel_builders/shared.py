@@ -158,11 +158,17 @@ _VEO_STRONG_SOFTENING_REPLACEMENTS: list[tuple[str, str]] = [
     (r"\bshuriken\b", "spinning prop"),
     (r"\brogue ninja\b", "dark-clad figure"),
     (r"\brogue ninja's\b", "dark-clad figure's"),
+    (r"\bblindfold(?:ed)?\b", "eyes covered"),
     (r"\bskull\b", "head"),
     (r"\bribcage\b", "upper body"),
     (r"\bforehead\b", "front of the head"),
     (r"\bchest\b", "torso"),
     (r"\belbow\b", "arm"),
+    (r"\bbony fingers\b", "hands"),
+    (r"\bas if picking up a sound\b", "as if tracking a cue"),
+    (r"\bpicking up a sound\b", "tracking a cue"),
+    (r"\bfingers barely shift\b", "posture barely shifts"),
+    (r"\bunable to move\b", "holding still"),
     (r"\bstrike combination\b", "rapid forward burst"),
     (r"\bstrike\b", "move"),
     (r"\bcrumpling\b", "staggering"),
@@ -172,14 +178,34 @@ _VEO_STRONG_SOFTENING_REPLACEMENTS: list[tuple[str, str]] = [
     (r"\bslam(?:s|med|ming)?\b", "plant"),
 ]
 
+_VEO_ULTRA_SOFTENING_REPLACEMENTS: list[tuple[str, str]] = [
+    (r"\bkunai\b", "object"),
+    (r"\bshuriken\b", "prop"),
+    (r"\bninja\b", "figure"),
+    (r"\brogue\b", "mysterious"),
+    (r"\bfight(?:ing)?\b", "motion"),
+    (r"\bcombat\b", "action"),
+    (r"\bbarrage\b", "burst of movement"),
+    (r"\bpunch(?:es|ing)?\b", "hand motion"),
+    (r"\bkick(?:s|ing)?\b", "leg motion"),
+    (r"\bblock(?:s|ing)?\b", "redirect"),
+    (r"\bstrike(?:s|ing)?\b", "move"),
+    (r"\battack(?:s|ing)?\b", "advance"),
+    (r"\bexplosive\b", "dramatic"),
+    (r"\bviolent\b", "intense"),
+]
 
-def _soften_veo_prompt(prompt: str, *, stronger: bool = False) -> str:
+
+def _soften_veo_prompt(prompt: str, *, stronger: bool = False, ultra: bool = False) -> str:
     """Lightly sanitize animation prompts when Veo filters a request."""
     softened = prompt
     for pattern, replacement in _VEO_SOFTENING_REPLACEMENTS:
         softened = re.sub(pattern, replacement, softened, flags=re.IGNORECASE)
     if stronger:
         for pattern, replacement in _VEO_STRONG_SOFTENING_REPLACEMENTS:
+            softened = re.sub(pattern, replacement, softened, flags=re.IGNORECASE)
+    if ultra:
+        for pattern, replacement in _VEO_ULTRA_SOFTENING_REPLACEMENTS:
             softened = re.sub(pattern, replacement, softened, flags=re.IGNORECASE)
 
     safety_tail = (
@@ -192,10 +218,29 @@ def _soften_veo_prompt(prompt: str, *, stronger: bool = False) -> str:
             "Avoid collisions, impacts, injuries, panic, suffering, weapons landing, or direct body strikes. "
             "Keep characters separated when possible and emphasize near misses, reaction, motion, dust, and mythic spectacle instead."
         )
+    if ultra:
+        safety_tail = (
+            " Keep the action abstract, PG, and non-graphic. "
+            "Avoid weapons, hits, injuries, combat wording, intimidation, or direct body contact. "
+            "Emphasize stylized motion, reaction, spacing, dust, light, and cinematic movement instead."
+        )
 
     if not softened.rstrip().endswith("."):
         softened = softened.rstrip() + "."
     return f"{softened}{safety_tail}"
+
+
+def _is_veo_guideline_rejection(message: str) -> bool:
+    lowered = message.lower()
+    return (
+        "veo filtered the request" in lowered
+        or "could not generate 1 videos" in lowered
+        or "usage guidelines" in lowered
+        or "could not be submitted" in lowered
+        or '"code": 3' in lowered
+        or "code': 3" in lowered
+        or "violates vertex ai" in lowered
+    )
 
 
 async def _generate_veo_clip_with_retries(
@@ -213,8 +258,9 @@ async def _generate_veo_clip_with_retries(
     """Retry transient/internal Veo failures and progressively soften filtered prompts."""
     prompt_variant = prompt
     last_error: Exception | None = None
+    max_attempts = 6
 
-    for attempt in range(1, 5):
+    for attempt in range(1, max_attempts + 1):
         try:
             return await veo_generate_video_async(
                 prompt=prompt_variant,
@@ -230,27 +276,30 @@ async def _generate_veo_clip_with_retries(
         except Exception as e:
             last_error = e
             message = str(e)
-            is_filtered = (
-                "Veo filtered the request" in message
-                or "could not generate 1 videos" in message
-            )
+            is_filtered = _is_veo_guideline_rejection(message)
             is_transient = (
                 "Internal error" in message
                 or "code': 13" in message
                 or "timed out" in message.lower()
             )
 
-            if is_filtered and attempt < 4:
-                prompt_variant = _soften_veo_prompt(prompt, stronger=attempt >= 2)
+            if is_filtered and attempt < max_attempts:
+                prompt_variant = _soften_veo_prompt(
+                    prompt_variant,
+                    stronger=attempt >= 2,
+                    ultra=attempt >= 4,
+                )
                 logger.warning(
                     "veo filtered prompt — retrying with softened wording",
                     attempt=attempt,
                     original_prompt=prompt[:120],
                     softened_prompt=prompt_variant[:160],
+                    error=message[:220],
                 )
+                await asyncio.sleep(min(2 * attempt, 8))
                 continue
 
-            if is_transient and attempt < 4:
+            if is_transient and attempt < max_attempts:
                 logger.warning(
                     "veo transient failure — retrying",
                     attempt=attempt,
@@ -555,16 +604,13 @@ async def generate_and_animate_scenes(
 
 CRITICAL — TRAINING STORY MODE:
 - This is a TEACHER/STUDENT progression story, not a generic fight montage.
-- The mentor's technique and the student's improvement must be visible in practice.
-- Prefer cause-and-effect beat pairs:
-  1. mentor demonstrates, attacks, throws, traps, or issues the correction
-  2. student fails, adapts, or succeeds differently because of that exact lesson
-- Do NOT turn training lines into generic reaction shots or vague motion.
-- If the narration says the student learns to dodge, hear, deflect, break fear, or copy timing, the frame must visibly prove the specific skill.
-- At least one sub-action in each training line should clearly show WHAT the mentor is doing, not just what the student feels.
-- Use readable teaching verbs and outcomes: throws one kunai, repeats the throw, taps the forehead, releases a single shuriken, traps in genjutsu, watches the retry, demonstrates the hand sign, forces the correction.
-- Avoid broad aftermath-only prompts like "chaos erupts" or "destruction everywhere" unless the narration is explicitly about aftermath.
-- For mentor reveals, the reveal itself is the action: untouched mentor appears behind the student, fingers reaching in, illusion breaks, or the student freezes.
+- Keep the lesson understandable in broad terms: the viewer should be able to tell what the mentor is teaching and how the student is changing.
+- Favor visible cause-and-effect over vague reaction shots. If a line is about improvement, correction, or mastery, the sub-actions should make that progression readable on screen.
+- The mentor should feel active and intentional in training beats, not like a static bystander while the student does everything.
+- Let the exact choreography stay flexible. Do NOT lock the plan into one narrow sequence of props, moves, or camera choices if the same lesson can be shown more naturally another way.
+- If the narration names a specific skill or breakthrough, make that skill legible in practice, but choose the clearest visual proof rather than the most literal checklist version.
+- Favor strong, readable action and emotional clarity over aftermath-only images or abstract chaos, unless the narration is explicitly about aftermath.
+- For reversals or reveals, make the shift visually obvious and easy to follow, but keep the specific staging open-ended.
 """
     ref_style_prefix = (
         "MATCH THE EXACT ART STYLE OF THE REFERENCE IMAGE. "
