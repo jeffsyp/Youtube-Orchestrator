@@ -1,6 +1,6 @@
 """NightNightShorts channel builder — anime crossover and anime battle videos.
 
-Uses unified pipeline: style anchor → sub-actions → GPT images → Grok animation → chaining.
+Uses unified pipeline: style anchor → sub-actions → GPT images → image-to-video animation → chaining.
 """
 import asyncio
 import json

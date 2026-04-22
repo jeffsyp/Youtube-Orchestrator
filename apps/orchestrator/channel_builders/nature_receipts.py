@@ -1,6 +1,6 @@
 """Nature Receipts channel builder — "What if [animal] was [absurd scenario]" videos.
 
-Uses unified pipeline: style anchor → sub-actions → GPT images → Grok animation → chaining.
+Uses unified pipeline: style anchor → sub-actions → GPT images → image-to-video animation → chaining.
 """
 import asyncio
 import json

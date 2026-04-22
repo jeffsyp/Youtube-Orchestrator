@@ -162,12 +162,15 @@
     "builder": "nature_receipts",
     "category": "Pets & Animals",
     "draft_mode": "builder_pitch",
-    "provider_strategy": "grok",
+    "provider_strategy": "hybrid",
     "audio_policy": "voiceover",
     "intro_policy": "cold_open",
     "anchor_policy": "none",
     "primary_formats": ["attack_result", "mini_story"],
     "core_lane": "wildlife anomaly documentary",
+    "video_provider": "veo",
+    "video_model": "veo-3.1-lite-generate-001",
+    "video_resolution": "720p",
     "art_style": "Children's nature-book watercolor illustration with rounded friendly animal shapes, expressive eyes, warm pastel habitats, gentle storybook lighting, and field-guide clarity. Animals should feel cute and charming while staying recognizable. Illustrated, not photographed."
   },
   "26": {
@@ -204,12 +207,15 @@
     "builder": "nightnight",
     "category": "Entertainment",
     "draft_mode": "builder_pitch",
-    "provider_strategy": "grok",
+    "provider_strategy": "hybrid",
     "audio_policy": "voiceover",
     "intro_policy": "cold_open",
     "anchor_policy": "none",
     "primary_formats": ["attack_result", "mini_story"],
     "core_lane": "anime canon-collision what-ifs",
+    "video_provider": "veo",
+    "video_model": "veo-3.1-lite-generate-001",
+    "video_resolution": "720p",
     "art_style": "Clean anime-cartoon hybrid — bold clean outlines, flat cel shading, crisp anime silhouettes, simplified but recognizable faces, expressive webtoon energy. Characters stay recognizable by signature hair, outfit, makeup, weapons, and colors, but rendered like a polished 2D parody frame rather than a painterly anime screenshot. NOT photoreal, NOT plush chibi, NOT storybook soft, NOT grimy doodle, NOT glossy 3D mobile-game art."
   },
   "29": {
