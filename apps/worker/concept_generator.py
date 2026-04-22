@@ -13,7 +13,11 @@ from dotenv import load_dotenv
 from packages.clients.channel_profiles import get_channel_builder_slug, get_channel_profile
 from packages.clients.db import get_engine
 from packages.utils.game_meme_identity import normalize_game_meme_concept
-from packages.utils.hardcore_ranked_language import normalize_hardcore_ranked_concept, normalize_hardcore_ranked_viewer_text
+from packages.utils.hardcore_ranked_language import (
+    hardcore_ranked_pitch_rejection_reason,
+    normalize_hardcore_ranked_concept,
+    normalize_hardcore_ranked_viewer_text,
+)
 
 load_dotenv(override=True)
 logger = structlog.get_logger()
@@ -1900,6 +1904,14 @@ async def _filter_duplicate_pitches(engine, channel_id, pitches, remaining) -> l
             if len(valid) >= remaining:
                 break
             title = pitch.get("title", "Untitled")
+            hardcore_rejection = hardcore_ranked_pitch_rejection_reason(pitch, channel_id=channel_id)
+            if hardcore_rejection:
+                logger.info(
+                    "skipping hardcore ranked pitch that depends on precision",
+                    title=title,
+                    reason=hardcore_rejection,
+                )
+                continue
             dup = await s.execute(text("""
                 SELECT id FROM concept_drafts WHERE channel_id = :cid AND LOWER(title) = LOWER(:title)
                 UNION ALL

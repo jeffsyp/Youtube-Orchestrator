@@ -63,6 +63,11 @@ HARDCORE RANKED CONCEPT RULES (CRITICAL):
 - Avoid concepts that require totally different settings or rules every beat. If the same test rig cannot stay mostly consistent, it is probably the wrong Hardcore Ranked concept.
 - Avoid gimmick concepts where the measurement is arbitrary, the fail-state is visually muddy, or the ranking logic changes from beat to beat.
 - If the viewer cannot instantly picture the repeated test rig from the title alone, reject the idea.
+- Reject concepts where the whole payoff depends on subtle inch-by-inch or centimeter-by-centimeter differences inside one rig.
+  - BAD: liquid/material/armor tests where the viewer would need to compare 6 inches vs 8 inches vs 30 inches inside the same tank.
+  - BAD: any concept where the caption must do the explaining because the picture will not read instantly.
+  - GOOD: outcomes the viewer can read at a glance — exits the other side, stops halfway, burns through, cracks instantly, survives a full minute, reaches the checkpoint, gets crushed immediately.
+- If the result would only feel accurate with scientific precision or a ruler on screen, it is the wrong Hardcore Ranked concept.
 - Avoid weak mascot framing. Never pitch titles or briefs around "frog suit guy", "frog mascot", or "skeleton mascot". The viewer-facing subject is always "you".
 - If a concept can be reframed as a bigger, more universal, more physics-driven question, do that.
 """
