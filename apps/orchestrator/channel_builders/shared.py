@@ -813,9 +813,20 @@ Return ONLY a JSON array of objects.""",
     logger.info("sub-actions planned", count=len(sub_actions))
 
     # ─── STEP 3a: Generate all NEW scene images first (reviewable) ───
-    await _update_step("generating scene images")
+    pending_new_scene_indices = [
+        sa_idx
+        for sa_idx, sa in enumerate(sub_actions)
+        if sa.get("new_scene", True)
+        and not os.path.exists(os.path.join(images_dir, f"sub_{sa_idx:03d}.png"))
+    ]
+    total_pending_new_scenes = len(pending_new_scene_indices)
+    if total_pending_new_scenes:
+        await _update_step(f"generating scene image 1/{total_pending_new_scenes}")
+    else:
+        await _update_step("generating scene images")
     import anthropic
     review_client = anthropic.Anthropic()
+    generated_scene_counter = 0
     for sa_idx, sa in enumerate(sub_actions):
         if not sa.get("new_scene", True):
             continue  # chained clips get images later
@@ -823,6 +834,8 @@ Return ONLY a JSON array of objects.""",
         img_path = os.path.join(images_dir, f"sub_{sa_idx:03d}.png")
         if os.path.exists(img_path):
             continue
+        generated_scene_counter += 1
+        await _update_step(f"generating scene image {generated_scene_counter}/{total_pending_new_scenes}")
 
         # Use character reference if provided (more consistent than style anchor)
         _edit_ref_path = character_ref_path if character_ref_path and os.path.exists(character_ref_path) else style_anchor_path

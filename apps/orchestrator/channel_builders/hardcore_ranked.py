@@ -1153,11 +1153,22 @@ Return ONLY a JSON object:
 
     # ─── STEP 5: Generate base scene → edit per liquid → animate ───
     if has_explicit_scene_plan:
-        await _update_step("generating scene images")
+        pending_scene_indices = [
+            i for i in range(n_lines)
+            if not os.path.exists(os.path.join(images_dir, f"scene_{i:02d}.png"))
+        ]
+        total_pending_scenes = len(pending_scene_indices)
+        if total_pending_scenes:
+            await _update_step(f"generating scene image 1/{total_pending_scenes}")
+        else:
+            await _update_step("generating scene images")
+        generated_scene_counter = 0
         for i in range(n_lines):
             img_path = os.path.join(images_dir, f"scene_{i:02d}.png")
             if os.path.exists(img_path):
                 continue
+            generated_scene_counter += 1
+            await _update_step(f"generating scene image {generated_scene_counter}/{total_pending_scenes}")
             prompt = explicit_scene_prompts_for_lines[i]
             await generate_image_dalle_async(
                 prompt=prompt,
@@ -1169,7 +1180,18 @@ Return ONLY a JSON object:
         edit_prompts = explicit_scene_prompts_for_lines
         concept_type = "EXPLICIT"
     else:
-        await _update_step("generating base scene")
+        total_pending_scenes = 0
+        if not os.path.exists(os.path.join(images_dir, "scene_00.png")):
+            total_pending_scenes += 1
+        total_pending_scenes += sum(
+            1 for i in range(1, n_lines)
+            if not os.path.exists(os.path.join(images_dir, f"scene_{i:02d}.png"))
+        )
+        generated_scene_counter = 0
+        if total_pending_scenes:
+            await _update_step(f"generating scene image 1/{total_pending_scenes}")
+        else:
+            await _update_step("generating base scene")
 
         # Determine concept type so we pick the right base scene + scene-change strategy
         concept_type = "MOTION" if is_planet_jump_format else None
@@ -1363,6 +1385,8 @@ Return ONLY the prompt.""",
             shutil.copy2(earth_ref, base_scene_path)
             logger.info("using approved manual grounded Earth reference as base scene", path=earth_ref)
         elif not os.path.exists(base_scene_path):
+            generated_scene_counter += 1
+            await _update_step(f"generating scene image {generated_scene_counter}/{total_pending_scenes}")
             # Use character reference image as input for consistent character
             if use_character_ref_for_base:
                 frog_file = open(character_ref_path, "rb")
@@ -1408,7 +1432,10 @@ Return ONLY the prompt.""",
             )
 
         # Edit base scene for each liquid/variable with the configured OpenAI image model.
-        await _update_step("creating scene variants")
+        if total_pending_scenes and generated_scene_counter < total_pending_scenes:
+            await _update_step(f"generating scene image {generated_scene_counter + 1}/{total_pending_scenes}")
+        else:
+            await _update_step("creating scene variants")
 
         from packages.clients.claude import generate as claude_gen_edits
 
@@ -1632,6 +1659,8 @@ Return ONLY a JSON array of {n_lines} strings. Line 0 should be "No changes — 
             img_path = os.path.join(images_dir, f"scene_{i:02d}.png")
             if os.path.exists(img_path):
                 continue
+            generated_scene_counter += 1
+            await _update_step(f"generating scene image {generated_scene_counter}/{total_pending_scenes}")
             if use_manual_planet_refs:
                 scene_meta = scenes_meta[i - 1] if i - 1 < len(scenes_meta) else None
                 slug = str((scene_meta or {}).get("slug") or "").strip().lower()
