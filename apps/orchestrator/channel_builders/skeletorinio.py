@@ -432,6 +432,17 @@ def _extract_style_override(concept: dict) -> str | None:
 def _build_style_profile(concept: dict) -> dict:
     style_override = _extract_style_override(concept)
     if style_override:
+        lowered = style_override.lower()
+        if any(token in lowered for token in ["photoreal", "photographic", "live action", "live-action", "real-life", "realistic human"]):
+            return {
+                "mode": "photoreal",
+                "art_style": style_override,
+                "image_rules": DEFAULT_IMAGE_RULES,
+                "anchor_world_line": (
+                    f"Render the entire scene in this photorealistic visual direction: {style_override}. "
+                    "Keep the world realistic instead of cel-shaded or cartooned. NO text anywhere."
+                ),
+            }
         return {
             "mode": "stylized",
             "art_style": style_override,
