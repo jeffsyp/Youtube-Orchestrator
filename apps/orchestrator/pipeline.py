@@ -1397,8 +1397,13 @@ async def _run_no_narration(run_id: int, concept: dict, output_dir: str, _update
     # --- APPROVAL GATE: wait for user to review images before animating ---
     # Skip if clips already exist (images were approved in a previous run that failed during animation)
     _existing_clips = [f for f in os.listdir(clips_dir) if f.endswith('.mp4')] if os.path.isdir(clips_dir) else []
+    approval_file = os.path.join(output_dir, ".images_approved")
+    deny_file = os.path.join(output_dir, ".images_denied")
     if _existing_clips:
         logger.info("skipping image approval — clips exist from previous run", count=len(_existing_clips))
+    elif os.path.exists(approval_file):
+        logger.info("skipping image approval — already approved (carried forward from previous run)")
+        os.remove(approval_file)
     elif not should_skip_image_review(channel_id):
         all_images_exist = all(
             os.path.exists(os.path.join(images_dir, f"scene_{i}.png"))
@@ -1406,8 +1411,6 @@ async def _run_no_narration(run_id: int, concept: dict, output_dir: str, _update
         )
         if all_images_exist:
             await _update_step("images ready for review")
-            approval_file = os.path.join(output_dir, ".images_approved")
-            deny_file = os.path.join(output_dir, ".images_denied")
             review_task_id = await create_review_task(
                 run_id=run_id,
                 kind="images",

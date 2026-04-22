@@ -799,17 +799,32 @@ Return ONLY a JSON array of objects.""",
         max_tokens=4000,
     )
 
-    plan_match = _re.search(r'\[.*\]', plan_resp, _re.DOTALL)
-    if plan_match:
-        sub_actions = json.loads(plan_match.group())
+    plan_path = os.path.join(images_dir, "plan.json")
+    cached_plan = None
+    if os.path.exists(plan_path):
+        try:
+            with open(plan_path) as pf:
+                maybe_plan = json.load(pf)
+            if isinstance(maybe_plan, list) and maybe_plan:
+                cached_plan = maybe_plan
+                logger.info("sub-actions loaded from cache", count=len(cached_plan))
+        except Exception:
+            cached_plan = None
+
+    if cached_plan is not None:
+        sub_actions = cached_plan
     else:
-        sub_actions = [
-            {"new_scene": True, "image_prompt": f"Scene for: {line}", "animation_prompt": "Subtle movement.", "line": i, "duration": 3}
-            for i, line in enumerate(narration_lines)
-        ]
-    # Save plan to disk so the API can read it for narration mapping
-    with open(os.path.join(images_dir, "plan.json"), "w") as pf:
-        json.dump(sub_actions, pf, indent=2)
+        plan_match = _re.search(r'\[.*\]', plan_resp, _re.DOTALL)
+        if plan_match:
+            sub_actions = json.loads(plan_match.group())
+        else:
+            sub_actions = [
+                {"new_scene": True, "image_prompt": f"Scene for: {line}", "animation_prompt": "Subtle movement.", "line": i, "duration": 3}
+                for i, line in enumerate(narration_lines)
+            ]
+        # Save plan to disk so the API can read it for narration mapping
+        with open(plan_path, "w") as pf:
+            json.dump(sub_actions, pf, indent=2)
     logger.info("sub-actions planned", count=len(sub_actions))
 
     # ─── STEP 3a: Generate all NEW scene images first (reviewable) ───

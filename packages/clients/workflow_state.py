@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 from datetime import datetime, timezone
 from typing import Any
 
@@ -39,6 +40,13 @@ def _utc_now_iso() -> str:
 
 def _json_dumps(value: Any) -> str:
     return json.dumps(value, ensure_ascii=True, sort_keys=True, indent=2)
+
+
+def _current_git_commit() -> str | None:
+    try:
+        return subprocess.check_output(["git", "rev-parse", "HEAD"], stderr=subprocess.DEVNULL, text=True).strip()
+    except Exception:
+        return None
 
 
 def _load_json(path: str, default: dict | list | None = None):
@@ -111,6 +119,7 @@ async def ensure_run_bundle(
     manifest.setdefault("run_dir", os.path.abspath(output_dir))
     manifest.setdefault("manifest_path", os.path.abspath(manifest_file))
     manifest.setdefault("created_at", _utc_now_iso())
+    manifest.setdefault("git_commit", _current_git_commit())
     manifest["updated_at"] = _utc_now_iso()
 
     if pipeline_mode is not None:

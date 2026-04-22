@@ -3,6 +3,8 @@
 import asyncio
 import json
 import os
+import shutil
+import subprocess
 import sys
 
 import structlog
@@ -34,6 +36,64 @@ _active_bank_ids: set[int] = set()  # prevent this process from double-claiming 
 
 ACTIVE_RUN_STATUSES = ("running", "blocked", "pending_review")
 CHANNEL_BUSY_RUN_STATUSES = ("running", "blocked")
+
+REUSABLE_IMAGE_ROOT_FILES = (
+    "visual_plan.json",
+    "character_variant.json",
+)
+
+
+def _load_json_file(path: str) -> dict | list | None:
+    try:
+        with open(path) as f:
+            return json.load(f)
+    except Exception:
+        return None
+
+
+def _json_signature(value) -> str:
+    try:
+        return json.dumps(value, sort_keys=True, ensure_ascii=True)
+    except Exception:
+        return ""
+
+
+def _run_dir_for(prev_id: int) -> str | None:
+    for prefix in ("run_", "deity_run_", "unified_run_"):
+        candidate = f"output/{prefix}{prev_id}"
+        if os.path.isdir(candidate):
+            return candidate
+    return None
+
+
+def _current_git_commit() -> str | None:
+    try:
+        return subprocess.check_output(["git", "rev-parse", "HEAD"], stderr=subprocess.DEVNULL, text=True).strip()
+    except Exception:
+        return None
+
+
+def _copy_reusable_approved_images(prev_dir: str, new_dir: str) -> bool:
+    src_images = os.path.join(prev_dir, "images")
+    dst_images = os.path.join(new_dir, "images")
+    if not os.path.isdir(src_images) or os.path.isdir(dst_images):
+        return False
+
+    image_files = [name for name in os.listdir(src_images) if name.lower().endswith((".png", ".jpg", ".jpeg", ".webp"))]
+    if not image_files:
+        return False
+
+    shutil.copytree(src_images, dst_images)
+
+    for fname in REUSABLE_IMAGE_ROOT_FILES:
+        src = os.path.join(prev_dir, fname)
+        dst = os.path.join(new_dir, fname)
+        if os.path.exists(src) and not os.path.exists(dst):
+            shutil.copy2(src, dst)
+
+    with open(os.path.join(new_dir, ".images_approved"), "w") as f:
+        f.write("carried-forward approved images")
+    return True
 
 
 def _get_engine():
@@ -335,50 +395,91 @@ async def _generate_item(item: dict):
         prev_run_ids = [row[0] for row in r.fetchall()]
 
     if prev_run_ids:
-        import shutil
         new_dir = f"output/run_{run_id}"
+        current_concept_sig = _json_signature(concept)
+        current_git_commit = _current_git_commit()
+        copied_narration_any = False
+        reused_images_any = False
         for prev_id in prev_run_ids:
-            # Check both old and new directory naming
-            prev_dir = None
-            for prefix in ["run_", "deity_run_", "unified_run_"]:
-                p = f"output/{prefix}{prev_id}"
-                if os.path.isdir(p):
-                    prev_dir = p
-                    break
+            prev_dir = _run_dir_for(prev_id)
             if not prev_dir:
                 continue
+
+            prev_concept = _load_json_file(os.path.join(prev_dir, "concept_snapshot.json"))
+            concepts_match = bool(prev_concept) and _json_signature(prev_concept) == current_concept_sig
+            prev_manifest = _load_json_file(os.path.join(prev_dir, "manifest.json"))
+            prev_git_commit = prev_manifest.get("git_commit") if isinstance(prev_manifest, dict) else None
+            git_compatible = not current_git_commit or not prev_git_commit or current_git_commit == prev_git_commit
+            reused_images = False
+
             # Skip runs with no useful reusable narration
-            has_content = (
+            has_narration = (
                 os.path.isdir(os.path.join(prev_dir, "narration"))
                 and bool(os.listdir(os.path.join(prev_dir, "narration")))
             )
-            if not has_content:
-                continue  # try older run
-
-            # Only narration is safe to reuse across failed retries.
             copied_something = False
-            for subdir in ["narration"]:
-                src = os.path.join(prev_dir, subdir)
-                dst = os.path.join(new_dir, subdir)
-                if os.path.isdir(src) and not os.path.isdir(dst):
+            if has_narration and not copied_narration_any:
+                for subdir in ["narration"]:
+                    src = os.path.join(prev_dir, subdir)
+                    dst = os.path.join(new_dir, subdir)
+                    if os.path.isdir(src) and not os.path.isdir(dst):
+                        try:
+                            shutil.copytree(src, dst)
+                            logger.info("reused files from previous run", prev_run=prev_id, subdir=subdir)
+                            copied_something = True
+                            copied_narration_any = True
+                        except Exception as copy_err:
+                            logger.warning("failed to reuse files, will regenerate", error=str(copy_err)[:100])
+                for fname in ["concept.json"]:
+                    src_file = os.path.join(prev_dir, fname)
+                    dst_file = os.path.join(new_dir, fname)
+                    if os.path.exists(src_file) and not os.path.exists(dst_file):
+                        try:
+                            shutil.copy2(src_file, dst_file)
+                            logger.info("reused file from previous run", prev_run=prev_id, file=fname)
+                        except Exception:
+                            pass
+
+            if concepts_match and git_compatible:
+                async with AsyncSession(engine) as s:
+                    image_approved = (
+                        await s.execute(text("""
+                            SELECT 1
+                            FROM review_tasks
+                            WHERE run_id = :rid
+                              AND kind = 'images'
+                              AND status = 'approved'
+                            ORDER BY id DESC
+                            LIMIT 1
+                        """), {"rid": prev_id})
+                    ).fetchone() is not None
+
+                if image_approved:
                     try:
-                        shutil.copytree(src, dst)
-                        logger.info("reused files from previous run", prev_run=prev_id, subdir=subdir)
-                        copied_something = True
+                        reused_images = _copy_reusable_approved_images(prev_dir, new_dir)
+                        if reused_images:
+                            logger.info("reused approved images from previous run", prev_run=prev_id)
+                            reused_images_any = True
+                            await update_run_manifest(run_id, {"reused_images_from_run": prev_id})
+                            await append_run_event(
+                                run_id,
+                                event_type="images_reused",
+                                message=f"Reused approved images from run {prev_id}",
+                                stage="queued",
+                                data={"prev_run_id": prev_id},
+                            )
                     except Exception as copy_err:
-                        logger.warning("failed to reuse files, will regenerate", error=str(copy_err)[:100])
-            for fname in ["concept.json"]:
-                src_file = os.path.join(prev_dir, fname)
-                dst_file = os.path.join(new_dir, fname)
-                if os.path.exists(src_file) and not os.path.exists(dst_file):
-                    try:
-                        import shutil as _sh
-                        _sh.copy2(src_file, dst_file)
-                        logger.info("reused file from previous run", prev_run=prev_id, file=fname)
-                    except Exception:
-                        pass
-            if copied_something:
-                break  # found a good run to copy from
+                        logger.warning("failed to reuse approved images, will regenerate", prev_run=prev_id, error=str(copy_err)[:100])
+            elif concepts_match and not git_compatible:
+                logger.info(
+                    "skipping approved image reuse due to git commit mismatch",
+                    prev_run=prev_id,
+                    prev_git_commit=prev_git_commit,
+                    current_git_commit=current_git_commit,
+                )
+
+            if copied_narration_any and reused_images_any:
+                break
 
     logger.info("starting generation", run_id=run_id, bank_id=bank_id, title=title)
     await update_run_manifest(run_id, {"bank_id": bank_id, "concept_id": concept_id, "title": title})
