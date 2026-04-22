@@ -655,6 +655,75 @@ def _specimen_test_mode_for_comparison(title: str, brief: str, narration_lines: 
     return has_sample_signal and has_reaction_signal
 
 
+def _is_ballistic_liquid_test(title: str, brief: str, narration_lines: list[str]) -> bool:
+    blob = " ".join([title, brief, *[str(line) for line in narration_lines]]).lower()
+    bullet_terms = [
+        "bullet",
+        "bullets",
+        "9mm",
+        "ballistic",
+        "cavitation",
+        "stops a bullet",
+        "stop a bullet",
+    ]
+    liquid_terms = [
+        "liquid",
+        "liquids",
+        "water",
+        "honey",
+        "slurry",
+        "mercury",
+        "nitrogen",
+        "gel",
+        "gallium",
+    ]
+    return any(term in blob for term in bullet_terms) and any(term in blob for term in liquid_terms)
+
+
+def _ballistic_penetration_label(line: str) -> tuple[str, str]:
+    text = _ranked_line_result_text(line) or str(line or "").strip()
+    blob = text.lower()
+    inches_match = re.search(r"(\d+)\s*inches?", blob)
+    inches = int(inches_match.group(1)) if inches_match else None
+
+    exit_terms = ["still exits", "bullet exits", "exits", "laughs", "blows through", "goes through"]
+    exits = any(term in blob for term in exit_terms)
+
+    if inches is None:
+        return (
+            "the bullet path must clearly end at a visibly different depth than the other liquids",
+            "a visibly different penetration depth inside the same transparent tank",
+        )
+
+    depth_ratio = min(max(inches / 36.0, 0.0), 1.0)
+    if exits or depth_ratio >= 0.95:
+        depth_desc = (
+            f"the bullet has traveled essentially the full tank length, with a long cavitation tunnel and a violent exit burst at the far wall around {inches} inches"
+        )
+    elif depth_ratio >= 0.72:
+        depth_desc = (
+            f"the bullet has traveled deep into the final quarter of the tank, with its wake reaching about {inches} inches before the far wall"
+        )
+    elif depth_ratio >= 0.45:
+        depth_desc = (
+            f"the bullet is visibly stopped around the middle of the tank at about {inches} inches, with no far-side exit burst"
+        )
+    elif depth_ratio >= 0.2:
+        depth_desc = (
+            f"the bullet is visibly stopped within the first third of the tank at about {inches} inches, clearly far short of the far wall"
+        )
+    else:
+        depth_desc = (
+            f"the bullet is stopped very close to the entry side at about {inches} inches, with almost the whole tank still untouched"
+        )
+
+    if exits:
+        compare_desc = f"a longer through-shot that exits after roughly {inches} inches"
+    else:
+        compare_desc = f"a shorter stop depth of roughly {inches} inches inside the tank"
+    return depth_desc, compare_desc
+
+
 def _method_ladder_mode_for_comparison(title: str, brief: str, narration_lines: list[str], scenes_meta: list[dict]) -> bool:
     blob = " ".join([title, brief, *[str(line) for line in narration_lines]]).lower()
     method_terms = [
@@ -807,6 +876,13 @@ def _pull_action_details(line: str) -> tuple[str, str, str]:
 
 def _default_specimen_test_plan(title: str, brief: str) -> dict[str, str]:
     _subject = (brief or title or "the comparison").strip()
+    if _is_ballistic_liquid_test(title, brief, []):
+        return {
+            "sample_shape": "long transparent rectangular ballistic lane filled with one liquid, like a narrow swimming-pool lane section with repeating one-foot floor segments",
+            "rig": "a locked industrial ballistic lab with the same rifle mount, the same long transparent pool-lane-style tank, visible repeating floor segments for scale, and the same high-speed full side camera",
+            "test_action": "the same rifle fires one round horizontally through the center of the long transparent liquid lane from the same distance every time, with the whole lane visible from entry side to far wall",
+            "hook_frame": f"the untouched long transparent pool-lane-style ballistic tank is mounted in the rig before the shot begins for {_subject}",
+        }
     return {
         "sample_shape": "oversized industrial test block",
         "rig": "a large controlled industrial materials-test bay with one fixed applicator aimed at a heavy refractory platform",
@@ -837,6 +913,14 @@ def _specimen_test_uses_host(title: str, brief: str, narration_lines: list[str])
 
 def _infer_specimen_test_plan(title: str, brief: str, narration_lines: list[str]) -> dict[str, str]:
     from packages.clients.claude import generate as claude_generate
+
+    if _is_ballistic_liquid_test(title, brief, narration_lines):
+        return {
+            "sample_shape": "long transparent rectangular ballistic lane filled with one liquid, like a narrow swimming-pool lane section with repeating one-foot floor segments",
+            "rig": "a locked industrial ballistic lab with the same rifle mount, the same long transparent pool-lane-style tank, visible repeating floor segments for scale, and the same high-speed full side camera",
+            "test_action": "the same rifle fires one round horizontally through the center of the long transparent liquid lane from the same distance every time, with the whole lane visible from entry side to far wall",
+            "hook_frame": "the untouched long transparent pool-lane-style ballistic tank is mounted in the rig with the rifle aimed at the near face before the shot",
+        }
 
     default_plan = _default_specimen_test_plan(title, brief)
     resp = claude_generate(
@@ -1442,6 +1526,7 @@ Return ONLY the prompt.""",
     elif concept_type == "SPECIMEN_TEST":
         specimen_test_plan = specimen_test_plan or _infer_specimen_test_plan(title, concept.get("brief", ""), narration_lines)
         specimen_test_use_host = specimen_test_use_host or _specimen_test_uses_host(title, concept.get("brief", ""), narration_lines)
+        is_ballistic_liquid_test = _is_ballistic_liquid_test(title, concept.get("brief", ""), narration_lines)
         edit_prompts = [
             "No changes — use the locked specimen-test rig as the hook frame."
         ]
@@ -1449,6 +1534,7 @@ Return ONLY the prompt.""",
             line = narration_lines[i]
             subject = _extract_ranked_subject_name(line, "tested sample")
             visual_outcome = _specimen_visual_reaction_text(line)
+            penetration_instruction, comparison_instruction = _ballistic_penetration_label(line)
             edit_prompts.append(
                 (
                     f"Same exact specimen-test rig, same camera, same holder, same applicator, same observation setup. "
@@ -1463,6 +1549,15 @@ Return ONLY the prompt.""",
                         else "Do not add the skeleton host or any observer character unless they are actively doing something important. "
                     )
                     + f"Make the visible reaction show this exact physical outcome: {visual_outcome or 'it performs differently from the previous sample under the same test'}. "
+                    + (
+                        "This is a ballistic stop-depth comparison. The bullet and its cavitation trail must be clearly visible INSIDE the long transparent pool-lane-style tank, and the stop point is the ranked variable. "
+                        "Keep the full lane visible from the rifle-side entry to the far wall so the viewer can read distance at a glance. "
+                        "The repeating one-foot floor segments inside or beneath the lane are the size reference, like a swimming-pool lane, not a tiny lab cylinder. "
+                        f"Show that {penetration_instruction}. "
+                        "Do not reuse the same bullet position from other scenes. The bullet depth must be obviously different at a glance. "
+                        if is_ballistic_liquid_test
+                        else ""
+                    )
                     + "Keep the full rig readable so the comparison is obvious at a glance. Do not add any text, numbers, labels, captions, or screens anywhere. No text anywhere."
                 )
             )
@@ -1699,6 +1794,8 @@ Return ONLY a JSON array of {n_lines} strings. Line 0 should be "No changes — 
                         )
                     elif concept_type == "SPECIMEN_TEST":
                         specimen_test_use_host = specimen_test_use_host or _specimen_test_uses_host(title, concept.get("brief", ""), narration_lines)
+                        is_ballistic_liquid_test = _is_ballistic_liquid_test(title, concept.get("brief", ""), narration_lines)
+                        penetration_instruction, comparison_instruction = _ballistic_penetration_label(narration_lines[i])
                         review_prompt = (
                             (
                                 "Image 1 is the locked specimen-test rig template. Image 2 should preserve the SAME rig, camera angle, crop, holder, applicator, and standardized sample geometry. "
@@ -1708,6 +1805,13 @@ Return ONLY a JSON array of {n_lines} strings. Line 0 should be "No changes — 
                                     else "There does not need to be any host character in frame. "
                                 )
                                 + "PASS if the experiment still clearly reads as the same repeated test and only the sample material/object plus its reaction changed. "
+                                + (
+                                    f"PASS only if the bullet stop depth is visibly different in this scene and clearly reads as {comparison_instruction}. "
+                                    "PASS only if the long lane still gives an obvious size reference with repeating segments, like a pool lane. "
+                                    "FAIL if the setup shrinks back into a short tank or cylinder, if the bullet appears to travel the same distance as other scenes, if the stop point is ambiguous, or if the far-side exit behavior contradicts the narration. "
+                                    if is_ballistic_liquid_test
+                                    else ""
+                                )
                                 + "FAIL if the TESTED SAMPLE becomes a humanoid dummy, creature, random sculpture, lineup of extra samples, poster art, unrelated environment, or if the apparatus disappears. "
                                 + "Answer PASS or FAIL with one short reason."
                             )
