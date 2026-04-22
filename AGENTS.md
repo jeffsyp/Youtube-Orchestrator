@@ -12,13 +12,14 @@ An automated YouTube Shorts/long-form video pipeline that generates AI-narrated 
 
 ## Starting Services
 ```bash
-# Worker (with auto-restart supervisor)
-bash scripts/run_worker.sh > /tmp/worker.log 2>&1 &
+# Preferred full-stack commands
+bash scripts/start_stack.sh
+bash scripts/status_stack.sh
+bash scripts/stop_stack.sh
 
-# API (detached supervisor; safe to run repeatedly)
+# Or individual detached supervisors when needed
+bash scripts/run_worker.sh
 bash scripts/run_api.sh
-
-# Frontend (detached supervisor; safe to run repeatedly)
 bash scripts/run_frontend.sh
 ```
 

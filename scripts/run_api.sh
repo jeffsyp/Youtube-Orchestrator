@@ -13,6 +13,36 @@ is_pid_running() {
     [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null
 }
 
+start_detached_supervisor() {
+    local pid
+    pid="$(
+        python3 - "$0" "$LOG_FILE" <<'PY'
+import os
+import subprocess
+import sys
+
+script = sys.argv[1]
+log_file = sys.argv[2]
+env = dict(os.environ)
+env["YTO_FOREGROUND"] = "1"
+
+with open(log_file, "ab", buffering=0) as out:
+    proc = subprocess.Popen(
+        ["bash", script],
+        env=env,
+        stdin=subprocess.DEVNULL,
+        stdout=out,
+        stderr=subprocess.STDOUT,
+        start_new_session=True,
+    )
+
+print(proc.pid)
+PY
+    )"
+    echo "$pid" > "$PID_FILE"
+    echo "API supervisor started (pid $pid), logging to $LOG_FILE"
+}
+
 listener_pid() {
     lsof -tiTCP:"$PORT" -sTCP:LISTEN 2>/dev/null | head -n 1
 }
@@ -34,11 +64,7 @@ if [[ "${YTO_FOREGROUND:-0}" != "1" ]]; then
     fi
 
     echo "Starting detached API supervisor..."
-    nohup env YTO_FOREGROUND=1 bash "$0" >> "$LOG_FILE" 2>&1 < /dev/null &
-    supervisor_pid=$!
-    echo "$supervisor_pid" > "$PID_FILE"
-    disown "$supervisor_pid" 2>/dev/null || true
-    echo "API supervisor started (pid $supervisor_pid), logging to $LOG_FILE"
+    start_detached_supervisor
     exit 0
 fi
 
