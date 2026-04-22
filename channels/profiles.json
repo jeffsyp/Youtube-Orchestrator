@@ -130,6 +130,9 @@
     "anchor_policy": "none",
     "primary_formats": ["attack_result", "mini_story"],
     "core_lane": "gods versus modern systems",
+    "video_provider": "veo",
+    "video_model": "veo-3.1-lite-generate-001",
+    "video_resolution": "720p",
     "art_style": "Photorealistic mythic blockbuster frame with dramatic lighting. Powerful divine figures, glowing eyes, storm-charged skies, gold-and-bronze armor, supernatural auras, and cinematic environmental scale. Characters should be identifiable through iconic myth symbols like lightning, tridents, helms, spears, and elemental power. Photorealistic world, NOT cartoon, NOT illustrated."
   },
   "23": {
