@@ -524,6 +524,24 @@ async def generate_and_animate_scenes(
     anchor_policy = str(media_policy["anchor_policy"] or "none")
     extra_rules = f"\n\nCONCEPT-SPECIFIC INSTRUCTIONS:\n{brief}" if brief else ""
     anchor_policy_block = build_anchor_policy_prompt(anchor_policy)
+    subaction_mode = str(concept.get("subaction_mode") or "").strip().lower()
+    training_story_block = ""
+    if subaction_mode == "training_story":
+        training_story_block = """
+
+CRITICAL — TRAINING STORY MODE:
+- This is a TEACHER/STUDENT progression story, not a generic fight montage.
+- The mentor's technique and the student's improvement must be visible in practice.
+- Prefer cause-and-effect beat pairs:
+  1. mentor demonstrates, attacks, throws, traps, or issues the correction
+  2. student fails, adapts, or succeeds differently because of that exact lesson
+- Do NOT turn training lines into generic reaction shots or vague motion.
+- If the narration says the student learns to dodge, hear, deflect, break fear, or copy timing, the frame must visibly prove the specific skill.
+- At least one sub-action in each training line should clearly show WHAT the mentor is doing, not just what the student feels.
+- Use readable teaching verbs and outcomes: throws one kunai, repeats the throw, taps the forehead, releases a single shuriken, traps in genjutsu, watches the retry, demonstrates the hand sign, forces the correction.
+- Avoid broad aftermath-only prompts like "chaos erupts" or "destruction everywhere" unless the narration is explicitly about aftermath.
+- For mentor reveals, the reveal itself is the action: untouched mentor appears behind the student, fingers reaching in, illusion breaks, or the student freezes.
+"""
     ref_style_prefix = (
         "MATCH THE EXACT ART STYLE OF THE REFERENCE IMAGE. "
         "Keep the same rendering medium, same line quality, same level of detail, same character design, "
@@ -578,6 +596,7 @@ CRITICAL — CHARACTER CONSISTENCY: If the CHANNEL RULES above describe a specif
 
 CRITICAL — NO CROSS-FRANCHISE CONTAMINATION: If the concept is a CROSSOVER (a character from Franchise A visiting Franchise B's world), ONLY the visiting character may come from Franchise A. All OTHER characters, backgrounds, and settings must be from Franchise B only. Every image_prompt must end with an explicit negative like "No other Dragon Ball characters. Only Hunter x Hunter characters besides Goku." to prevent the model from hallucinating the visitor's franchise-mates into the scene. If you don't know which franchise the visitor is from, infer from their name (Goku/Vegeta/Gohan → Dragon Ball; Naruto/Sasuke → Naruto; Luffy/Zoro → One Piece; Saitama → One Punch Man; etc.).
 {anchor_policy_block}
+{training_story_block}
 
 CRITICAL — CLIP COVERAGE: The total duration of sub-action clips for each narration line MUST cover the narration duration. A 6-second narration line needs 2-3 sub-actions (2x3s or 3x2s), NOT one 3s clip. A 4-second line needs at least 2 sub-actions. Only lines under 3.5s can have a single sub-action.
 

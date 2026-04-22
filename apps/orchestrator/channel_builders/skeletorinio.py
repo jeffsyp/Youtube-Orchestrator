@@ -860,6 +860,33 @@ def _is_predictable_ladder_story(title: str, brief: str, narration_lines: list[s
     )
 
 
+def _is_training_story_concept(title: str, brief: str, narration_lines: list[str]) -> bool:
+    blob = " ".join([title, brief, *[str(line) for line in narration_lines]]).lower()
+    mentor_terms = [
+        "trained you",
+        "trains you",
+        "train you",
+        "training",
+        "mentor",
+        "teaches you",
+        "teach you",
+        "again",
+        "day 1",
+        "week 2",
+        "month 3",
+    ]
+    skill_terms = [
+        "kunai",
+        "shuriken",
+        "genjutsu",
+        "blindfold",
+        "dodge",
+        "hand signs",
+        "forehead",
+    ]
+    return any(term in blob for term in mentor_terms) and any(term in blob for term in skill_terms)
+
+
 def _fallback_story_novelty_rewrite(title: str, brief: str, narration_lines: list[str]) -> list[str]:
     hook = narration_lines[0] if narration_lines else f"What if {title.lower()}?"
     lower = f"{title} {brief}".lower()
@@ -966,6 +993,12 @@ async def build_skeletorinio(run_id: int, concept: dict, output_dir: str, _updat
     narration_lines = _maybe_strengthen_boss_raid_narration(title, brief, narration_lines)
     narration_lines = _maybe_strengthen_story_novelty(title, brief, narration_lines)
     concept["narration"] = narration_lines
+
+    if _is_training_story_concept(title, brief, narration_lines):
+        concept.setdefault("provider_strategy", "veo")
+        concept.setdefault("video_provider", "veo")
+        concept.setdefault("video_model", "veo-3.1-lite-generate-001")
+        concept.setdefault("subaction_mode", "training_story")
 
     n_lines = len(narration_lines)
 
