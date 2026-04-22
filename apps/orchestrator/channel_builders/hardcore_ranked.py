@@ -681,6 +681,58 @@ def _is_ballistic_liquid_test(title: str, brief: str, narration_lines: list[str]
     return any(term in blob for term in bullet_terms) and any(term in blob for term in liquid_terms)
 
 
+def _is_vehicle_range_comparison(title: str, brief: str, narration_lines: list[str]) -> bool:
+    blob = " ".join([title, brief, *[str(line) for line in narration_lines]]).lower()
+    vehicle_terms = [
+        "vehicle",
+        "vehicles",
+        "car",
+        "cars",
+        "truck",
+        "semi",
+        "semi truck",
+        "prius",
+        "bugatti",
+        "tesla",
+        "boeing",
+        "747",
+        "plane",
+        "airplane",
+        "jet",
+        "ship",
+        "cargo ship",
+        "submarine",
+    ]
+    endurance_terms = [
+        "full tank",
+        "one full tank",
+        "one tank",
+        "full fuel load",
+        "full charge",
+        "range",
+        "running out of fuel",
+        "runs out of fuel",
+        "until empty",
+        "race to empty",
+        "before running out",
+        "how far",
+        "miles",
+        "mile",
+    ]
+    return any(term in blob for term in vehicle_terms) and any(term in blob for term in endurance_terms)
+
+
+def _vehicle_range_lane_text(subject: str) -> str:
+    blob = str(subject or "").lower()
+    if any(term in blob for term in ["boeing", "747", "plane", "airplane", "jet"]):
+        return "the runway-to-sky air corridor above the same start line"
+    if "submarine" in blob:
+        return "the underwater lane below the same origin point"
+    if "ship" in blob:
+        return "the ocean shipping lane tied to the same origin point"
+    return "the long straight road lane from the same start line"
+
+
 def _ballistic_penetration_label(line: str) -> tuple[str, str]:
     text = _ranked_line_result_text(line) or str(line or "").strip()
     blob = text.lower()
@@ -1086,6 +1138,7 @@ Return ONLY a JSON object:
 
     # ─── STEP 3: Build concept-specific skeleton variant ───
     brief = concept.get("brief", "")
+    is_vehicle_range_test = _is_vehicle_range_comparison(title, brief, narration_lines)
     character_variant = concept.get("character_variant") if isinstance(concept.get("character_variant"), dict) else None
     character_ref_path = ""
     if not has_explicit_scene_plan:
@@ -1295,20 +1348,35 @@ Return ONLY the category name, nothing else.""",
         elif concept_type == "LOCKED_TEST":
             variant_traits = "; ".join(character_variant.get("traits") or [])
             _base_text = brief or title
-            base_prompt = (
-            "Photorealistic. SINGLE IMAGE only — NOT a poster, NOT a montage, NOT multiple panels. "
-            "Scientific comparison setup for one impossible destination or challenge. "
-            "Establish one clear starting point or entry point that every attempt begins from. "
-            "Present it as a CONTROLLED industrial test site, not a raw dangerous cliff edge or open death pit. "
-            "Use reinforced flooring, safety rails, machine housings, access ladders, warning stripes, or a sealed drill collar so the setup reads like a managed experiment. "
-            "The setting should match the challenge naturally: underground/center-of-Earth drilling should start from a land-based industrial drilling yard or reinforced bore site, not a random offshore rig unless the concept explicitly requires ocean water. "
-            f"The human-sized googly-eyed skeleton host stays at the same observation position for scale, wearing {variant_traits or 'simple test gear'}. "
-            f"The concept is: {_base_text.strip()}. "
-            "The world and challenge stay the same in every scene, but later scenes are allowed to follow the machine or method farther into the challenge. "
-            "Examples: a giant vertical cutaway drill shaft, a deep-ocean pressure chamber lane, a furnace tunnel, a vacuum chamber, or a controlled survival rig. "
-            "The hook frame should clearly show the surface starting point or experiment entrance where every attempt begins, with the machine origin and safety structure visible. "
-            "This base frame is the neutral setup before any ranked method starts. No text anywhere."
-            )
+            if is_vehicle_range_test:
+                base_prompt = (
+                "Photorealistic. SINGLE IMAGE only — NOT a poster, NOT a montage, NOT multiple panels. "
+                "Shared endurance-comparison proving ground for how far different vehicles get from ONE clearly visible zero-mile starting point before running empty. "
+                "Show one neutral comparison world with the same start gantry and the same distance-marker system for every scene: a long straight highway lane on the surface, "
+                "a runway and air corridor above it, an ocean shipping lane tied to the same origin, and an underwater lane below it. "
+                "The point is instant readability of DISTANCE FROM THE SAME START, not an impossible destination, pit, or drill shaft. "
+                "Use repeating UNLABELED marker pylons or progress gates so short-range and long-range vehicles read differently at a glance. "
+                "Do not put any readable numbers, mileage labels, words, or signs on those markers. "
+                f"The human-sized googly-eyed skeleton driver/test subject stands at the start gantry for scale, wearing {variant_traits or 'simple test gear'}. "
+                f"The concept is: {_base_text.strip()}. "
+                "This hook frame is the neutral overview of the same start line and comparison world before any ranked vehicle launches. "
+                "No drill rig, no bore hole, no vertical shaft, no random industrial pit, no text anywhere."
+                )
+            else:
+                base_prompt = (
+                "Photorealistic. SINGLE IMAGE only — NOT a poster, NOT a montage, NOT multiple panels. "
+                "Scientific comparison setup for one impossible destination or challenge. "
+                "Establish one clear starting point or entry point that every attempt begins from. "
+                "Present it as a CONTROLLED industrial test site, not a raw dangerous cliff edge or open death pit. "
+                "Use reinforced flooring, safety rails, machine housings, access ladders, warning stripes, or a sealed drill collar so the setup reads like a managed experiment. "
+                "The setting should match the challenge naturally: underground/center-of-Earth drilling should start from a land-based industrial drilling yard or reinforced bore site, not a random offshore rig unless the concept explicitly requires ocean water. "
+                f"The human-sized googly-eyed skeleton host stays at the same observation position for scale, wearing {variant_traits or 'simple test gear'}. "
+                f"The concept is: {_base_text.strip()}. "
+                "The world and challenge stay the same in every scene, but later scenes are allowed to follow the machine or method farther into the challenge. "
+                "Examples: a giant vertical cutaway drill shaft, a deep-ocean pressure chamber lane, a furnace tunnel, a vacuum chamber, or a controlled survival rig. "
+                "The hook frame should clearly show the surface starting point or experiment entrance where every attempt begins, with the machine origin and safety structure visible. "
+                "This base frame is the neutral setup before any ranked method starts. No text anywhere."
+                )
         elif brief:
             _base_text = brief
             for _marker in ['For edits', 'For every edit', 'For animation', 'For each edit']:
@@ -1455,7 +1523,16 @@ Return ONLY the prompt.""",
 - Show the RESULT becoming visible — egg cooking, smoke rising, water boiling, etc.
 - The character's expression/posture should match the effort level required (straining for a slow method, relaxed for an easy one)"""
     elif not has_explicit_scene_plan and concept_type == "LOCKED_TEST":
-        _edit_guidance = """LOCKED_TEST concept guidance:
+        if is_vehicle_range_test:
+            _edit_guidance = """LOCKED_TEST vehicle-range concept guidance:
+- Treat the scene as one repeated endurance comparison with the SAME visible zero-mile start line.
+- The world stays the same, but each vehicle uses the lane that makes sense for it: road, sky, shipping lane, or underwater lane.
+- ONLY the active vehicle and the amount of distance from the same start change from scene to scene.
+- The range difference must be obvious at a glance, not subtle. Think "barely left the start" versus "halfway across the world."
+- The failure or almost-empty moment must be obvious in-frame: coasting to dead, sputtering, gliding out, or visibly reaching its final range.
+- Never turn the concept into a pit, shaft, drill rig, unrelated industrial machine, or generic character portrait."""
+        else:
+            _edit_guidance = """LOCKED_TEST concept guidance:
 - Treat the scene as one repeated scientific experiment. The destination and starting point remain the same.
 - Every attempt begins from the same visible origin, but the scene may follow the method deeper or farther into the challenge.
 - ONLY the method/tool/vehicle/machine and the amount of progress change from scene to scene.
@@ -1599,15 +1676,27 @@ Return ONLY the prompt.""",
         for i in range(1, n_lines):
             line = narration_lines[i]
             method, outcome = _method_ladder_line_payload(line)
-            edit_prompts.append(
-                f"Same destination, same experiment world, same starting point, same skeleton host identity. "
-                f"Change only the active method or machine to: {method}. "
-                f"Show it getting farther into the challenge than the previous attempt, while clearly failing or succeeding like this: {outcome or 'it gets farther before failing'}. "
-                "This does NOT need to be the exact same camera frame as the hook. It can be a fresh view from the same overall project. "
-                "The scene may uniquely follow this method deeper into the challenge, including underground or cross-section views, but it must still clearly feel like it began from the same surface entry point or experiment origin as the other scenes. "
-                "Keep consistent project markers like the same safety-color palette, same drilling project, same skeleton host gear, and the same overall mission. "
-                "Make the progress measurable and visually obvious. No text anywhere."
-            )
+            if is_vehicle_range_test:
+                lane_text = _vehicle_range_lane_text(method)
+                edit_prompts.append(
+                    f"Same exact endurance-comparison world, same zero-mile start gantry, same distance-marker system, same skeleton driver identity. "
+                    f"Replace only the active vehicle with {method}. Put it in {lane_text}. "
+                    f"Show it at the obvious point where it is finally running empty or reaching its final distance on one full tank or charge, like this: {outcome or 'it clearly gets farther than the previous vehicle before dying'}. "
+                    "Keep the same shared origin visible or strongly implied with the same UNLABELED marker pylons or progress gates so the distance traveled is instantly readable. "
+                    "Do not add any readable mileage numbers, words, labels, or road signs anywhere in frame. "
+                    "This does NOT need to be the exact same camera frame as the hook, but it must still clearly belong to the same comparison world and same start line. "
+                    "No pit, no drill shaft, no bore hole, no unrelated industrial machine, no text anywhere."
+                )
+            else:
+                edit_prompts.append(
+                    f"Same destination, same experiment world, same starting point, same skeleton host identity. "
+                    f"Change only the active method or machine to: {method}. "
+                    f"Show it getting farther into the challenge than the previous attempt, while clearly failing or succeeding like this: {outcome or 'it gets farther before failing'}. "
+                    "This does NOT need to be the exact same camera frame as the hook. It can be a fresh view from the same overall project. "
+                    "The scene may uniquely follow this method deeper into the challenge, including underground or cross-section views, but it must still clearly feel like it began from the same surface entry point or experiment origin as the other scenes. "
+                    "Keep consistent project markers like the same safety-color palette, same drilling project, same skeleton host gear, and the same overall mission. "
+                    "Make the progress measurable and visually obvious. No text anywhere."
+                )
         while len(edit_prompts) < n_lines:
             edit_prompts.append(edit_prompts[-1])
         edit_prompts = edit_prompts[:n_lines]
@@ -1693,15 +1782,23 @@ Return ONLY a JSON array of {n_lines} strings. Line 0 should be "No changes — 
                         ref_source = character_ref_path if os.path.exists(character_ref_path) else base_scene_path
                         fresh_base = open(ref_source, "rb")
                         try:
+                            locked_test_scene_prefix = (
+                                "Create a fresh photorealistic scene from the SAME vehicle-range comparison world. "
+                                "Keep the same zero-mile start gantry, same distance-marker system, same overall endurance proving ground, and the same skeleton driver identity. "
+                                "The active vehicle may appear on the road lane, air corridor, shipping lane, or underwater lane as needed. "
+                                "Do not turn this into a pit, shaft, drill site, or unrelated environment. "
+                                if is_vehicle_range_test
+                                else
+                                "Create a fresh photorealistic scene from the SAME ranked experiment project. "
+                                "Keep the same skeleton host identity, the same overall mission, and a clear connection to the same surface starting point. "
+                                "Later scenes may move underground or deeper into the challenge as needed. "
+                                "Do not turn this into unrelated poster art or a random new environment. "
+                            )
                             resp = await edit_client.images.edit(
                                 model=OPENAI_IMAGE_MODEL,
                                 image=fresh_base,
                                 prompt=(
-                                    "Create a fresh photorealistic scene from the SAME ranked experiment project. "
-                                    "Keep the same skeleton host identity, the same overall mission, and a clear connection to the same surface starting point. "
-                                    "Later scenes may move underground or deeper into the challenge as needed. "
-                                    "Do not turn this into unrelated poster art or a random new environment. "
-                                    f"{edit_prompts[i]}"
+                                    f"{locked_test_scene_prefix}{edit_prompts[i]}"
                                 ),
                                 **get_openai_image_edit_kwargs(size="1024x1536", quality="medium"),
                             )
@@ -1801,13 +1898,23 @@ Return ONLY a JSON array of {n_lines} strings. Line 0 should be "No changes — 
                             "Answer PASS or FAIL with one short reason."
                         )
                     elif concept_type == "LOCKED_TEST":
-                        review_prompt = (
-                            "Image 1 is the base experiment setup. Image 2 should preserve the SAME challenge and the SAME starting point, but it may follow the method deeper or farther into the challenge, including underground or cross-section views. "
-                            "PASS if Image 2 still clearly feels like the same experiment and same overall drilling/project origin, while showing a distinct deeper progress scene for that method. "
-                            "PASS if project markers stay consistent even when the environment becomes subterranean. "
-                            "FAIL only if Image 2 becomes a generic unrelated environment, loses the sense of one shared project, or turns into a portrait/splash image with no clear experiment. "
-                            "Answer PASS or FAIL with one short reason."
-                        )
+                        if is_vehicle_range_test:
+                            review_prompt = (
+                                "Image 1 is the base vehicle-range comparison world. Image 2 should preserve the SAME shared zero-mile start line and the SAME overall endurance proving ground, while showing one ranked vehicle farther along the appropriate lane. "
+                                "PASS if Image 2 still clearly feels like the same comparison world and same start point, and the distance traveled from that origin is instantly readable. "
+                                "PASS if the vehicle naturally uses a road lane, air corridor, shipping lane, or underwater lane tied to the same origin. "
+                                "FAIL if Image 2 turns into a pit, shaft, drill site, unrelated industrial machine, random portrait, or if the same-start range comparison is no longer obvious. "
+                                "FAIL if it adds readable mileage numbers, labels, or other text to the marker pylons or environment. "
+                                "Answer PASS or FAIL with one short reason."
+                            )
+                        else:
+                            review_prompt = (
+                                "Image 1 is the base experiment setup. Image 2 should preserve the SAME challenge and the SAME starting point, but it may follow the method deeper or farther into the challenge, including underground or cross-section views. "
+                                "PASS if Image 2 still clearly feels like the same experiment and same overall drilling/project origin, while showing a distinct deeper progress scene for that method. "
+                                "PASS if project markers stay consistent even when the environment becomes subterranean. "
+                                "FAIL only if Image 2 becomes a generic unrelated environment, loses the sense of one shared project, or turns into a portrait/splash image with no clear experiment. "
+                                "Answer PASS or FAIL with one short reason."
+                            )
                     elif concept_type == "IMPACT":
                         review_prompt = (
                             "Image 1 is the locked impact-test arena template. Image 2 should preserve the SAME arena, strike wall, observation booth, camera angle, crop, and floor layout. "
@@ -2018,19 +2125,34 @@ Return ONLY a JSON array of {n_lines} strings. Line 0 should be "No changes — 
         while len(anim_prompts) < n_lines:
             anim_prompts.append(anim_prompts[-1] if anim_prompts else "Subtle motion.")
     elif concept_type == "LOCKED_TEST":
-        anim_prompts = [
-            "Same experiment starting point. The skeleton host stands behind the safety rail and points at the untouched industrial setup like a science-show intro while the machine is idle inside a reinforced drill collar or protected entry rig. Keep the opening centered on the controlled origin of the experiment. No scene cuts."
-        ]
+        if is_vehicle_range_test:
+            anim_prompts = [
+                "Same vehicle-range comparison world. The skeleton test subject stands at the zero-mile start gantry and gestures across the untouched endurance proving ground while the road lane, air corridor, shipping lane, and underwater lane all visibly connect back to the same origin. Keep the opening centered on the shared start line. No scene cuts."
+            ]
+        else:
+            anim_prompts = [
+                "Same experiment starting point. The skeleton host stands behind the safety rail and points at the untouched industrial setup like a science-show intro while the machine is idle inside a reinforced drill collar or protected entry rig. Keep the opening centered on the controlled origin of the experiment. No scene cuts."
+            ]
         for i in range(1, n_lines):
             line = narration_lines[i]
             method, outcome = _method_ladder_line_payload(line)
-            anim_prompts.append(
-                f"Same challenge and same starting point. Show {method} actively attempting the challenge. "
-                "Begin by clearly showing the same origin point as the other attempts, then let the camera follow this method deeper or farther as it progresses. "
-                f"The machine should visibly get farther or last longer than the previous attempt, then fail or succeed like this: {outcome or 'it gets farther before failing'}. "
-                "Make the motion intense and physical: drilling, descending, burning, buckling, melting, crushing, or breaking through. "
-                "Keep the viewer oriented so it still feels like one shared experiment, not a random unrelated scene. No scene cuts."
-            )
+            if is_vehicle_range_test:
+                lane_text = _vehicle_range_lane_text(method)
+                anim_prompts.append(
+                    f"Same shared start line and same endurance-comparison world. Show {method} launching from the same origin into {lane_text}. "
+                    "Keep the repeating UNLABELED marker gates or progress bands readable so the distance from the shared start stays obvious. "
+                    "Do not generate any readable mileage numbers, labels, or text in the world. "
+                    f"The vehicle should clearly push toward its final range, then run dry or fade out like this: {outcome or 'it clearly gets farther than the previous vehicle before dying out'}. "
+                    "Keep the viewer oriented inside the same proving ground, not a random pit or unrelated industrial scene. No scene cuts."
+                )
+            else:
+                anim_prompts.append(
+                    f"Same challenge and same starting point. Show {method} actively attempting the challenge. "
+                    "Begin by clearly showing the same origin point as the other attempts, then let the camera follow this method deeper or farther as it progresses. "
+                    f"The machine should visibly get farther or last longer than the previous attempt, then fail or succeed like this: {outcome or 'it gets farther before failing'}. "
+                    "Make the motion intense and physical: drilling, descending, burning, buckling, melting, crushing, or breaking through. "
+                    "Keep the viewer oriented so it still feels like one shared experiment, not a random unrelated scene. No scene cuts."
+                )
         while len(anim_prompts) < n_lines:
             anim_prompts.append(anim_prompts[-1])
     elif concept_type == "IMPACT":
