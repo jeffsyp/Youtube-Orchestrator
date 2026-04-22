@@ -1836,11 +1836,18 @@ Return ONLY a JSON array of {n_lines} strings. Line 0 should be "No changes — 
                     review_text = review.content[0].text
                     if "FAIL" in review_text:
                         logger.warning("scene edit review FAILED", scene=i, reason=review_text[:100], attempt=attempt + 1)
-                        if os.path.exists(img_path):
-                            os.remove(img_path)
-                        if attempt < 3:
-                            await asyncio.sleep(2)
-                            continue
+                        if concept_type == "PULL_TEST" and attempt >= 3 and os.path.exists(img_path):
+                            logger.warning(
+                                "scene edit review exhausted — falling back to manual review",
+                                scene=i,
+                                reason=review_text[:160],
+                            )
+                        else:
+                            if os.path.exists(img_path):
+                                os.remove(img_path)
+                            if attempt < 3:
+                                await asyncio.sleep(2)
+                                continue
                     else:
                         logger.info("scene edit review passed", scene=i)
                 except Exception as e:
