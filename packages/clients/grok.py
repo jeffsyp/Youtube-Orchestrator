@@ -437,6 +437,42 @@ def _crop_to_size(output_path: str, size: str):
 
 XAI_BASE_URL = "https://api.x.ai/v1"
 
+_GROK_VIDEO_SOFTENING_REPLACEMENTS = [
+    (r"\bslams?\b", "surges into"),
+    (r"\bsmashes?\b", "bursts toward"),
+    (r"\bpunch(?:es|ed|ing)?\b", "strikes at"),
+    (r"\bkicks?\b", "lunges at"),
+    (r"\bviolent(?:ly)?\b", "dramatically"),
+    (r"\bcrash(?:es|ed|ing)?\b", "recoils"),
+    (r"\blaunch(?:es|ed|ing)?\b", "knocks"),
+    (r"\bblast(?:s|ed|ing)?\b", "pushes"),
+    (r"\bimpact\b", "burst"),
+]
+
+
+def _soften_grok_video_prompt(prompt: str, *, stronger: bool = False) -> str:
+    """Lightly sanitize animation prompts when Grok rejects a video request."""
+    import re
+
+    softened = prompt
+    for pattern, replacement in _GROK_VIDEO_SOFTENING_REPLACEMENTS:
+        softened = re.sub(pattern, replacement, softened, flags=re.IGNORECASE)
+
+    safety_tail = (
+        " Keep the action cinematic, readable, and non-graphic. "
+        "Emphasize motion, surprise, recoil, dust, energy, and reaction over bodily harm."
+    )
+    if stronger:
+        safety_tail = (
+            " Keep the action PG-13 and non-graphic. "
+            "Avoid direct bodily impact, injury, pain, or suffering. "
+            "Emphasize movement, dodges, recoil, shockwaves, dust, and stylized reaction."
+        )
+
+    if not softened.rstrip().endswith("."):
+        softened = softened.rstrip() + "."
+    return f"{softened}{safety_tail}"
+
 
 def _get_client() -> OpenAI:
     if not XAI_API_KEY:
@@ -546,140 +582,203 @@ async def generate_video_async(
     if not XAI_API_KEY:
         raise RuntimeError("XAI_API_KEY not set in environment")
 
-    log = logger.bind(prompt=prompt[:100], duration=duration, aspect_ratio=aspect_ratio)
-    log.info("generating grok video")
+    original_prompt = prompt
+    prompt_variant = prompt
+    last_error: Exception | None = None
 
-    body = {
-        "model": "grok-imagine-video",
-        "prompt": prompt,
-        "duration": duration,
-        "aspect_ratio": aspect_ratio,
-        "resolution": resolution,
-    }
+    for attempt in range(1, 4):
+        log = logger.bind(prompt=prompt_variant[:100], duration=duration, aspect_ratio=aspect_ratio, attempt=attempt)
+        log.info("generating grok video")
 
-    if image_url:
-        body["image"] = {"url": image_url}
+        body = {
+            "model": "grok-imagine-video",
+            "prompt": prompt_variant,
+            "duration": duration,
+            "aspect_ratio": aspect_ratio,
+            "resolution": resolution,
+        }
 
-    if reference_image_url:
-        body["reference_images"] = [{"url": reference_image_url}]
-        if "<IMAGE_1>" not in body["prompt"]:
-            body["prompt"] = f"<IMAGE_1> {body['prompt']}"
+        if image_url:
+            body["image"] = {"url": image_url}
 
-    headers = {
-        "Authorization": f"Bearer {XAI_API_KEY}",
-        "Content-Type": "application/json",
-    }
+        if reference_image_url:
+            body["reference_images"] = [{"url": reference_image_url}]
+            if "<IMAGE_1>" not in body["prompt"]:
+                body["prompt"] = f"<IMAGE_1> {body['prompt']}"
 
-    async with aiohttp.ClientSession() as session:
-        # Rate limit — wait if approaching 60 rpm
-        await GROK_VIDEO_LIMITER.wait_if_needed_async()
+        headers = {
+            "Authorization": f"Bearer {XAI_API_KEY}",
+            "Content-Type": "application/json",
+        }
 
-        # Submit — large body (image data URL can be 3MB+), increase timeout
         try:
-            async with session.post(
-                f"{XAI_BASE_URL}/videos/generations",
-                headers=headers,
-                json=body,
-                timeout=aiohttp.ClientTimeout(total=120, sock_connect=30),
-            ) as r:
-                if r.status == 429:
-                    log.warning("grok video rate limited on submit, retrying in 30s")
-                    await asyncio.sleep(30)
-                    await GROK_VIDEO_LIMITER.wait_if_needed_async()
+            async with aiohttp.ClientSession() as session:
+                # Rate limit — wait if approaching 60 rpm
+                await GROK_VIDEO_LIMITER.wait_if_needed_async()
+
+                # Submit — large body (image data URL can be 3MB+), increase timeout
+                try:
                     async with session.post(
                         f"{XAI_BASE_URL}/videos/generations",
                         headers=headers,
                         json=body,
                         timeout=aiohttp.ClientTimeout(total=120, sock_connect=30),
-                    ) as r2:
-                        if r2.status != 200:
-                            text = await r2.text()
-                            raise RuntimeError(f"Grok video submit failed after retry: {r2.status} {text[:200]}")
-                        resp_data = await r2.json()
-                        request_id = resp_data.get("request_id")
-                elif r.status != 200:
-                    text = await r.text()
-                    raise RuntimeError(f"Grok video submit failed: {r.status} {text[:200]}")
-                else:
-                    resp_data = await r.json()
-                    request_id = resp_data.get("request_id")
-        except aiohttp.ClientError as e:
-            raise RuntimeError(f"Grok video submit connection error: {type(e).__name__}: {str(e)[:200]}")
-        except asyncio.TimeoutError:
-            raise RuntimeError(f"Grok video submit timed out (body size: {len(str(body))//1024}KB)")
+                    ) as r:
+                        if r.status == 429:
+                            log.warning("grok video rate limited on submit, retrying in 30s")
+                            await asyncio.sleep(30)
+                            await GROK_VIDEO_LIMITER.wait_if_needed_async()
+                            async with session.post(
+                                f"{XAI_BASE_URL}/videos/generations",
+                                headers=headers,
+                                json=body,
+                                timeout=aiohttp.ClientTimeout(total=120, sock_connect=30),
+                            ) as r2:
+                                if r2.status != 200:
+                                    text = await r2.text()
+                                    raise RuntimeError(f"Grok video submit failed after retry: {r2.status} {text[:200]}")
+                                resp_data = await r2.json()
+                                request_id = resp_data.get("request_id")
+                        elif r.status != 200:
+                            text = await r.text()
+                            raise RuntimeError(f"Grok video submit failed: {r.status} {text[:200]}")
+                        else:
+                            resp_data = await r.json()
+                            request_id = resp_data.get("request_id")
+                except aiohttp.ClientError as e:
+                    raise RuntimeError(f"Grok video submit connection error: {type(e).__name__}: {str(e)[:200]}")
+                except asyncio.TimeoutError:
+                    raise RuntimeError(f"Grok video submit timed out (body size: {len(str(body))//1024}KB)")
 
-        log.info("grok video submitted", request_id=request_id)
+                log.info("grok video submitted", request_id=request_id)
 
-        # Poll — fully async, never blocks
-        start_time = time.time()
-        while True:
-            elapsed = time.time() - start_time
-            if elapsed > timeout:
-                raise RuntimeError(f"Grok video timed out after {timeout}s (request_id={request_id})")
+                # Poll — fully async, never blocks
+                start_time = time.time()
+                consecutive_poll_errors = 0
+                while True:
+                    elapsed = time.time() - start_time
+                    if elapsed > timeout:
+                        raise RuntimeError(f"Grok video timed out after {timeout}s (request_id={request_id})")
 
-            await asyncio.sleep(5)
+                    await asyncio.sleep(5)
 
-            try:
-                async with session.get(
-                    f"{XAI_BASE_URL}/videos/{request_id}",
-                    headers={"Authorization": f"Bearer {XAI_API_KEY}"},
-                    timeout=aiohttp.ClientTimeout(total=15),
-                ) as r:
-                    if r.status == 202:
-                        data = await r.json()
-                        progress = data.get("progress", 0)
-                        log.info("grok video progress", request_id=request_id, progress=progress, elapsed=int(elapsed))
-                        if progress_callback:
-                            try:
-                                await progress_callback(progress, int(elapsed))
-                            except Exception:
-                                pass
+                    try:
+                        async with session.get(
+                            f"{XAI_BASE_URL}/videos/{request_id}",
+                            headers={"Authorization": f"Bearer {XAI_API_KEY}"},
+                            timeout=aiohttp.ClientTimeout(total=15),
+                        ) as r:
+                            if r.status == 202:
+                                data = await r.json()
+                                progress = data.get("progress", 0)
+                                consecutive_poll_errors = 0
+                                log.info("grok video progress", request_id=request_id, progress=progress, elapsed=int(elapsed))
+                                if progress_callback:
+                                    try:
+                                        await progress_callback(progress, int(elapsed))
+                                    except Exception:
+                                        pass
+                                continue
+
+                            if r.status == 200:
+                                data = await r.json()
+                                status = data.get("status", "unknown")
+                                consecutive_poll_errors = 0
+
+                                if status == "done":
+                                    video_url = data.get("video", {}).get("url")
+                                    if not video_url:
+                                        raise RuntimeError(f"Grok video done but no URL: {data}")
+
+                                    # Download video — async
+                                    async with session.get(video_url, timeout=aiohttp.ClientTimeout(total=60)) as vr:
+                                        video_bytes = await vr.read()
+
+                                    os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
+                                    with open(output_path, "wb") as f:
+                                        f.write(video_bytes)
+
+                                    file_size = len(video_bytes)
+                                    actual_duration = data.get("video", {}).get("duration", duration)
+                                    from packages.clients.usage_tracker import track
+                                    track("grok-video", success=True, elapsed=elapsed)
+                                    log.info("grok video saved", path=output_path, size=file_size, duration=actual_duration)
+
+                                    return {
+                                        "path": output_path,
+                                        "video_id": request_id,
+                                        "video_url": video_url,
+                                        "duration": actual_duration,
+                                        "file_size_bytes": file_size,
+                                        "prompt": prompt_variant[:200],
+                                    }
+
+                                if status == "failed":
+                                    raise RuntimeError(f"Grok video failed: {data}")
+
+                            error_text = await r.text()
+                            consecutive_poll_errors += 1
+                            lowered_error = error_text.lower()
+                            log.warning(
+                                "grok poll error",
+                                status_code=r.status,
+                                elapsed=int(elapsed),
+                                consecutive_errors=consecutive_poll_errors,
+                                body=error_text[:200],
+                            )
+
+                            if "content moderation" in lowered_error or "rejected by content moderation" in lowered_error:
+                                raise RuntimeError(
+                                    f"Grok video rejected by content moderation (request_id={request_id}): {error_text[:200]}"
+                                )
+
+                            if r.status >= 500 or consecutive_poll_errors >= 8:
+                                raise RuntimeError(
+                                    f"Grok poll repeatedly failed ({r.status}) for request_id={request_id}: {error_text[:200]}"
+                                )
+
+                    except asyncio.TimeoutError:
+                        log.warning("grok poll timeout, retrying", request_id=request_id, elapsed=int(elapsed))
                         continue
+                    except aiohttp.ClientError as e:
+                        log.warning("grok poll connection error, retrying", error=str(e)[:80], elapsed=int(elapsed))
+                        continue
+        except Exception as e:
+            last_error = e
+            message = str(e)
+            lowered_message = message.lower()
+            is_filtered = "content moderation" in lowered_message or "rejected by content moderation" in lowered_message
+            is_transient = any(
+                token in lowered_message
+                for token in [
+                    "timed out",
+                    "connection error",
+                    "poll repeatedly failed",
+                    "rate limited",
+                    "502",
+                    "503",
+                    "504",
+                ]
+            )
 
-                    if r.status == 200:
-                        data = await r.json()
-                        status = data.get("status", "unknown")
-
-                        if status == "done":
-                            video_url = data.get("video", {}).get("url")
-                            if not video_url:
-                                raise RuntimeError(f"Grok video done but no URL: {data}")
-
-                            # Download video — async
-                            async with session.get(video_url, timeout=aiohttp.ClientTimeout(total=60)) as vr:
-                                video_bytes = await vr.read()
-
-                            os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
-                            with open(output_path, "wb") as f:
-                                f.write(video_bytes)
-
-                            file_size = len(video_bytes)
-                            actual_duration = data.get("video", {}).get("duration", duration)
-                            from packages.clients.usage_tracker import track
-                            track("grok-video", success=True, elapsed=elapsed)
-                            log.info("grok video saved", path=output_path, size=file_size, duration=actual_duration)
-
-                            return {
-                                "path": output_path,
-                                "video_id": request_id,
-                                "video_url": video_url,
-                                "duration": actual_duration,
-                                "file_size_bytes": file_size,
-                                "prompt": prompt[:200],
-                            }
-
-                        elif status == "failed":
-                            raise RuntimeError(f"Grok video failed: {data}")
-
-                    else:
-                        log.warning("grok poll error", status_code=r.status, elapsed=int(elapsed))
-
-            except asyncio.TimeoutError:
-                log.warning("grok poll timeout, retrying", request_id=request_id, elapsed=int(elapsed))
+            if is_filtered and attempt < 3:
+                prompt_variant = _soften_grok_video_prompt(original_prompt, stronger=attempt > 1)
+                log.warning(
+                    "grok video filtered — retrying with softened prompt",
+                    original_prompt=original_prompt[:160],
+                    softened_prompt=prompt_variant[:200],
+                )
+                await asyncio.sleep(3 * attempt)
                 continue
-            except aiohttp.ClientError as e:
-                log.warning("grok poll connection error, retrying", error=str(e)[:80], elapsed=int(elapsed))
+
+            if is_transient and attempt < 3:
+                log.warning("grok video transient failure — retrying", error=message[:200])
+                await asyncio.sleep(min(10 * attempt, 20))
                 continue
+
+            raise
+
+    raise last_error or RuntimeError("Grok video retry loop exhausted without an error object")
 
 
 async def extend_video_async(
