@@ -15,11 +15,11 @@ An automated YouTube Shorts/long-form video pipeline that generates AI-narrated 
 # Worker (with auto-restart supervisor)
 bash scripts/run_worker.sh > /tmp/worker.log 2>&1 &
 
-# API
-.venv/bin/uvicorn apps.api.main:app --port 8000 > /tmp/api.log 2>&1 &
+# API (detached supervisor; safe to run repeatedly)
+bash scripts/run_api.sh
 
-# Frontend
-cd frontend && npm run dev > /tmp/frontend.log 2>&1 &
+# Frontend (detached supervisor; safe to run repeatedly)
+bash scripts/run_frontend.sh
 ```
 
 ## Key Commands

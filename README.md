@@ -65,9 +65,9 @@ cp .env.example .env
 uv run alembic upgrade head
 
 # Start services
-uv run uvicorn apps.api.main:app --host 0.0.0.0 --port 8000 --reload  # API
-uv run python -m apps.worker.main                                      # Worker
-cd frontend && npm install && npm run dev                               # Dashboard
+bash scripts/run_api.sh       # API supervisor (detached, auto-restarts)
+bash scripts/run_worker.sh > /tmp/worker.log 2>&1 &  # Worker supervisor
+bash scripts/run_frontend.sh  # Frontend supervisor (detached, auto-restarts)
 
 # YouTube auth (per channel)
 uv run python -m apps.publishing_service.auth --token-file youtube_token_<channel>.json
