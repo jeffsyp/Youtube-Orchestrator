@@ -76,19 +76,22 @@ THE SETTING DEPENDS ON THE CONCEPT — NOT ALWAYS A ROAD:
 - The setting should let you SEE the difference in speed/distance/progress between each item
 - Choose the setting that makes the COMPARISON most visually obvious
 
-SAME SETUP EVERY SCENE — THIS IS THE ENTIRE POINT:
-- EVERY scene uses the EXACT SAME environment from the EXACT SAME camera angle
-- The ONLY thing that changes is the VARIABLE (different liquid, vehicle, surface)
-- The skeleton does the SAME action in every scene — only the variable differs
-- Think of it like a science experiment: same test, one variable changed
+CONSISTENCY MEANS SAME PREMISE, NOT ALWAYS THE SAME FRAME:
+- Keep the core experiment or comparison readable across the whole video
+- For tight lab-rig concepts, the setup can stay nearly identical
+- For journey, range, mission, or escalation concepts, the frame can move if that makes progress clearer
+- The ONLY things that should change are the ranked variable and the visible result of that variable
+- The skeleton should stay recognizable, but the shot should not stay locked if that makes the idea harder to understand
 
-EACH PROMPT MUST DESCRIBE ONLY WHAT CHANGES:
-- Do NOT re-describe the entire scene in each prompt
-- Just describe what is DIFFERENT: "The pool is now filled with thick golden honey. The skeleton is barely moving, stuck in the viscous liquid."
-- The base scene handles everything else (setting, angle, character position)
+WHEN THE COMPARISON IS A TRUE LOCKED TEST:
+- You can describe only what changes and let the shared setup carry the rest
+
+WHEN A LOCKED FRAME IS HURTING READABILITY:
+- Re-establish the same premise in a clearer shot instead of forcing the exact same angle
+- The base scene is a hook, not a prison
 
 - Every prompt must end with "Photorealistic. NO text anywhere."
-- CONSISTENCY IS KEY — same camera angle, same character, same environment, ONLY the variable changes"""
+- CONSISTENCY IS KEY — same premise, same character identity, same experiment logic, with framing flexible when it helps clarity"""
 
 
 def _heuristic_character_variant(title: str, brief: str) -> dict:
@@ -733,6 +736,17 @@ def _vehicle_range_lane_text(subject: str) -> str:
     return "the long straight road lane from the same start line"
 
 
+def _use_fresh_premise_scene_generation(
+    concept_type: str,
+    *,
+    is_ballistic_liquid_test: bool = False,
+) -> bool:
+    return (
+        concept_type in {"LOCKED_TEST", "PULL_TEST", "IMPACT"}
+        or (concept_type == "SPECIMEN_TEST" and not is_ballistic_liquid_test)
+    )
+
+
 def _ballistic_penetration_label(line: str) -> tuple[str, str]:
     text = _ranked_line_result_text(line) or str(line or "").strip()
     blob = text.lower()
@@ -1072,7 +1086,7 @@ THE FORMAT:
 - The SAME ACTION is performed in every scene — only the VARIABLE changes
 - Start with the most normal, escalate to the most insane
 - The LAST item should be absurd and break the format (explosion, launch into space, instant destruction)
-- 6-8 narration lines, ~20-30 seconds. SHORTER IS BETTER.
+- 6-8 narration lines, target ~25 seconds. Stay under 30 when possible. SHORTER IS BETTER.
 - Each line = one scene, each under 15 words. ONE variable per line, no exceptions.
 - Include specific numbers/facts for each item — the numbers ARE the comparison
 
@@ -1138,6 +1152,7 @@ Return ONLY a JSON object:
 
     # ─── STEP 3: Build concept-specific skeleton variant ───
     brief = concept.get("brief", "")
+    is_ballistic_liquid_test = _is_ballistic_liquid_test(title, brief, narration_lines)
     is_vehicle_range_test = _is_vehicle_range_comparison(title, brief, narration_lines)
     character_variant = concept.get("character_variant") if isinstance(concept.get("character_variant"), dict) else None
     character_ref_path = ""
@@ -1270,9 +1285,9 @@ CATEGORIES:
 - "MOTION" — comparing terrain/condition where character physically moves (run, swim, roll, jump, race). The SETTING is the constant, the SURFACE/MEDIUM changes per scene.
 - "EQUIPMENT" — comparing tools/methods (cook with X, build with Y, cut with Z). The CHARACTER ACTION stays similar, the TOOL changes per scene.
 - "CONDITION" — comparing extreme environments or states (survive at X temperature, perform at Y pressure). The CHARACTER is in varying environments.
-- "SPECIMEN_TEST" — one standardized sample/object is exposed to the SAME rig/process/hazard every time. The SAMPLE SHAPE and APPARATUS stay constant; only the material/object variant and its visible reaction change.
-- "PULL_TEST" — the SAME tow/traction rig repeats every time. The SAME truck/load, hitch, rope, and lane stay constant; only the puller changes and the amount of movement changes.
-- "IMPACT" — comparing how hard different subjects hit, bite, smash, crash, stomp, drop, or create damage. The TEST RIG is constant, the striker changes.
+- "SPECIMEN_TEST" — one standardized sample/object is exposed to the SAME hazard/process every time. The SAMPLE SHAPE and TEST LOGIC stay constant; framing can move if needed, but the same experiment must still be obvious.
+- "PULL_TEST" — the SAME towing or traction premise repeats every time. The SAME load and same pull test stay obvious; camera and framing can shift if needed, but the viewer must instantly understand it's still the same tow comparison.
+- "IMPACT" — comparing how hard different subjects hit, bite, smash, crash, stomp, drop, or create damage. The SAME impact-test premise stays obvious, but the shot can reframe to make the moment clearer.
 - "QUANTITY" — comparing amounts/scales (how many X can fit in Y, how much Z is too much).
 
 Return ONLY the category name, nothing else.""",
@@ -1423,10 +1438,10 @@ CONCEPT-SPECIFIC VARIANT TRAITS: {'; '.join(character_variant.get("traits") or [
 
 CAMERA + SETTING based on concept type:
 - MOTION (races, jumps, rolls): Camera BEHIND character, looking down a track/path/slope. Starting-line energy.
-- LOCKED_TEST (one impossible destination/challenge, different methods): fixed side-view or cutaway experiment rig. Same destination, same chamber/shaft/lane, same camera. Only the method/tool changes.
-- SPECIMEN_TEST (same rig, same sample shape, different materials/results): locked side or three-quarter lab or industrial test-rig shot. Same holder/apparatus every time. Only the sample variant and its damage change.
-- PULL_TEST (same truck/load, different pullers): locked side or three-quarter traction-test lane. Same truck/load, hitch point, rope, and camera. Only the puller and visible movement change.
-- IMPACT (hits, smashes, bites, drops): Locked side or three-quarter arena test-rig shot. Same strike wall/pressure plate every time. Same observation area. Same frame.
+- LOCKED_TEST (one impossible destination/challenge, different methods): one shared premise and starting point. Framing can move if that makes progress clearer, but the same challenge/origin must stay obvious.
+- SPECIMEN_TEST (same hazard, same sample shape, different materials/results): the same test logic, sample shape, and hazard remain clear. Framing can tighten or widen if needed, but it must still read as the same experiment.
+- PULL_TEST (same load, different pullers): the same towing premise, load, and pull result remain clear. Camera can shift if needed, but the tow comparison must stay instantly readable.
+- IMPACT (hits, smashes, bites, drops): the same impact-test premise and target remain clear. Camera can reframe the hit if needed, but the test should still feel like one comparison world.
 - EQUIPMENT (cooking, building, testing tools): Side or three-quarter view. Setting matches the activity (kitchen for cooking, workbench for building, lab for testing). Tools/equipment clearly visible.
 - CONDITION (surviving extremes, temperatures): Character IN the environment, wide/medium shot. Environmental cues visible.
 - QUANTITY (how much fits, how many): Wide shot showing scale clearly.
@@ -1541,21 +1556,21 @@ Return ONLY the prompt.""",
 - Never turn the concept into unrelated scenery changes or a generic character portrait. The comparison is about how far each method gets from the same start."""
     elif not has_explicit_scene_plan and concept_type == "IMPACT":
         _edit_guidance = """IMPACT concept guidance:
-- Treat the scene as a LOCKED test rig. Same strike wall or pressure plate, same arena, same floor markings, same observation booth, same camera.
+- Treat the scene as one repeated impact-test premise. The same strike target and test logic should stay obvious, but framing can change if it makes the hit easier to read.
 - ONLY the striking subject and the style of impact change between scenes.
 - Use physically believable anatomy and motion. No chibi faces, no crowd, no arcade-game splash-art posing.
 - The force difference must be visually obvious: light hits dent the plate a little, mid-tier hits crack it, top-tier hits blast the rig apart.
 - Bake the exact impact moment or immediate aftermath into the frame — not a portrait of the subject roaring for the camera."""
     elif not has_explicit_scene_plan and concept_type == "PULL_TEST":
         _edit_guidance = """PULL_TEST concept guidance:
-- Treat the scene as a LOCKED traction-test rig. Same truck/load, same hitch point, same tow line, same lane markings, same camera.
+- Treat the scene as one repeated towing comparison. The same load and tow premise should stay obvious, but the frame can shift if that makes the effort/result clearer.
 - ONLY the puller and the amount of movement change between scenes.
 - Keep the full towing setup readable in one frame so the viewer instantly understands the experiment.
 - The result must be obvious at a glance: slack rope and no movement, one hard twitch, a tiny inch of movement, or the truck fully rolling.
 - Show species-appropriate pulling posture and harnessing, not a random portrait or impact pose."""
     elif not has_explicit_scene_plan and concept_type == "SPECIMEN_TEST":
         _edit_guidance = """SPECIMEN_TEST concept guidance:
-- Treat the scene as one repeated controlled specimen test. Same rig, same camera, same holder/tray/applicator, same sample geometry.
+- Treat the scene as one repeated controlled specimen test. The same rig family, sample geometry, and hazard should stay obvious, but the framing can move if it makes the reaction easier to read.
 - ONLY the tested material/object variant and its visible reaction change between scenes.
 - The constant process or hazard must be clearly visible engaging the sample.
 - The result must read instantly: igniting, melting, dissolving, cracking, solidifying, surviving, or otherwise reacting.
@@ -1593,11 +1608,11 @@ Return ONLY the prompt.""",
             strike_pose, visible_result, _ = _impact_action_details(line, scene_hint)
             result_text = _impact_result_text(line)
             edit_prompts.append(
-                f"Same exact impact-test arena, same strike wall, same observation booth, same camera. "
+                "Same impact-test premise and same kind of reinforced strike setup. "
                 f"Replace the subject with {subject}, shown {strike_pose}. "
-                "Keep the ranked subject as the SAME upright full-body test-dummy silhouette on the plate. "
+                "Re-establish the target zone and impact logic clearly, but choose the framing that makes the hit easiest to understand. "
+                "Keep the ranked subject as a readable upright full-body target in the impact moment or immediate aftermath. "
                 "Do not turn the subject into a loose heap, puddle, scattered debris pile, or collapsed scrap shape. "
-                "Even when the material is failing, it should still read as a standing body at the impact moment or immediate aftermath. "
                 f"Make the anatomy physically believable and species-correct. "
                 f"Show {visible_result}. "
                 f"The visual damage must match this narration: {result_text or 'the hit lands harder than the previous subject'}. "
@@ -1616,10 +1631,11 @@ Return ONLY the prompt.""",
             pull_pose, visible_result, _ = _pull_action_details(line)
             result_text = _pull_test_result_text(line)
             edit_prompts.append(
-                f"Same exact traction-test lane, same truck/load, same hitch point, same tow line, same wheel position, same floor markings, same camera. "
+                "Same towing comparison premise with the same truck/load, same hitch logic, and the same kind of pull lane. "
                 f"Replace only the active puller with {subject}. "
+                "The frame can shift if needed, but the truck, pull line, and direction of effort must stay instantly readable. "
                 "Show the puller attached to the same tow harness or rope in a species-appropriate way, leaning into the pull with full-body effort. "
-                "Keep the full towing setup readable in one frame — do not remove the truck, rope, hitch, or lane. "
+                "Keep the towing setup readable in one frame — do not remove the truck, rope, hitch, or lane. "
                 f"Show {pull_pose}. "
                 f"The visible result must read as: {visible_result}. "
                 f"The truck response must match this narration: {result_text or 'the load reacts differently from the previous puller'}. "
@@ -1642,10 +1658,11 @@ Return ONLY the prompt.""",
             penetration_instruction, comparison_instruction = _ballistic_penetration_label(line)
             edit_prompts.append(
                 (
-                    f"Same exact specimen-test rig, same camera, same holder, same applicator, same observation setup. "
+                    "Same specimen-test premise, same hazard family, and same sample geometry. "
                     f"Replace only the tested sample with {subject}. "
                     f"The tested piece must stay the SAME single standardized {specimen_test_plan['sample_shape']} in the same position and mounting, not a humanoid dummy, creature, or random sculpture. "
                     "Keep ONLY ONE active test sample in frame. Remove any lineup or extra comparison pieces. "
+                    "You may reframe the rig if needed, but the apparatus and hazard must still read as the same experiment. "
                     f"Show the constant test action clearly: {specimen_test_plan['test_action']}. "
                     "Make this feel larger and more dramatic than a tabletop demo: bigger lava volume, clearer overflow, more visible cracking, smoke, sparks, sagging, crusting, or steam where appropriate. "
                     + (
@@ -1679,7 +1696,7 @@ Return ONLY the prompt.""",
             if is_vehicle_range_test:
                 lane_text = _vehicle_range_lane_text(method)
                 edit_prompts.append(
-                    f"Same exact endurance-comparison world, same zero-mile start gantry, same distance-marker system, same skeleton driver identity. "
+                    f"Same endurance-comparison world, same zero-mile start gantry, same distance-marker system, same skeleton driver identity. "
                     f"Replace only the active vehicle with {method}. Put it in {lane_text}. "
                     f"Show it at the obvious point where it is finally running empty or reaching its final distance on one full tank or charge, like this: {outcome or 'it clearly gets farther than the previous vehicle before dying'}. "
                     "Keep the same shared origin visible or strongly implied with the same UNLABELED marker pylons or progress gates so the distance traveled is instantly readable. "
@@ -1730,6 +1747,7 @@ KEY RULES:
 - The CHARACTER must stay visually consistent across scenes — same skeleton face, same body proportions, same variant accessories
 - For MOTION concepts: keep the same camera angle and setting, only change the surface/opponent
 - For EQUIPMENT/CONDITION concepts: the BACKGROUND CAN CHANGE to match the tool/environment. Don't force the base scene's setting if it doesn't fit the variable.
+- For LOCKED_TEST / IMPACT / PULL_TEST / most SPECIMEN_TEST concepts: preserve the SAME PREMISE and experiment logic, but do NOT force the exact same frame if a clearer angle would explain the result better.
 - Each scene should be VISUALLY DISTINCT from the others — not all same background if the concept doesn't require it
 - The ranking should ESCALATE visually: the last scene should feel more extreme/impressive than the first
 - BAKE the result into the image (don't show something "about to happen" — show it happening/happened)
@@ -1742,6 +1760,11 @@ Return ONLY a JSON array of {n_lines} strings. Line 0 should be "No changes — 
         while len(edit_prompts) < n_lines:
             edit_prompts.append("No changes.")
         edit_prompts = edit_prompts[:n_lines]
+
+    use_fresh_premise_scene_generation = _use_fresh_premise_scene_generation(
+        concept_type,
+        is_ballistic_liquid_test=is_ballistic_liquid_test,
+    )
 
     if not has_explicit_scene_plan:
         for i in range(1, n_lines):
@@ -1778,27 +1801,54 @@ Return ONLY a JSON array of {n_lines} strings. Line 0 should be "No changes — 
                             "Keep the striped mast and silver lander visible in the exact same relative positions and scale. "
                             f"{edit_prompts[i]} NO text anywhere."
                         )
-                    elif concept_type == "LOCKED_TEST":
-                        ref_source = character_ref_path if os.path.exists(character_ref_path) else base_scene_path
+                    elif use_fresh_premise_scene_generation:
+                        if concept_type == "SPECIMEN_TEST" and not specimen_test_use_host:
+                            ref_source = base_scene_path
+                        elif concept_type == "IMPACT":
+                            ref_source = base_scene_path
+                        else:
+                            ref_source = character_ref_path if os.path.exists(character_ref_path) else base_scene_path
                         fresh_base = open(ref_source, "rb")
                         try:
-                            locked_test_scene_prefix = (
-                                "Create a fresh photorealistic scene from the SAME vehicle-range comparison world. "
-                                "Keep the same zero-mile start gantry, same distance-marker system, same overall endurance proving ground, and the same skeleton driver identity. "
-                                "The active vehicle may appear on the road lane, air corridor, shipping lane, or underwater lane as needed. "
-                                "Do not turn this into a pit, shaft, drill site, or unrelated environment. "
-                                if is_vehicle_range_test
-                                else
-                                "Create a fresh photorealistic scene from the SAME ranked experiment project. "
-                                "Keep the same skeleton host identity, the same overall mission, and a clear connection to the same surface starting point. "
-                                "Later scenes may move underground or deeper into the challenge as needed. "
-                                "Do not turn this into unrelated poster art or a random new environment. "
-                            )
+                            if concept_type == "LOCKED_TEST":
+                                fresh_scene_prefix = (
+                                    "Create a fresh photorealistic scene from the SAME vehicle-range comparison world. "
+                                    "Keep the same zero-mile start gantry, same distance-marker system, same overall endurance proving ground, and the same skeleton driver identity. "
+                                    "The active vehicle may appear on the road lane, air corridor, shipping lane, or underwater lane as needed. "
+                                    "Do not turn this into a pit, shaft, drill site, or unrelated environment. "
+                                    if is_vehicle_range_test
+                                    else
+                                    "Create a fresh photorealistic scene from the SAME ranked experiment project. "
+                                    "Keep the same skeleton host identity, the same overall mission, and a clear connection to the same surface starting point or experiment origin. "
+                                    "Different scenes can use different framing if the same challenge remains obvious. "
+                                    "Do not turn this into unrelated poster art or a random new environment. "
+                                )
+                            elif concept_type == "PULL_TEST":
+                                fresh_scene_prefix = (
+                                    "Create a fresh photorealistic scene from the SAME towing comparison premise. "
+                                    "Keep the same truck/load challenge and the same skeleton identity, but choose the framing that makes the pull effort and the amount of movement easiest to read. "
+                                    "The tow line, hitch logic, and truck/load must still be obvious. "
+                                    "Do not turn this into a portrait, crash scene, or unrelated environment. "
+                                )
+                            elif concept_type == "IMPACT":
+                                fresh_scene_prefix = (
+                                    "Create a fresh photorealistic scene from the SAME impact-test premise. "
+                                    "Keep the same impact target logic, same arena family, and same skeleton observer identity, but choose the framing that makes the force and damage easiest to read. "
+                                    "The viewer must still instantly understand this is a controlled ranked impact comparison. "
+                                    "Do not turn this into poster art or a generic roaring portrait. "
+                                )
+                            else:
+                                fresh_scene_prefix = (
+                                    "Create a fresh photorealistic scene from the SAME specimen-test premise. "
+                                    "Keep the same hazard family, same sample geometry, and same test logic, but choose the framing that makes the reaction easiest to read. "
+                                    "The same experiment should stay obvious even if the camera is closer or wider than the hook. "
+                                    "Do not turn this into poster art or an unrelated environment. "
+                                )
                             resp = await edit_client.images.edit(
                                 model=OPENAI_IMAGE_MODEL,
                                 image=fresh_base,
                                 prompt=(
-                                    f"{locked_test_scene_prefix}{edit_prompts[i]}"
+                                    f"{fresh_scene_prefix}{edit_prompts[i]}"
                                 ),
                                 **get_openai_image_edit_kwargs(size="1024x1536", quality="medium"),
                             )
@@ -1807,29 +1857,27 @@ Return ONLY a JSON array of {n_lines} strings. Line 0 should be "No changes — 
                                 img_data = base64.b64decode(resp.data[0].b64_json)
                                 with open(img_path, "wb") as f:
                                     f.write(img_data)
-                                logger.info("locked-test fresh scene generated", scene=i, edit=edit_prompts[i][:60])
+                                logger.info("fresh premise scene generated", concept_type=concept_type, scene=i, edit=edit_prompts[i][:60])
                         except Exception as e:
                             try: fresh_base.close()
                             except: pass
-                            logger.warning("locked-test fresh scene failed", scene=i, attempt=attempt, error=str(e)[:80])
+                            logger.warning("fresh premise scene failed", concept_type=concept_type, scene=i, attempt=attempt, error=str(e)[:80])
                             await asyncio.sleep(3)
                             continue
                         edit_instruction = None
                     elif concept_type == "IMPACT":
                         edit_instruction = (
-                            "Treat the input image as a LOCKED scientific impact-test template. "
-                            "Preserve the exact same camera angle, crop, strike wall position, floor markings, debris lane, and skeleton observation booth placement. "
-                            "Preserve the ranked subject as a readable upright full-body target on the impact plate. "
-                            "Never replace it with an unstructured pile of debris or a collapsed heap. "
-                            "Do not change the environment or convert it into poster art. "
+                            "Treat the input image as the same impact-test premise and target logic. "
+                            "Keep the strike zone, arena family, and skeleton observation identity recognizable, but choose the crop that makes the hit easiest to read. "
+                            "Preserve the ranked subject as a readable target instead of a random debris pile. "
+                            "Do not turn it into poster art or a generic action splash. "
                             f"{edit_prompts[i]}"
                         )
                     elif concept_type == "PULL_TEST":
                         edit_instruction = (
-                            "Treat the input image as a LOCKED scientific traction-test template. "
-                            "Preserve the exact same camera angle, crop, truck/load position, wheelbase position, hitch point, tow line placement, floor markings, and dust lane. "
-                            "Keep the truck, tow line, and pull lane fully readable in frame. "
-                            "Do not remove the towing rig or turn this into an impact plate, portrait, or poster image. "
+                            "Treat the input image as the same towing comparison premise. "
+                            "Keep the truck/load challenge, hitch logic, tow line, and same skeleton identity obvious, but choose the framing that makes the effort and movement easiest to read. "
+                            "Do not remove the towing rig or turn this into a portrait, poster image, or unrelated environment. "
                             f"{edit_prompts[i]}"
                         )
                     elif concept_type == "SPECIMEN_TEST":
@@ -1837,8 +1885,8 @@ Return ONLY a JSON array of {n_lines} strings. Line 0 should be "No changes — 
                         specimen_test_use_host = specimen_test_use_host or _specimen_test_uses_host(title, concept.get("brief", ""), narration_lines)
                         edit_instruction = (
                             (
-                                "Treat the input image as a LOCKED scientific specimen-test template. "
-                                "Preserve the exact same camera angle, crop, rig, holder, tray, applicator, and observation position. "
+                                "Treat the input image as the same specimen-test premise. "
+                                "Keep the rig family, holder logic, hazard family, and same standardized sample geometry obvious, but choose the framing that makes the reaction easiest to read. "
                                 f"Preserve the tested piece as the same single standardized {specimen_test_plan['sample_shape']} in the same mounted orientation. "
                                 "Keep only one active test sample in frame. Remove any lineup or extra comparison pieces. "
                                 "Keep the experiment feeling large and dramatic, with obvious effects from the lava or hazard. "
@@ -1855,8 +1903,11 @@ Return ONLY a JSON array of {n_lines} strings. Line 0 should be "No changes — 
                     else:
                         edit_instruction = (
                             f"The character must look IDENTICAL to the input image — same suit, same helmet, same body proportions, same colors. "
-                            + ("Same camera angle, same setting — only change the surface/opponent/variable. Everything else stays pixel-identical. " if concept_type == "MOTION"
-                               else "The character stays consistent but the BACKGROUND and SETTING can change to match the variable for this scene. ")
+                            + (
+                                "Same camera angle and same setting — only change the surface/opponent/variable. "
+                                if concept_type == "MOTION"
+                                else "Keep the same overall premise and character identity, but the framing and environment can shift if that makes the ranked difference easier to understand. "
+                            )
                             + f"Change: {edit_prompts[i]} NO text anywhere."
                         )
                     if concept_type != "LOCKED_TEST":
@@ -1909,24 +1960,24 @@ Return ONLY a JSON array of {n_lines} strings. Line 0 should be "No changes — 
                             )
                         else:
                             review_prompt = (
-                                "Image 1 is the base experiment setup. Image 2 should preserve the SAME challenge and the SAME starting point, but it may follow the method deeper or farther into the challenge, including underground or cross-section views. "
-                                "PASS if Image 2 still clearly feels like the same experiment and same overall drilling/project origin, while showing a distinct deeper progress scene for that method. "
-                                "PASS if project markers stay consistent even when the environment becomes subterranean. "
+                                "Image 1 is the base experiment setup. Image 2 should preserve the SAME challenge and the SAME starting point or experiment origin, but it may use a clearer reframing to show progress. "
+                                "PASS if Image 2 still clearly feels like the same experiment and same overall project origin, while showing a distinct progress scene for that method. "
+                                "PASS if the shared mission stays obvious even when the environment or framing changes. "
                                 "FAIL only if Image 2 becomes a generic unrelated environment, loses the sense of one shared project, or turns into a portrait/splash image with no clear experiment. "
                                 "Answer PASS or FAIL with one short reason."
                             )
                     elif concept_type == "IMPACT":
                         review_prompt = (
-                            "Image 1 is the locked impact-test arena template. Image 2 should preserve the SAME arena, strike wall, observation booth, camera angle, crop, and floor layout. "
-                            "PASS if the test rig clearly stays the same and only the ranked subject plus the amount of impact damage changes. "
-                            "FAIL if Image 2 turns into poster art, a different environment, a close-up that loses the rig, or a generic action splash with no consistent test setup. "
+                            "Image 1 is the base impact-test scene. Image 2 should preserve the SAME impact-test premise, target logic, and controlled arena feel, but it may use a clearer crop or angle to show the hit. "
+                            "PASS if the ranked impact comparison is still instantly obvious and the target zone or impact wall remains readable. "
+                            "FAIL if Image 2 turns into poster art, a different environment, or a generic action splash with no clear ranked impact-test setup. "
                             "Answer PASS or FAIL with one short reason."
                         )
                     elif concept_type == "PULL_TEST":
                         review_prompt = (
-                            "Image 1 is the locked truck-pull / traction-test template. Image 2 should preserve the SAME truck or load, the SAME hitch point, the SAME tow line lane, the SAME camera angle, crop, and floor layout. "
-                            "PASS if the towing rig clearly stays the same and only the puller plus the amount of truck movement changes. "
-                            "FAIL if Image 2 removes the truck or rope, turns the setup into an impact arena, loses the full towing rig, or becomes a generic portrait/action splash with no consistent pull test. "
+                            "Image 1 is the base towing comparison scene. Image 2 should preserve the SAME truck/load challenge and towing logic, but it may use a clearer framing for the pull. "
+                            "PASS if the truck/load, tow connection, and amount of movement are still instantly understandable. "
+                            "FAIL if Image 2 removes the truck or rope, turns the setup into an impact arena, or becomes a generic portrait/action splash with no clear pull test. "
                             "Answer PASS or FAIL with one short reason."
                         )
                     elif concept_type == "SPECIMEN_TEST":
@@ -1935,13 +1986,13 @@ Return ONLY a JSON array of {n_lines} strings. Line 0 should be "No changes — 
                         penetration_instruction, comparison_instruction = _ballistic_penetration_label(narration_lines[i])
                         review_prompt = (
                             (
-                                "Image 1 is the locked specimen-test rig template. Image 2 should preserve the SAME rig, camera angle, crop, holder, applicator, and standardized sample geometry. "
+                                "Image 1 is the base specimen-test scene. Image 2 should preserve the SAME hazard/test premise, holder logic, and standardized sample geometry. "
                                 + (
                                     "The skeleton host may remain only as the same active operator or monitor. "
                                     if specimen_test_use_host
                                     else "There does not need to be any host character in frame. "
                                 )
-                                + "PASS if the experiment still clearly reads as the same repeated test and only the sample material/object plus its reaction changed. "
+                                + "PASS if the experiment still clearly reads as the same repeated test even if the framing shifts to show the reaction more clearly. "
                                 + (
                                     f"PASS only if the bullet stop depth is visibly different in this scene and clearly reads as {comparison_instruction}. "
                                     "PASS only if the long lane still gives an obvious size reference with repeating segments, like a pool lane. "
@@ -1955,8 +2006,14 @@ Return ONLY a JSON array of {n_lines} strings. Line 0 should be "No changes — 
                         )
                     else:
                         review_prompt = (
-                            "Image 1 is the base scene. Image 2 is an edited version. Does image 2 keep the SAME camera angle, same character position, same setting as image 1? "
-                            "Only the liquid/variable should change. Answer PASS or FAIL with reason."
+                            "Image 1 is the base scene. Image 2 is an edited version. "
+                            + (
+                                "PASS only if Image 2 keeps the same camera angle, same character position, and same setting, with only the ranked variable changing. "
+                                if concept_type == "MOTION"
+                                else "PASS if Image 2 keeps the same core premise and same character identity, even if the framing or environment shifts to explain the ranked variable more clearly. "
+                            )
+                            + "FAIL if Image 2 becomes unrelated poster art, loses the comparison premise, or changes the main character identity. "
+                            "Answer PASS or FAIL with one short reason."
                         )
                     review = review_client.messages.create(
                         model="claude-haiku-4-5-20251001",
@@ -1973,10 +2030,11 @@ Return ONLY a JSON array of {n_lines} strings. Line 0 should be "No changes — 
                     review_text = review.content[0].text
                     if "FAIL" in review_text:
                         logger.warning("scene edit review FAILED", scene=i, reason=review_text[:100], attempt=attempt + 1)
-                        if concept_type == "PULL_TEST" and attempt >= 3 and os.path.exists(img_path):
+                        if use_fresh_premise_scene_generation and attempt >= 3 and os.path.exists(img_path):
                             logger.warning(
-                                "scene edit review exhausted — falling back to manual review",
+                                "scene edit review exhausted for fresh premise scene — falling back to manual review",
                                 scene=i,
+                                concept_type=concept_type,
                                 reason=review_text[:160],
                             )
                         else:
@@ -2157,7 +2215,7 @@ Return ONLY a JSON array of {n_lines} strings. Line 0 should be "No changes — 
             anim_prompts.append(anim_prompts[-1])
     elif concept_type == "IMPACT":
         anim_prompts = [
-            "Locked impact-test arena. The skeleton host braces behind the blast shield and points toward the untouched strike wall while dust hangs in the air. Keep the camera fixed on the full rig. No scene cuts."
+            "Same impact-test premise. The skeleton host braces behind the blast shield and points toward the untouched strike wall while dust hangs in the air. Keep the target logic and arena readable from the opening frame. No scene cuts."
         ]
         for i in range(1, n_lines):
             line = narration_lines[i]
@@ -2166,17 +2224,17 @@ Return ONLY a JSON array of {n_lines} strings. Line 0 should be "No changes — 
             _, visible_result, motion_prompt = _impact_action_details(line, scene_hint)
             result_text = _impact_result_text(line)
             anim_prompts.append(
-                f"Same exact impact-test arena and same camera. {subject} is fully committed to the hit: {motion_prompt}. "
+                f"Same impact-test premise and same target logic. {subject} is fully committed to the hit: {motion_prompt}. "
                 f"Show {visible_result}. "
                 f"The damage escalation must match this line: {result_text or 'harder than the previous subject'}. "
-                "Keep the strike wall and observation booth visible so the comparison stays constant. "
+                "Keep the strike target or impact wall readable so the comparison stays clear, but reframe if that makes the impact easier to understand. "
                 "Make the motion violent and decisive, not a slow zoom or idle pose. No scene cuts."
             )
         while len(anim_prompts) < n_lines:
             anim_prompts.append(anim_prompts[-1])
     elif concept_type == "PULL_TEST":
         anim_prompts = [
-            "Locked truck-pull test lane. Show the untouched truck/load, hitch, and tow line before the attempt starts. Keep the whole towing rig readable in one frame. No scene cuts."
+            "Same towing comparison premise. Show the untouched truck/load, hitch, and tow line before the attempt starts. Keep the whole towing rig readable in the opening frame. No scene cuts."
         ]
         for i in range(1, n_lines):
             line = narration_lines[i]
@@ -2184,10 +2242,10 @@ Return ONLY a JSON array of {n_lines} strings. Line 0 should be "No changes — 
             _, visible_result, motion_prompt = _pull_action_details(line)
             result_text = _pull_test_result_text(line)
             anim_prompts.append(
-                f"Same exact traction-test lane and same camera. {subject} is fully committed to the pull: {motion_prompt}. "
+                f"Same towing comparison premise. {subject} is fully committed to the pull: {motion_prompt}. "
                 f"Show {visible_result}. "
                 f"The truck response must match this line: {result_text or 'the load reacts differently from the previous puller'}. "
-                "Keep the truck, hitch, and tow line visible so the comparison is instantly readable. "
+                "Keep the truck, hitch, and tow line visible so the comparison is instantly readable, but reframe if that makes the effort or movement clearer. "
                 "No scene cuts."
             )
         while len(anim_prompts) < n_lines:
@@ -2198,14 +2256,14 @@ Return ONLY a JSON array of {n_lines} strings. Line 0 should be "No changes — 
         is_ballistic_liquid_test = _is_ballistic_liquid_test(title, concept.get("brief", ""), narration_lines)
         anim_prompts = [
             (
-                "Locked full-side ballistic lab shot on the long transparent pool-lane-style tank. "
+                "Same full-side ballistic comparison setup on the long transparent pool-lane-style tank. "
                 "Hold the untouched setup for the whole clip as a calm readable baseline: one rifle, one lane, one liquid, no shot fired yet, no smoke cloud, no extra explosions. "
                 "Keep the repeating one-foot lane segments clearly visible for scale. Never generate any text, captions, numbers, labels, timers, or overlays. No scene cuts."
                 if is_ballistic_liquid_test
                 else (
-                    f"Locked large-scale specimen-test rig. The skeleton host actively watches or operates the untouched standardized {specimen_test_plan['sample_shape']} while the apparatus waits idle. Keep the full rig and sample visible. Never generate any text, captions, numbers, labels, timers, or overlays. No scene cuts."
+                    f"Same large-scale specimen-test premise. The skeleton host actively watches or operates the untouched standardized {specimen_test_plan['sample_shape']} while the apparatus waits idle. Keep the full rig and sample visible. Never generate any text, captions, numbers, labels, timers, or overlays. No scene cuts."
                     if specimen_test_use_host
-                    else f"Locked large-scale specimen-test rig. Show the untouched standardized {specimen_test_plan['sample_shape']} mounted inside the industrial apparatus before the pour starts. Fill the frame with the rig and sample, not an observer. Never generate any text, captions, numbers, labels, timers, or overlays. No scene cuts."
+                    else f"Same large-scale specimen-test premise. Show the untouched standardized {specimen_test_plan['sample_shape']} mounted inside the industrial apparatus before the pour starts. Fill the frame with the rig and sample, not an observer. Never generate any text, captions, numbers, labels, timers, or overlays. No scene cuts."
                 )
             )
         ]
@@ -2230,7 +2288,7 @@ Return ONLY a JSON array of {n_lines} strings. Line 0 should be "No changes — 
                     "No scene cuts, no text, no overlays, no labels, no timers."
                     if is_ballistic_liquid_test
                     else (
-                        f"Same exact specimen-test rig and same camera. The test begins the same way as every other scene: {specimen_test_plan['test_action']}. "
+                        f"Same specimen-test premise. The test begins the same way as every other scene: {specimen_test_plan['test_action']}. "
                         f"The tested sample is now {subject}, but it must stay the same single standardized {specimen_test_plan['sample_shape']} mounted the same way. "
                         "Keep only one active sample in frame for the whole shot. Make the experiment feel big and violent, with obvious lava effects, overflow, sparks, cracking, crusting, or steam. "
                         + (
@@ -2242,7 +2300,7 @@ Return ONLY a JSON array of {n_lines} strings. Line 0 should be "No changes — 
                         + f"The shot must not stay static: start with the sample clearly intact, then visibly show {motion_change}. "
                         + "By the end of the clip, the sample must be in a clearly different physical state than at the start. Do not just show lava pouring onto an unchanged block. "
                         + "Never generate any text, captions, numbers, labels, timers, UI, or subtitle-like overlays inside the video itself. "
-                        + "Keep the apparatus, holder, and reaction zone readable together in one shot. No scene cuts."
+                        + "Keep the apparatus, holder, and reaction zone readable together in one shot, but reframe if that makes the reaction easier to follow. No scene cuts."
                     )
                 )
             )
