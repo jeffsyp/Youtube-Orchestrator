@@ -153,12 +153,34 @@ _VEO_SOFTENING_REPLACEMENTS: list[tuple[str, str]] = [
     (r"\bthunderous impact\b", "burst of dust"),
 ]
 
+_VEO_STRONG_SOFTENING_REPLACEMENTS: list[tuple[str, str]] = [
+    (r"\bkunai\b", "training prop"),
+    (r"\bshuriken\b", "spinning prop"),
+    (r"\brogue ninja\b", "dark-clad figure"),
+    (r"\brogue ninja's\b", "dark-clad figure's"),
+    (r"\bskull\b", "head"),
+    (r"\bribcage\b", "upper body"),
+    (r"\bforehead\b", "front of the head"),
+    (r"\bchest\b", "torso"),
+    (r"\belbow\b", "arm"),
+    (r"\bstrike combination\b", "rapid forward burst"),
+    (r"\bstrike\b", "move"),
+    (r"\bcrumpling\b", "staggering"),
+    (r"\bknocked off their feet\b", "stumbling backward"),
+    (r"\bcollapses forward\b", "stumbles forward"),
+    (r"\bdriving outward\b", "surging forward"),
+    (r"\bslam(?:s|med|ming)?\b", "plant"),
+]
+
 
 def _soften_veo_prompt(prompt: str, *, stronger: bool = False) -> str:
     """Lightly sanitize animation prompts when Veo filters a request."""
     softened = prompt
     for pattern, replacement in _VEO_SOFTENING_REPLACEMENTS:
         softened = re.sub(pattern, replacement, softened, flags=re.IGNORECASE)
+    if stronger:
+        for pattern, replacement in _VEO_STRONG_SOFTENING_REPLACEMENTS:
+            softened = re.sub(pattern, replacement, softened, flags=re.IGNORECASE)
 
     safety_tail = (
         " Keep the action cinematic, readable, and non-graphic. "
@@ -167,8 +189,8 @@ def _soften_veo_prompt(prompt: str, *, stronger: bool = False) -> str:
     if stronger:
         safety_tail = (
             " Keep the action PG-13 and non-graphic. "
-            "Avoid collisions, impacts, injuries, panic, or suffering. "
-            "Emphasize reaction, movement, dust, and mythic spectacle instead."
+            "Avoid collisions, impacts, injuries, panic, suffering, weapons landing, or direct body strikes. "
+            "Keep characters separated when possible and emphasize near misses, reaction, motion, dust, and mythic spectacle instead."
         )
 
     if not softened.rstrip().endswith("."):
@@ -185,13 +207,14 @@ async def _generate_veo_clip_with_retries(
     aspect_ratio: str,
     resolution: str,
     image_path: str,
+    last_frame_path: str | None = None,
     timeout_seconds: int,
 ) -> dict:
-    """Retry transient/internal Veo failures and soften filtered prompts once."""
+    """Retry transient/internal Veo failures and progressively soften filtered prompts."""
     prompt_variant = prompt
     last_error: Exception | None = None
 
-    for attempt in range(1, 4):
+    for attempt in range(1, 5):
         try:
             return await veo_generate_video_async(
                 prompt=prompt_variant,
@@ -201,6 +224,7 @@ async def _generate_veo_clip_with_retries(
                 aspect_ratio=aspect_ratio,
                 resolution=resolution,
                 image_path=image_path,
+                last_frame_path=last_frame_path,
                 timeout_seconds=timeout_seconds,
             )
         except Exception as e:
@@ -216,8 +240,8 @@ async def _generate_veo_clip_with_retries(
                 or "timed out" in message.lower()
             )
 
-            if is_filtered and attempt < 3:
-                prompt_variant = _soften_veo_prompt(prompt, stronger=attempt > 1)
+            if is_filtered and attempt < 4:
+                prompt_variant = _soften_veo_prompt(prompt, stronger=attempt >= 2)
                 logger.warning(
                     "veo filtered prompt — retrying with softened wording",
                     attempt=attempt,
@@ -226,7 +250,7 @@ async def _generate_veo_clip_with_retries(
                 )
                 continue
 
-            if is_transient and attempt < 3:
+            if is_transient and attempt < 4:
                 logger.warning(
                     "veo transient failure — retrying",
                     attempt=attempt,

@@ -24,6 +24,7 @@ from packages.utils.hardcore_ranked_language import normalize_hardcore_ranked_vi
 from apps.orchestrator.channel_builders.shared import (
     generate_narration_with_timestamps,
     generate_image_prompts,
+    _generate_veo_clip_with_retries,
     build_silent_segments,
     build_intro_teasers,
     concat_silent_video,
@@ -2223,10 +2224,8 @@ Return ONLY a JSON array of {n_lines} strings.""",
         await _update_step(f"animating {scene_label} with {provider}")
         img_path = os.path.join(images_dir, f"scene_{i:02d}.png")
         if provider == "veo":
-            from packages.clients.veo import generate_video_async as veo_generate
-
             primary_model = model or "veo-3.1-lite-generate-001"
-            await veo_generate(
+            await _generate_veo_clip_with_retries(
                 prompt=anim_prompts[i],
                 output_path=clip_path,
                 model=primary_model,
@@ -2235,6 +2234,7 @@ Return ONLY a JSON array of {n_lines} strings.""",
                 resolution=resolution or "720p",
                 image_path=img_path,
                 last_frame_path=img_path if is_planet_jump_format else None,
+                timeout_seconds=600,
             )
         else:
             from packages.clients.grok import generate_video_async as grok_generate
