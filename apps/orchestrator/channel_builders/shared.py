@@ -668,9 +668,23 @@ CRITICAL — NO CROSS-FRANCHISE CONTAMINATION: If the concept is a CROSSOVER (a 
 {anchor_policy_block}
 {training_story_block}
 
-CRITICAL — CLIP COVERAGE: The total duration of sub-action clips for each narration line MUST cover the narration duration. A 6-second narration line needs 2-3 sub-actions (2x3s or 3x2s), NOT one 3s clip. A 4-second line needs at least 2 sub-actions. Only lines under 3.5s can have a single sub-action.
+CRITICAL — CLIP COVERAGE: The total duration of sub-action clips for each narration line MUST cover the narration duration AND provide cinematic coverage. A 6-second narration line needs 2-3 sub-actions of DIFFERENT shot_types (NOT one 3s clip, NOT three identical wide shots). A 4-second line needs at least 2 sub-actions of different shot_types. Only lines under 2.5s can have a single shot.
 
 CRITICAL — SHOT VARIETY: Across the full set of image_prompts, vary camera angle, distance, and composition aggressively. Never more than 2 consecutive scenes with the same framing. Mix: close-up, medium, wide, bird's-eye, low-angle, over-the-shoulder, dutch-angle. Mix tight/loose framing. Vary lighting when the scene changes (golden hour, overcast, night, torchlit). Repeating "wide shot at eye level" across most scenes is a FAIL — the video will look static and boring.
+
+CRITICAL — CINEMATIC COVERAGE PER LINE (shot variety INSIDE one narration line):
+A narration line is not "one shot." Treat each line as a small scene that needs cinematic coverage — like a real director would shoot it.
+- DEFAULT minimum coverage:
+  - Lines with dialogue, addressed reaction, or two characters interacting → 2-3 sub-actions covering DIFFERENT angles (e.g. wide establishing → close-up reaction → over-the-shoulder)
+  - Lines with a single clean physical beat → 1-2 sub-actions, but if 2, the second MUST be a DIFFERENT shot_type (close-up of the proof detail, low-angle of the subject, reaction shot of a bystander)
+  - Lines under 2.5 seconds may use a single shot
+- COVERAGE PATTERNS (pick one per multi-shot line, vary the pattern across the script):
+  - WIDE → CLOSE: establish the situation, then cut to the detail or face that sells the joke
+  - LOW → HIGH: low-angle of the powerful thing happening, then high-angle of the consequence below
+  - OVER-SHOULDER → REACTION: OTS of subject looking at the thing, then close-up of subject's face reacting
+  - ACTION → AFTERMATH: medium of the cause, then close-up of the proof detail (broken prop, scorched ground, dropped item)
+- Adjacent shots inside the same line must NEVER share the same shot_type. Repeating "wide" three times for one line is a FAIL.
+- Coverage shots stay TEMPORALLY ALIGNED to the same narration line — they show different angles of THE SAME MOMENT or its immediate aftermath, not events from a different line. (See TEMPORAL ALIGNMENT rule below.)
 
 CRITICAL — STORY BEAT VARIETY: Unless the concept is EXPLICITLY a repeated-comparison format (same test, different variable), each narration line should feel like a genuinely NEW beat with a new visual purpose. Do NOT solve escalation by reusing the same anchor composition with a slightly bigger crowd, slightly bigger threat, or slightly louder aftermath.
 - BAD: same throne, same hallway, same desk, same doorway, or same stage over and over with only more people added
@@ -789,8 +803,9 @@ Example skeleton:
 "Wide side view. Zoro from One Piece in the left foreground raises all three swords for a slash. Killua stands several feet away bracing, clearly separated. Cracked arena stone underfoot. Tournament arena background. NO text anywhere."
 
 For each sub-action, decide:
+- "shot_type": REQUIRED. One of "wide", "medium", "close-up", "low-angle", "high-angle", "over-shoulder", "side-profile", "bird-eye". This is the FIRST phrase in the image_prompt — the prose framing must match this label. Adjacent sub-actions on the same `line` must use DIFFERENT shot_types.
 - "new_scene": true if this needs a fresh GPT-generated image (new setting, new character entering). false if it chains from the previous clip's last frame.
-- "image_prompt": what the starting image should show (BEFORE the action happens). Only needed if new_scene=true.
+- "image_prompt": what the starting image should show (BEFORE the action happens). Only needed if new_scene=true. MUST begin with the shot_type as a readable framing phrase (e.g. "Close-up on...", "Wide shot of...", "Low-angle on...", "Over-the-shoulder of...").
 - "animation_prompt": ONE simple action for the animation model (2-3 seconds). One moving subject. e.g. "opens door and walks through", "raises sword and lunges", "energy builds in fist", "slides backward into a wall"
 - "line": which narration line (0-indexed) this belongs to
 - "duration": seconds (2-3)

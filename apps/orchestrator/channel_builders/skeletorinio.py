@@ -168,6 +168,16 @@ THE FORMAT:
 - By line 3 or 4, introduce a MIDPOINT TURN: a new rule, hidden cost, antagonist, misfire, countdown, false fix, trap, tradeoff, or reversal that changes what the viewer is waiting to see.
 - BAD predictable shape: "thing gets younger" → "more things get younger" → "the city gets younger" → "dinosaurs show up." Once line 2 lands, the rest is obvious.
 - GOOD sticky shape: "thing gets younger" → "everyone else starts reversing faster than you" → "the fountain will not stop" → "every sip erases a century" → "one last drop could restore the future or finish deleting it."
+- THROUGHLINE — each post-hook line must EVOLVE FROM, REACT TO, or PAY OFF something already established earlier. No line should introduce a fresh standalone idea that ignores what came before.
+  - BAD (vignette pattern): "Day 1: you pull the sword. Day 2: a dragon shows up. Day 3: you build a moon base." — each line is a fresh idea, no thread
+  - GOOD (throughline pattern): "Day 1: you pull the sword and it screams awake. Day 2: the knights who heard the scream from a kingdom away kneel in your street. Week 1: those same knights have started a cult and they've found the dragon. Month 2: the dragon is now your throne." — each line specifically evolves from a SPECIFIC ELEMENT of the previous
+  - When you write each post-hook line, name (silently, in your head) which earlier element it builds on. If you cannot name one, the line is a vignette and must be rewritten.
+- RECURRING ELEMENT — pick ONE thing that persists and visibly changes across the script: a creature, an antagonist, a specific object, a status (your appearance, your home, your job, a wound). Reference it in at least 3 separate post-hook lines so the viewer feels a single story, not a slideshow.
+  - Demon concept: the demon herself recurs — size grows, attitude shifts, role evolves (terror → roommate → business partner)
+  - Sword concept: the sword itself recurs — glows louder, screams in different beats, becomes a relic at the end
+  - Lightning concept: the storm itself recurs — sparks on touch → controlled bolt → city-wide storm → mythic weather
+  - The recurring element is what makes "Day 1" and "Year 5" feel like the same story instead of two unrelated jokes.
+- The MIDPOINT TURN must SPECIFICALLY UNDERMINE OR INVERT something the hook implied — not just "things get bigger." Something the viewer assumed about the premise turns out to be wrong, costly, or reversed (the power has a hidden cost, the gift is actually a curse, the thing you summoned wants something from you, the people kneeling are not who you thought).
 - Across the post-hook lines, force at least 3 DISTINCT consequence categories, not one category repeated bigger:
   1. personal/body consequence,
   2. social/public reaction,
