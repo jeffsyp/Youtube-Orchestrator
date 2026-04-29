@@ -1,6 +1,7 @@
 """Auto-generate concept drafts per channel using Claude."""
 
 import asyncio
+from collections import Counter
 import json
 import os
 import re
@@ -9,7 +10,14 @@ import structlog
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 from dotenv import load_dotenv
+from packages.clients.channel_profiles import get_channel_builder_slug, get_channel_profile
 from packages.clients.db import get_engine
+from packages.utils.game_meme_identity import normalize_game_meme_concept
+from packages.utils.hardcore_ranked_language import (
+    hardcore_ranked_pitch_rejection_reason,
+    normalize_hardcore_ranked_concept,
+    normalize_hardcore_ranked_viewer_text,
+)
 
 load_dotenv(override=True)
 logger = structlog.get_logger()
@@ -22,10 +30,552 @@ def _strip_code_block(text: str) -> str:
     text = re.sub(r"\s*```\s*$", "", text)
     return text.strip()
 
+
+_DIALOGUE_VERB_PATTERN = re.compile(
+    r"\b("
+    r"says|said|yells|yelled|asks|asked|blurts|mutters|whispers|shouts|shouted|"
+    r"screams|screamed|laughs|laughing|snaps|snapped|groans|groaned|taunts|taunted|"
+    r"replies|replied|calls out|called out|mocks|mocked|goes|cuts in|cut in"
+    r")\b",
+    re.IGNORECASE,
+)
+
+_CRABRAVE_TYPED_CHAT_SHORTHAND_RE = re.compile(
+    r"\b(?:[A-Z]{3,}|[A-Z]{2,})(?:\s+[A-Z]{2,}){1,}\b"
+)
+
+
+def _scene_video_prompt_has_dialogue(video_prompt: str | None) -> bool:
+    """Return True when a scene prompt explicitly cues spoken dialogue."""
+    if not isinstance(video_prompt, str):
+        return False
+    return bool(_DIALOGUE_VERB_PATTERN.search(video_prompt))
+
+
+def _concept_has_native_dialogue(concept: dict) -> bool:
+    """Require every scene in native-dialogue concepts to explicitly include speech."""
+    scenes = concept.get("scenes")
+    if not isinstance(scenes, list) or not scenes:
+        return False
+    return all(_scene_video_prompt_has_dialogue(scene.get("video_prompt")) for scene in scenes)
+
+
+def _concept_has_natural_player_dialogue(concept: dict, *, channel_id: int) -> bool:
+    """Reject typed all-chat shorthand that sounds robotic when voiced."""
+    if channel_id != 16:
+        return True
+
+    scenes = concept.get("scenes")
+    if not isinstance(scenes, list) or not scenes:
+        return False
+
+    for scene in scenes:
+        if not isinstance(scene, dict):
+            return False
+        video_prompt = str(scene.get("video_prompt") or "")
+        if not video_prompt:
+            return False
+        if _CRABRAVE_TYPED_CHAT_SHORTHAND_RE.search(video_prompt):
+            return False
+    return True
+
+
+def _extract_nightnight_characters(text: str) -> list[str]:
+    """Return known anime character names mentioned in text, in reading order."""
+    matches = []
+    lowered = text.lower()
+    for name, pattern in _NIGHTNIGHT_CHARACTER_PATTERNS:
+        for match in pattern.finditer(lowered):
+            matches.append((match.start(), name))
+
+    matches.sort(key=lambda item: item[0])
+    ordered = []
+    seen = set()
+    for _, name in matches:
+        if name in seen:
+            continue
+        seen.add(name)
+        ordered.append(name)
+    return ordered
+
+
+_NIGHTNIGHT_STORY_TURN_MARKERS = (
+    "but", "instead", "until", "then", "suddenly", "counter", "counters",
+    "survives", "comes back", "stands back up", "gets back up", "revives",
+    "restarts", "backfires", "turns on", "changes the target", "tries again",
+    "betrays", "steals", "snatches", "breaks the rule", "breaks the test",
+)
+
+
+def _nightnight_pitch_has_story_turn(concept: dict) -> bool:
+    text_blob = " ".join(
+        str(concept.get(field) or "")
+        for field in ("title", "brief", "key_facts", "structure")
+    ).lower()
+    return any(marker in text_blob for marker in _NIGHTNIGHT_STORY_TURN_MARKERS)
+
+
+def _diversify_nightnight_concepts(concepts: list[dict], past_titles: list[str], remaining: int) -> list[dict]:
+    """Prefer fresher NightNight concepts instead of repeating the same anchors."""
+    if remaining <= 0 or len(concepts) <= remaining:
+        return concepts[:remaining]
+
+    recent_titles = past_titles[-60:]
+    historical_char_counts = Counter()
+    historical_franchise_counts = Counter()
+    for title in recent_titles:
+        characters = _extract_nightnight_characters(title)
+        if not characters:
+            continue
+        historical_char_counts.update(characters)
+        historical_franchise_counts.update(
+            {NIGHTNIGHT_CHARACTER_FRANCHISE[character] for character in characters}
+        )
+
+    ranked = []
+    for idx, concept in enumerate(concepts):
+        text_blob = " ".join(
+            part for part in [concept.get("title", ""), concept.get("brief", "")]
+            if part
+        )
+        characters = _extract_nightnight_characters(text_blob)
+        lead_character = characters[0] if characters else None
+
+        franchises = []
+        seen_franchises = set()
+        for character in characters:
+            franchise = NIGHTNIGHT_CHARACTER_FRANCHISE.get(character)
+            if franchise and franchise not in seen_franchises:
+                seen_franchises.add(franchise)
+                franchises.append(franchise)
+
+        ranked.append({
+            "concept": concept,
+            "index": idx,
+            "characters": characters,
+            "lead_character": lead_character,
+            "franchises": franchises,
+            "has_story_turn": _nightnight_pitch_has_story_turn(concept),
+        })
+
+    selected = []
+    used_characters = set()
+    used_franchises = set()
+    selected_overused_leads = 0
+    pool = ranked[:]
+
+    while pool and len(selected) < remaining:
+        def concept_score(item: dict) -> tuple[int, int, int, int, int, int, int]:
+            lead = item["lead_character"]
+            franchises = item["franchises"]
+            lead_history = historical_char_counts.get(lead, 0) if lead else 0
+            franchise_history = sum(historical_franchise_counts.get(franchise, 0) for franchise in franchises)
+            fresh_lead = 1 if lead and lead not in used_characters else 0
+            fresh_franchise = sum(1 for franchise in franchises if franchise not in used_franchises)
+            overused_penalty = 1 if lead in NIGHTNIGHT_OVERUSED_CHARACTERS else 0
+
+            return (
+                1 if item["has_story_turn"] else 0,
+                1 if not overused_penalty else 0,
+                1 if not (overused_penalty and selected_overused_leads) else 0,
+                fresh_lead,
+                fresh_franchise,
+                -lead_history,
+                -franchise_history,
+                -item["index"],
+            )
+
+        best = max(pool, key=concept_score)
+        selected.append(best["concept"])
+        used_characters.update(best["characters"][:2])
+        used_franchises.update(best["franchises"])
+        if best["lead_character"] in NIGHTNIGHT_OVERUSED_CHARACTERS:
+            selected_overused_leads += 1
+        pool.remove(best)
+
+    return selected
+
+
+def _extract_nature_receipts_animals(text: str) -> list[str]:
+    """Return canonical animal names mentioned in text, in reading order."""
+    matches = []
+    lowered = text.lower()
+    for alias, canonical in _NATURE_RECEIPTS_ANIMAL_PATTERNS:
+        for match in alias.finditer(lowered):
+            matches.append((match.start(), canonical))
+
+    matches.sort(key=lambda item: item[0])
+    ordered = []
+    seen = set()
+    for _, canonical in matches:
+        if canonical in seen:
+            continue
+        seen.add(canonical)
+        ordered.append(canonical)
+    return ordered
+
+
+def _extract_nature_receipts_target(text: str) -> str | None:
+    """Extract the key thing/place/system the animal collides with."""
+    lowered = text.lower()
+    patterns = [
+        r"\bdiscovered(?: it was running)? ([a-z0-9' -]+)$",
+        r"\braised by ([a-z0-9' -]+)$",
+        r"\binvaded ([a-z0-9' -]+?)(?: and|$)",
+        r"\bimprinted on ([a-z0-9' -]+)$",
+        r"\bran (?:the )?([a-z0-9' -]+)$",
+        r"\bowned ([a-z0-9' -]+)$",
+        r"\bruled ([a-z0-9' -]+)$",
+        r"\bwanted to ([a-z0-9' -]+)$",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, lowered)
+        if not match:
+            continue
+        target = re.sub(r"^(a|an|the)\s+", "", match.group(1).strip())
+        return target
+    return None
+
+
+def _classify_nature_receipts_scenarios(text: str) -> list[str]:
+    """Bucket Nature Receipts concepts by premise engine."""
+    lowered = text.lower()
+    buckets = []
+    if any(phrase in lowered for phrase in [
+        "size of", "as tall as", "as big as", "100 feet tall", "mountain", "moon", "skyscraper", "godzilla",
+    ]):
+        buckets.append("giant_scale")
+    if any(phrase in lowered for phrase in [
+        "fastest", "supersonic", "cheetah speed", "speed of", "moved at",
+    ]):
+        buckets.append("super_speed")
+    if any(phrase in lowered for phrase in [
+        "indestructible", "invisible", "could fly", "could breathe air", "strength of", "as strong as",
+        "apex predator", "billionaire",
+    ]):
+        buckets.append("power_swap")
+    if any(phrase in lowered for phrase in [
+        "president", "taxes", "wall street", "government", "power grid", "owned an entire country",
+        "ran an entire city", "ran the government", "ruled the world", "press conferences",
+    ]):
+        buckets.append("human_system")
+    if any(phrase in lowered for phrase in [
+        "raised by", "lived on land", "sahara", "airport", "first class cabin", "fighter jet",
+        "construction site", "racetrack", "highway", "grocery store", "shopping mall", "city fountain",
+        "downtown", "city", "desert", "bamboo forest",
+    ]):
+        buckets.append("habitat_collision")
+    if any(phrase in lowered for phrase in [
+        "invaded", "millions of", "took over", "ran an entire city",
+    ]):
+        buckets.append("swarm_takeover")
+    if any(phrase in lowered for phrase in [
+        "imprinted on", "wanted to play", "laser pointer",
+    ]):
+        buckets.append("obsession")
+    if "discovered " in lowered:
+        buckets.append("discovery_template")
+
+    return buckets or ["other"]
+
+
+def _diversify_nature_receipts_concepts(concepts: list[dict], past_titles: list[str], remaining: int) -> list[dict]:
+    """Prefer fresher Nature Receipts animals, premise engines, and targets."""
+    if remaining <= 0 or len(concepts) <= remaining:
+        return concepts[:remaining]
+
+    recent_titles = past_titles[-80:]
+    historical_animal_counts = Counter()
+    historical_scenario_counts = Counter()
+    historical_target_counts = Counter()
+    for title in recent_titles:
+        animals = _extract_nature_receipts_animals(title)
+        target = _extract_nature_receipts_target(title)
+        scenarios = _classify_nature_receipts_scenarios(title)
+        if animals:
+            historical_animal_counts.update(animals[:1])
+        historical_scenario_counts.update(scenarios)
+        if target:
+            historical_target_counts.update([target])
+
+    ranked = []
+    for idx, concept in enumerate(concepts):
+        text_blob = " ".join(
+            part for part in [concept.get("title", ""), concept.get("brief", "")]
+            if part
+        )
+        animals = _extract_nature_receipts_animals(text_blob)
+        lead_animal = animals[0] if animals else None
+        scenarios = _classify_nature_receipts_scenarios(text_blob)
+        target = _extract_nature_receipts_target(text_blob)
+        ranked.append({
+            "concept": concept,
+            "index": idx,
+            "lead_animal": lead_animal,
+            "scenarios": scenarios,
+            "target": target,
+            "uses_discovery_template": "discovery_template" in scenarios,
+        })
+
+    selected = []
+    used_animals = set()
+    used_scenarios = set()
+    used_targets = set()
+    selected_giant_scale = 0
+    selected_discovery_template = 0
+    pool = ranked[:]
+
+    while pool and len(selected) < remaining:
+        def concept_score(item: dict) -> tuple[int, int, int, int, int, int, int, int, int, int]:
+            lead_animal = item["lead_animal"]
+            scenarios = item["scenarios"]
+            target = item["target"]
+            animal_history = historical_animal_counts.get(lead_animal, 0) if lead_animal else 0
+            scenario_history = sum(historical_scenario_counts.get(scenario, 0) for scenario in scenarios)
+            target_history = historical_target_counts.get(target, 0) if target else 0
+            fresh_animal = 1 if lead_animal and lead_animal not in used_animals else 0
+            fresh_scenario = sum(1 for scenario in scenarios if scenario not in used_scenarios)
+            fresh_target = 1 if target and target not in used_targets else 0
+            giant_penalty = 1 if "giant_scale" in scenarios and selected_giant_scale else 0
+            discovery_penalty = 1 if item["uses_discovery_template"] and selected_discovery_template else 0
+            generic_target_penalty = 1 if target in _NATURE_RECEIPTS_GENERIC_TARGETS else 0
+
+            return (
+                1 if not item["uses_discovery_template"] else 0,
+                1 if "giant_scale" not in scenarios else 0,
+                1 if not generic_target_penalty else 0,
+                1 if not giant_penalty else 0,
+                1 if not discovery_penalty else 0,
+                fresh_animal,
+                fresh_scenario,
+                fresh_target,
+                -(animal_history + scenario_history + target_history),
+                -item["index"],
+            )
+
+        best = max(pool, key=concept_score)
+        selected.append(best["concept"])
+        if best["lead_animal"]:
+            used_animals.add(best["lead_animal"])
+        used_scenarios.update(best["scenarios"])
+        if best["target"]:
+            used_targets.add(best["target"])
+        if "giant_scale" in best["scenarios"]:
+            selected_giant_scale += 1
+        if best["uses_discovery_template"]:
+            selected_discovery_template += 1
+        pool.remove(best)
+
+    return selected
+
 REPLENISH_INTERVAL = 120  # check every 2 minutes
 DRAFTS_PER_CHANNEL = 5
 YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY")
 _RESEARCH_CACHE_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "output", "research_cache")
+NIGHTNIGHT_CHARACTER_FRANCHISE = {
+    "naruto": "naruto",
+    "sasuke": "naruto",
+    "kakashi": "naruto",
+    "madara": "naruto",
+    "itachi": "naruto",
+    "gaara": "naruto",
+    "luffy": "one piece",
+    "zoro": "one piece",
+    "sanji": "one piece",
+    "shanks": "one piece",
+    "goku": "dragon ball",
+    "vegeta": "dragon ball",
+    "piccolo": "dragon ball",
+    "gohan": "dragon ball",
+    "frieza": "dragon ball",
+    "saitama": "one punch man",
+    "genos": "one punch man",
+    "garou": "one punch man",
+    "tanjiro": "demon slayer",
+    "nezuko": "demon slayer",
+    "muzan": "demon slayer",
+    "rengoku": "demon slayer",
+    "light": "death note",
+    "l": "death note",
+    "ryuk": "death note",
+    "gojo": "jujutsu kaisen",
+    "yuji": "jujutsu kaisen",
+    "sukuna": "jujutsu kaisen",
+    "megumi": "jujutsu kaisen",
+    "todo": "jujutsu kaisen",
+    "denji": "chainsaw man",
+    "makima": "chainsaw man",
+    "power": "chainsaw man",
+    "aki": "chainsaw man",
+    "ichigo": "bleach",
+    "aizen": "bleach",
+    "rukia": "bleach",
+    "eren": "attack on titan",
+    "levi": "attack on titan",
+    "mikasa": "attack on titan",
+    "reiner": "attack on titan",
+    "gon": "hunter x hunter",
+    "killua": "hunter x hunter",
+    "hisoka": "hunter x hunter",
+    "meruem": "hunter x hunter",
+    "edward elric": "fullmetal alchemist",
+    "roy mustang": "fullmetal alchemist",
+    "mob": "mob psycho 100",
+    "reigen": "mob psycho 100",
+    "lelouch": "code geass",
+    "frieren": "frieren",
+    "fern": "frieren",
+    "aqua": "konosuba",
+    "subaru": "re:zero",
+    "rimuru": "that time i got reincarnated as a slime",
+    "jotaro": "jojo's bizarre adventure",
+    "dio": "jojo's bizarre adventure",
+    "yusuke": "yu yu hakusho",
+    "hiei": "yu yu hakusho",
+}
+NIGHTNIGHT_OVERUSED_CHARACTERS = {
+    "goku",
+    "gojo",
+    "light",
+    "luffy",
+    "naruto",
+    "saitama",
+    "tanjiro",
+}
+_NIGHTNIGHT_CHARACTER_PATTERNS = [
+    (name, re.compile(rf"\b{re.escape(name)}\b"))
+    for name in sorted(NIGHTNIGHT_CHARACTER_FRANCHISE, key=len, reverse=True)
+]
+NATURE_RECEIPTS_ANIMAL_ALIASES = {
+    "golden retriever": "dog",
+    "corgi": "dog",
+    "puppy": "dog",
+    "dog": "dog",
+    "baby duck": "duck",
+    "duck": "duck",
+    "bunny rabbit": "rabbit",
+    "bunny": "rabbit",
+    "rabbit": "rabbit",
+    "hamster": "hamster",
+    "guinea pig": "guinea pig",
+    "capybara": "capybara",
+    "parrot": "parrot",
+    "panda": "panda",
+    "penguin": "penguin",
+    "sloth": "sloth",
+    "turtle": "turtle",
+    "hedgehog": "hedgehog",
+    "raccoon": "raccoon",
+    "otter": "otter",
+    "squirrel": "squirrel",
+    "cat": "cat",
+    "dolphin": "dolphin",
+    "frog": "frog",
+    "snail": "snail",
+    "octopus": "octopus",
+    "electric eel": "eel",
+    "eel": "eel",
+    "mantis shrimp": "shrimp",
+    "pistol shrimp": "shrimp",
+    "shrimp": "shrimp",
+    "spider": "spider",
+    "jellyfish": "jellyfish",
+    "worm": "worm",
+    "bird": "bird",
+    "fish": "fish",
+}
+_NATURE_RECEIPTS_ANIMAL_PATTERNS = [
+    (re.compile(rf"\b{re.escape(alias)}\b"), canonical)
+    for alias, canonical in sorted(NATURE_RECEIPTS_ANIMAL_ALIASES.items(), key=lambda item: len(item[0]), reverse=True)
+]
+_NATURE_RECEIPTS_GENERIC_TARGETS = {
+    "city",
+    "downtown",
+    "grocery store",
+    "highway",
+    "shopping mall",
+    "rush hour",
+    "taxes",
+    "wall street",
+    "construction site",
+    "neighbor's yard",
+    "neighbor's fence",
+}
+_SHORT_DRAFT_MODE_ALIASES = {
+    "builder": "builder_pitch",
+    "builder_pitch": "builder_pitch",
+    "builder_pitches": "builder_pitch",
+    "pitch": "builder_pitch",
+    "pitch_only": "builder_pitch",
+    "dialogue_short": "no_narration",
+    "short_script": "short_script",
+    "short_scripts": "short_script",
+    "narrated": "short_script",
+    "narration": "short_script",
+    "narrated_short": "short_script",
+    "educational_short": "educational_short",
+    "educational_shorts": "educational_short",
+    "explainer": "educational_short",
+    "explainers": "educational_short",
+    "kids": "no_narration",
+    "no_narration": "no_narration",
+    "scene_first": "no_narration",
+    "scene_based": "no_narration",
+    "silent": "no_narration",
+    "satisfying": "no_narration",
+}
+_SUPPORTED_SHORT_DRAFT_MODES = frozenset({
+    "builder_pitch",
+    "short_script",
+    "educational_short",
+    "no_narration",
+})
+
+
+def _normalize_short_draft_mode(raw_mode: str | None) -> str | None:
+    """Normalize profile draft mode values into the supported short-form modes."""
+    if not isinstance(raw_mode, str):
+        return None
+
+    normalized = raw_mode.strip().lower().replace("-", "_").replace(" ", "_")
+    if not normalized:
+        return None
+    return _SHORT_DRAFT_MODE_ALIASES.get(normalized, normalized)
+
+
+def _get_profile_draft_mode(channel_id: int, *, form_type: str = "short") -> str | None:
+    """Read `draft_mode` from the channel profile when present."""
+    profile = get_channel_profile(channel_id)
+    raw_mode = profile.get("draft_mode")
+    if isinstance(raw_mode, dict):
+        raw_mode = raw_mode.get(form_type) or raw_mode.get("default")
+
+    normalized = _normalize_short_draft_mode(raw_mode)
+    if normalized in _SUPPORTED_SHORT_DRAFT_MODES:
+        return normalized
+    if normalized:
+        logger.warning("unknown draft_mode in channel profile", channel_id=channel_id, draft_mode=raw_mode)
+    return None
+
+
+def _resolve_short_draft_mode(
+    channel_id: int,
+    *,
+    educational_channels: set[int],
+    satisfying_channels: set[int],
+) -> str:
+    """Resolve the short-form draft generator with profile overrides and safe fallbacks."""
+    explicit_mode = _get_profile_draft_mode(channel_id, form_type="short")
+    if explicit_mode:
+        return explicit_mode
+
+    if channel_id in educational_channels:
+        return "educational_short"
+    if channel_id in satisfying_channels:
+        return "no_narration"
+    if get_channel_builder_slug(channel_id):
+        return "builder_pitch"
+    return "no_narration"
 
 
 def _research_niche(niche: str, max_results: int = 15, form_type: str = "short") -> str:
@@ -279,8 +829,6 @@ async def generate_drafts_for_channel(channel_id: int, count: int = 5, form_type
         if yt_trending:
             trending = f"{trending}\n\n{yt_trending}" if trending else yt_trending
 
-        from packages.clients.claude import generate
-
         from packages.prompts.concept_drafts import KIDS_CHANNELS, MID_LENGTH_CHANNELS, EDUCATIONAL_CHANNELS, WEEKLY_RECAP_CHANNELS, RESEARCH_CHANNELS, SATISFYING_CHANNELS
 
         if channel_id in RESEARCH_CHANNELS:
@@ -311,11 +859,39 @@ async def generate_drafts_for_channel(channel_id: int, count: int = 5, form_type
                     past_titles, trending, count, form_type,
                 )
         else:
-            # ALL shorts use visual slapstick no-narration format
-            draft_ids = await _generate_no_narration_drafts(
-                engine, channel_id, channel_name, niche,
-                past_titles, trending, count,
+            short_draft_mode = _resolve_short_draft_mode(
+                channel_id,
+                educational_channels=EDUCATIONAL_CHANNELS,
+                satisfying_channels=SATISFYING_CHANNELS,
             )
+
+            logger.info(
+                "resolved short draft mode",
+                channel_id=channel_id,
+                channel=channel_name,
+                draft_mode=short_draft_mode,
+            )
+
+            if short_draft_mode == "short_script":
+                draft_ids = await _generate_short_drafts(
+                    engine, channel_id, channel_name, niche, voice_id,
+                    past_titles, trending, count, form_type,
+                )
+            elif short_draft_mode == "educational_short":
+                draft_ids = await _generate_educational_short_drafts(
+                    engine, channel_id, channel_name, niche, voice_id,
+                    past_titles, trending, count,
+                )
+            elif short_draft_mode == "builder_pitch":
+                draft_ids = await _generate_builder_pitch_drafts(
+                    engine, channel_id, channel_name, niche,
+                    past_titles, trending, count,
+                )
+            else:
+                draft_ids = await _generate_no_narration_drafts(
+                    engine, channel_id, channel_name, niche,
+                    past_titles, trending, count,
+                )
 
         logger.info("concept drafts generated", channel=channel_name, count=len(draft_ids),
                      form_type=form_type)
@@ -379,6 +955,7 @@ async def _generate_short_drafts(
             brief=brief,
             structure=structure,
             key_facts=key_facts,
+            format_strategy=pitch.get("format_strategy", "mini_story"),
         )
 
         resp2 = _strip_code_block(generate(prompt=usr2, system=sys2, model="claude-sonnet-4-6", max_tokens=4000))
@@ -390,6 +967,70 @@ async def _generate_short_drafts(
             continue
 
         draft_id = await _insert_draft(engine, channel_id, title, concept, brief, form_type)
+        if draft_id:
+            draft_ids.append(draft_id)
+
+    return draft_ids
+
+
+async def _generate_builder_pitch_drafts(
+    engine, channel_id, channel_name, niche,
+    past_titles, trending, count,
+) -> list[int]:
+    """Generate pitch-level drafts for custom builders that write their own scripts later."""
+    from packages.prompts.concept_drafts import build_concept_pitches_prompt
+    from packages.clients.claude import generate
+
+    system, user = build_concept_pitches_prompt(
+        channel_name=channel_name,
+        niche=niche,
+        past_titles=past_titles,
+        count=count,
+        trending=trending,
+    )
+
+    logger.info("phase 1: generating builder pitches", channel=channel_name, count=count)
+
+    resp = _strip_code_block(generate(prompt=user, system=system, model="claude-sonnet-4-6", max_tokens=4000))
+
+    pitches = json.loads(resp)
+    if not isinstance(pitches, list):
+        pitches = [pitches]
+
+    logger.info("phase 1 complete", channel=channel_name, pitches=len(pitches))
+
+    async with AsyncSession(engine) as s:
+        pending = await s.execute(text(
+            "SELECT count(*) FROM concept_drafts WHERE channel_id = :cid AND status = 'pending' AND form_type = 'short'"
+        ), {"cid": channel_id})
+        current_pending = pending.scalar()
+        remaining = max(0, DRAFTS_PER_CHANNEL - current_pending)
+
+    valid_pitches = await _filter_duplicate_pitches(engine, channel_id, pitches, len(pitches))
+    if channel_id == 28:
+        valid_pitches = _diversify_nightnight_concepts(valid_pitches, past_titles, remaining)
+    elif channel_id == 25:
+        valid_pitches = _diversify_nature_receipts_concepts(valid_pitches, past_titles, remaining)
+    else:
+        valid_pitches = valid_pitches[:remaining]
+
+    draft_ids = []
+    for pitch in valid_pitches:
+        title = pitch.get("title", "Untitled")
+        brief = pitch.get("brief", "")
+        concept = {
+            "title": title,
+            "brief": brief,
+            "key_facts": pitch.get("key_facts", ""),
+            "structure": pitch.get("structure", ""),
+            "format_strategy": pitch.get("format_strategy", "mini_story"),
+            "hook_type": pitch.get("hook_type", ""),
+            "channel_id": channel_id,
+            "format_version": 2,
+            "draft_mode": "builder_pitch",
+        }
+
+        draft_id = await _insert_draft(engine, channel_id, title, concept, brief, "short")
         if draft_id:
             draft_ids.append(draft_id)
 
@@ -728,6 +1369,7 @@ Return as a JSON array. Return ONLY valid JSON, no markdown.""",
             channel_name=channel_name, niche=niche, voice_id=voice_id,
             channel_id=channel_id, title=title, brief=brief,
             structure=structure, key_facts=key_facts,
+            format_strategy=pitch.get("format_strategy", "mini_story"),
         )
 
         resp2 = _strip_code_block(generate(prompt=usr2, system=sys2, model="claude-sonnet-4-6", max_tokens=4000))
@@ -1165,7 +1807,7 @@ async def _generate_no_narration_drafts(
 
     No two-phase needed — Claude returns complete concepts with scenes[].
     """
-    from packages.prompts.concept_drafts import build_no_narration_prompt
+    from packages.prompts.concept_drafts import CHARACTER_DIALOGUE_CHANNELS, build_no_narration_prompt
     from packages.clients.claude import generate
 
     system, user = build_no_narration_prompt(
@@ -1179,11 +1821,41 @@ async def _generate_no_narration_drafts(
 
     logger.info("generating no-narration concepts", channel=channel_name, count=count)
 
-    resp = _strip_code_block(generate(prompt=user, system=system, model="claude-sonnet-4-6", max_tokens=6000))
+    enforce_dialogue = channel_id in CHARACTER_DIALOGUE_CHANNELS
+    concepts = []
+    max_attempts = 3 if enforce_dialogue else 1
+    for attempt in range(1, max_attempts + 1):
+        resp = _strip_code_block(generate(prompt=user, system=system, model="claude-sonnet-4-6", max_tokens=6000))
 
-    concepts = json.loads(resp)
-    if not isinstance(concepts, list):
-        concepts = [concepts]
+        batch = json.loads(resp)
+        if not isinstance(batch, list):
+            batch = [batch]
+
+        if enforce_dialogue:
+            raw_count = len(batch)
+            batch = [concept for concept in batch if _concept_has_native_dialogue(concept)]
+            if len(batch) != raw_count:
+                logger.info(
+                    "discarded non-speaking character-dialogue concepts",
+                    channel=channel_name,
+                    attempt=attempt,
+                    kept=len(batch),
+                    discarded=raw_count - len(batch),
+                )
+            natural_count = len(batch)
+            batch = [concept for concept in batch if _concept_has_natural_player_dialogue(concept, channel_id=channel_id)]
+            if len(batch) != natural_count:
+                logger.info(
+                    "discarded typed-shorthand player-dialogue concepts",
+                    channel=channel_name,
+                    attempt=attempt,
+                    kept=len(batch),
+                    discarded=natural_count - len(batch),
+                )
+
+        concepts.extend(batch)
+        if len(concepts) >= count:
+            break
 
     logger.info("no-narration concepts generated", channel=channel_name, count=len(concepts))
 
@@ -1195,7 +1867,13 @@ async def _generate_no_narration_drafts(
         current_pending = pending.scalar()
         remaining = max(0, DRAFTS_PER_CHANNEL - current_pending)
 
-    valid = await _filter_duplicate_pitches(engine, channel_id, concepts, remaining)
+    valid = await _filter_duplicate_pitches(engine, channel_id, concepts, len(concepts))
+    if channel_id == 28:
+        valid = _diversify_nightnight_concepts(valid, past_titles, remaining)
+    elif channel_id == 25:
+        valid = _diversify_nature_receipts_concepts(valid, past_titles, remaining)
+    else:
+        valid = valid[:remaining]
 
     draft_ids = []
     for concept in valid:
@@ -1226,6 +1904,14 @@ async def _filter_duplicate_pitches(engine, channel_id, pitches, remaining) -> l
             if len(valid) >= remaining:
                 break
             title = pitch.get("title", "Untitled")
+            hardcore_rejection = hardcore_ranked_pitch_rejection_reason(pitch, channel_id=channel_id)
+            if hardcore_rejection:
+                logger.info(
+                    "skipping hardcore ranked pitch that depends on precision",
+                    title=title,
+                    reason=hardcore_rejection,
+                )
+                continue
             dup = await s.execute(text("""
                 SELECT id FROM concept_drafts WHERE channel_id = :cid AND LOWER(title) = LOWER(:title)
                 UNION ALL
@@ -1241,7 +1927,16 @@ async def _filter_duplicate_pitches(engine, channel_id, pitches, remaining) -> l
 async def _insert_draft(engine, channel_id, title, concept, brief, form_type) -> int | None:
     """Insert a concept draft and return its ID."""
     try:
+        from packages.utils.concept_formats import apply_format_strategy_defaults
+
+        concept = apply_format_strategy_defaults(concept, form_type=form_type)
+        concept = normalize_hardcore_ranked_concept(concept, channel_id=channel_id)
+        concept = normalize_game_meme_concept(concept, channel_id=channel_id)
+        title = normalize_hardcore_ranked_viewer_text(concept.get("title") or title)
+        brief = normalize_hardcore_ranked_viewer_text(concept.get("brief") or brief)
         async with AsyncSession(engine) as s:
+            from packages.clients.workflow_state import ensure_concept
+
             row = await s.execute(text("""
                 INSERT INTO concept_drafts (channel_id, title, concept_json, brief, form_type)
                 VALUES (:cid, :title, :cjson, :brief, :ft)
@@ -1254,6 +1949,17 @@ async def _insert_draft(engine, channel_id, title, concept, brief, form_type) ->
                 "ft": form_type,
             })
             draft_id = row.scalar()
+            await ensure_concept(
+                channel_id=channel_id,
+                title=title,
+                concept_json=concept,
+                origin="auto",
+                status="draft",
+                form_type=form_type,
+                notes=brief,
+                draft_id=draft_id,
+                session=s,
+            )
             await s.commit()
             logger.info("concept draft created", id=draft_id, title=title, form_type=form_type)
             return draft_id

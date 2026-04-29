@@ -30,7 +30,7 @@ def get_engine():
     if _sync_engine is None:
         db_url = os.getenv(
             "DATABASE_URL",
-            "postgresql+asyncpg://orchestrator:orchestrator@localhost:5432/orchestrator",
+            DATABASE_URL,
         )
         if "asyncpg" not in db_url:
             db_url = db_url.replace("postgresql://", "postgresql+asyncpg://")

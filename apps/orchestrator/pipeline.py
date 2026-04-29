@@ -12,6 +12,27 @@ import time
 
 import structlog
 from dotenv import load_dotenv
+from packages.clients.channel_profiles import (
+    get_channel_anchor_policy as get_profile_anchor_policy,
+    get_channel_art_style as get_profile_art_style,
+    get_channel_audio_policy as get_profile_audio_policy,
+    get_channel_category as get_profile_category,
+    get_channel_intro_policy as get_profile_intro_policy,
+    get_channel_provider_strategy as get_profile_provider_strategy,
+    get_channel_video_model as get_profile_video_model,
+    get_channel_video_provider as get_profile_video_provider,
+    get_channel_video_resolution as get_profile_video_resolution,
+    should_skip_image_review as get_profile_skip_image_review,
+)
+from packages.clients.workflow_state import (
+    append_run_event,
+    create_review_task,
+    ensure_run_bundle,
+    get_pending_review_task,
+    resolve_review_task,
+    update_concept_status,
+    update_run_manifest,
+)
 
 load_dotenv(override=True)
 logger = structlog.get_logger()
@@ -61,7 +82,7 @@ CHANNEL_ART_STYLE = {
     13: "Simple crude cartoon with thick wobbly outlines and flat colors. Like a funny webcomic or doodle. Pokemon should be recognizable by their signature features (Pikachu's red cheeks, Charizard's wings and tail flame, Snorlax's round belly) but drawn in crude doodle style. Exaggerated expressions, stubby proportions. Game elements like HP bars, pokeballs, and battle screens drawn in crude cartoon style. NOT realistic, NOT official Pokemon art — crude and funny.",  # Munchlax Lore
     14: "In the visual style of actual 1990s-2000s cartoon show frames — like paused frames from Dexter's Lab, Powerpuff Girls, SpongeBob, or Fairly OddParents. Scenes should look like real cartoon screenshots with the show's backgrounds, character animations mid-action, classic cartoon expressions. NOT modern reinterpretation — actual retro cartoon frames.",  # ToonGunk
     15: "Clean flat lay illustration, birds-eye view, objects arranged symmetrically on white surface. Like an IKEA instruction manual meets Marie Kondo aesthetic. Vector art.",  # Very Clean Very Good
-    16: "Simple crude cartoon with thick wobbly outlines and flat colors. Like a funny webcomic or doodle. Game characters should be recognizable — use their actual names (Yasuo from League of Legends, Master Chief from Halo, Steve from Minecraft, etc.) and draw them in crude doodle style. Exaggerated expressions, stubby proportions, big heads. Game elements like health bars, chat boxes, and kill feeds drawn in crude cartoon style. NOT realistic, NOT official game art — crude and funny.",  # CrabRaveShorts
+    16: "Simple crude cartoon with thick wobbly outlines and flat colors. Like a funny webcomic or doodle. Game characters should be recognizable — use their actual names (Yasuo from League of Legends, Master Chief from Halo, Steve from Minecraft, etc.) and draw them in crude doodle style. Exaggerated expressions, stubby proportions, big heads. Game elements like health bars, chat boxes, kill feeds, minimaps, and lane/turret/jungle props should be drawn in crude cartoon style too. League of Legends scenes must still look like Summoner's Rift with lane stones, brush, jungle entrances, and turret bases — never generic fantasy filler. NOT realistic, NOT official game art — crude and funny.",  # CrabRaveShorts
     17: "In the style of a child's crayon drawing on lined notebook paper — wobbly circles, stick figures, misspelled labels, colorful and messy but charming. Like Diary of a Wimpy Kid illustrations.",  # Smooth Brain Academy
     18: "In the style of Kurzgesagt — clean flat vector illustration, simple bold shapes, vibrant saturated colors on dark backgrounds, tiny detailed characters in massive sci-fi environments, cosmic scale. Educational but visually stunning.",  # What If City
     19: "Detailed black and white manga illustration with intricate crosshatching and linework. Stark monochrome with occasional red accents. Unsettling atmosphere with spiral motifs and exaggerated expressions. Japanese horror manga aesthetic.",  # SpookLand
@@ -70,10 +91,10 @@ CHANNEL_ART_STYLE = {
     22: "Photorealistic cinematic scene with dramatic lighting. Gods depicted as powerful muscular humans with divine features — glowing eyes, golden armor, supernatural auras. Like a scene from a Marvel or God of War movie. Characters must be recognizable by their iconic attributes (Zeus with lightning, Poseidon with trident, Ares in red armor). Photorealistic world, NOT cartoon, NOT illustrated.",  # Deity Drama
     23: "Actual dry-erase marker drawing on a real white whiteboard with visible marker streaks and slightly smudged edges. Messy handwritten text, wobbly arrows, imperfect circles drawn by hand. Looks like a real photo of a whiteboard in a classroom. NOT digital art, NOT clean vector graphics — real messy human handwriting on a real whiteboard.",  # Techognizer
     24: "In the style of Bluey or Peppa Pig animation — soft rounded shapes, warm pastel colors, simple faces, gentle lighting, no sharp edges. Children's TV animation cel style.",  # Blanket Fort Cartoons
-    25: "In the style of children's nature book illustration — soft watercolor with rounded friendly shapes, big expressive eyes on animals, warm pastel backgrounds, gentle lighting. Animals should look cute and charming while still being recognizable. Think Studio Ghibli meets National Geographic Kids. Illustrated not photographed.",  # Nature Receipts
+    25: "Photorealistic editorial wildlife photography — absurd animal scenarios rendered like real high-end press or documentary photos. Real feathers, fur, scales, anatomy, and lighting. Naturalistic textures, believable shadows, real camera depth of field, subtle lens imperfections. Human environments and props may be absurd, but the final image must still look like a real photograph. NOT cartoon, NOT illustrated, NOT cel-shaded.",  # Nature Receipts
     26: "Bold colorful digital illustration matching the topic — anime style for anime topics, game art style for gaming topics, cinematic poster style for movie topics. Vibrant, high energy, clear subjects. Each image should look like it belongs in the world of whatever is being ranked.",  # Hardcore Ranked
     27: "Conspiracy theory evidence board — cork board covered in red string connecting photographs, newspaper clippings, post-it notes, and handwritten arrows. Charlie Day Pepe Silvia energy.",  # Deep We Go
-    28: "In the visual style of actual anime episodes — like paused frames from Attack on Titan, Jujutsu Kaisen, or Demon Slayer. Scenes should look like real anime frames with the show's backgrounds, characters in motion, dramatic camera angles. NOT fan art, NOT static character poses — actual animated show frames.",  # NightNightShorts
+    28: "Clean anime-cartoon hybrid — bold clean outlines, flat cel shading, crisp anime silhouettes, simplified but recognizable faces, expressive webtoon energy. Characters stay recognizable by signature hair, outfit, makeup, weapons, and colors, but rendered like a polished 2D parody frame rather than a painterly anime screenshot. NOT photoreal, NOT plush chibi, NOT storybook soft, NOT grimy doodle, NOT glossy 3D mobile-game art.",  # NightNightShorts
     29: "In the style of 1950s airline travel posters — bold flat colors, stylized landscapes, art deco typography influence, vintage tourism illustration aesthetic.",  # Globe Thoughts
     30: "Ink wash cartoon illustration with exaggerated caricature features — crosshatched shading, sepia and muted tones, hand-drawn editorial style. Characters with oversized heads and expressive faces. Historical scenes with a humorous twist. Illustrated not photographed.",  # Historic Ls
     31: "In the style of GTA loading screen art — bold illustrated characters, saturated colors, slightly exaggerated proportions, urban and flashy. Money, luxury, and hustle energy. Illustrated not photographed.",  # Schmoney Facts
@@ -82,18 +103,102 @@ CHANNEL_ART_STYLE = {
 }
 
 
+def get_channel_category(channel_id: int) -> str:
+    return get_profile_category(
+        channel_id,
+        fallback_map=CHANNEL_CATEGORY,
+        default="Entertainment",
+    )
+
+
+def get_channel_art_style(channel_id: int) -> str:
+    return get_profile_art_style(
+        channel_id,
+        fallback_map=CHANNEL_ART_STYLE,
+        default=_DEFAULT_STYLE,
+    )
+
+
+def should_skip_image_review(channel_id: int) -> bool:
+    return get_profile_skip_image_review(channel_id)
+
+
+def get_channel_runtime_policy(channel_id: int, concept: dict | None = None) -> dict[str, str | None]:
+    concept = concept or {}
+    provider_strategy = str(
+        concept.get("provider_strategy") or get_profile_provider_strategy(channel_id)
+    ).strip().lower()
+    explicit_provider = str(
+        concept.get("video_provider") or get_profile_video_provider(channel_id, default="")
+    ).strip().lower()
+    video_provider = explicit_provider or ("veo" if provider_strategy == "veo" else "grok")
+    return {
+        "provider_strategy": provider_strategy,
+        "video_provider": video_provider,
+        "video_model": concept.get("video_model") or get_profile_video_model(channel_id),
+        "video_resolution": concept.get("video_resolution") or get_profile_video_resolution(channel_id),
+        "audio_policy": str(
+            concept.get("audio_policy") or get_profile_audio_policy(channel_id)
+        ).strip().lower(),
+        "intro_policy": str(
+            concept.get("intro_policy") or get_profile_intro_policy(channel_id)
+        ).strip().lower(),
+        "anchor_policy": str(
+            concept.get("anchor_policy") or get_profile_anchor_policy(channel_id)
+        ).strip().lower(),
+    }
+
+
+def build_anchor_policy_instruction(anchor_policy: str) -> str:
+    policy = (anchor_policy or "none").strip().lower()
+    if policy == "recurring_character":
+        return """
+- RECURRING ANCHOR: keep the same main character design across the whole video. If a line can stay on the main character, keep them on screen instead of swapping to generic observers.
+"""
+    if policy == "recurring_pair":
+        return """
+- RECURRING ANCHOR: keep the same core pair across the whole video. Default to scenes that feature the pair together unless the narration explicitly isolates one character.
+"""
+    if policy == "recurring_host":
+        return """
+- RECURRING ANCHOR: keep the same host/presenter design across all host-led scenes. Prefer host-centered framing when the narration is explanatory.
+"""
+    if policy == "proof_props":
+        return """
+- RECURRING ANCHOR: keep recurring proof objects visible across scenes where possible — receipts, bills, price tags, calculators, charts, meters, or cash props.
+"""
+    return ""
+
+
 async def run_pipeline(run_id: int, concept: dict):
     """Run the full video generation pipeline."""
     from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
     from sqlalchemy.orm import sessionmaker
     from sqlalchemy import text
+    from packages.clients.workflow_state import (
+        append_run_event,
+        create_review_task,
+        ensure_run_bundle,
+        get_pending_review_task,
+        resolve_review_task,
+        update_concept_status,
+        update_run_manifest,
+    )
 
-    db_url = os.getenv("DATABASE_URL", "postgresql+asyncpg://orchestrator:orchestrator@localhost:5432/orchestrator")
+    db_url = os.getenv("DATABASE_URL", "postgresql+asyncpg://postgres:postgres@localhost:5432/youtube_orchestrator")
     if "asyncpg" not in db_url:
         db_url = db_url.replace("postgresql://", "postgresql+asyncpg://")
 
     _log_engine = create_async_engine(db_url, pool_size=1, max_overflow=1)
     _pipeline_start = time.time()
+    await ensure_run_bundle(
+        run_id,
+        concept=concept,
+        channel_id=concept.get("channel_id"),
+        pipeline_mode="default",
+        stage="starting",
+        status="running",
+    )
 
     async def _update_step(step):
         """Update current_step and append to log. Use for major phase changes."""
@@ -117,6 +222,14 @@ async def run_pipeline(run_id: int, concept: dict):
                     {"step": step, "line": log_line, "id": run_id},
                 )
                 await sess.commit()
+            await append_run_event(
+                run_id,
+                event_type="stage_started",
+                message=step,
+                stage=step,
+                data={"log_line": log_line},
+            )
+            await update_run_manifest(run_id, {"stage": step, "last_log_line": log_line})
         except Exception as e:
             logger.warning("step update failed (non-fatal)", step=step, error=str(e)[:100])
 
@@ -141,6 +254,13 @@ async def run_pipeline(run_id: int, concept: dict):
                     {"line": log_line, "id": run_id},
                 )
                 await sess.commit()
+            await append_run_event(
+                run_id,
+                event_type="log",
+                message=msg,
+                stage=None,
+                data={"log_line": log_line},
+            )
         except Exception:
             pass
 
@@ -180,6 +300,13 @@ async def run_pipeline(run_id: int, concept: dict):
                     {"lines": combined, "id": run_id},
                 )
                 await sess.commit()
+            for line in lines:
+                await append_run_event(
+                    run_id,
+                    event_type="log",
+                    message=line,
+                    data={"log_line": line},
+                )
         except Exception:
             pass
 
@@ -190,7 +317,7 @@ async def run_pipeline(run_id: int, concept: dict):
         # Route to channel-specific builder if one exists
         from apps.orchestrator.channel_builders import get_channel_builder
         channel_id = concept.get("channel_id", 0)
-        custom_builder = get_channel_builder(channel_id)
+        custom_builder = get_channel_builder(channel_id, concept)
         if custom_builder:
             await custom_builder(run_id, concept, output_dir, _update_step, db_url)
             return
@@ -301,7 +428,7 @@ No markdown, just the JSON array."""
             except Exception as e:
                 logger.warning("auto-split failed", beat=i, error=str(e)[:100])
 
-        # 2. Generate visuals per beat — gpt-image-1.5 images + Grok video clips
+        # 2. Generate visuals per beat — OpenAI image-model images + Grok video clips
         await _update_step("generating visuals")
         images_dir = os.path.join(output_dir, "images")
         clips_dir = os.path.join(output_dir, "clips")
@@ -345,7 +472,7 @@ No markdown, just the JSON array."""
                         # Landscape — Grok 2K is fine, gets scaled to 1920x1080
                         grok_gen_image(prompt=prompt, output_path=img_path)
                     else:
-                        # Portrait/shorts — use gpt-image-1.5 at native 1024x1536
+                        # Portrait/shorts — use the configured OpenAI image model at native 1024x1536
                         # to avoid quality loss from stretching/cropping Grok's 2K images
                         generate_image_dalle(prompt=prompt, output_path=img_path, size="1024x1536")
                     logger.info("image generated", beat=i, attempt=attempt, portrait=not is_long_form)
@@ -926,15 +1053,23 @@ No markdown, just the JSON array."""
             "title": title,
             "description": concept.get("caption", ""),
             "tags": concept.get("tags", []),
-            "category": CHANNEL_CATEGORY.get(channel_id, "Entertainment"),
+            "category": get_channel_category(channel_id),
         })
 
         # 7. Update DB — step + status + assets in one transaction
         engine = create_async_engine(db_url, pool_size=1, max_overflow=0)
         async with AsyncSession(engine) as s:
+            concept_id = (
+                await s.execute(text("SELECT concept_id FROM content_runs WHERE id = :id"), {"id": run_id})
+            ).scalar_one_or_none()
             await s.execute(
                 text("UPDATE content_runs SET status = 'pending_review', current_step = 'pending_review', completed_at = NOW() WHERE id = :id"),
                 {"id": run_id},
+            )
+            await s.execute(
+                text("INSERT INTO assets (run_id, channel_id, asset_type, content) VALUES (:rid, :cid, :type, :content)"),
+                {"rid": run_id, "cid": channel_id, "type": "rendered_video",
+                 "content": json.dumps({"path": final_path, "file_size_bytes": file_size})},
             )
             await s.execute(
                 text("INSERT INTO assets (run_id, channel_id, asset_type, content) VALUES (:rid, :cid, :type, :content)"),
@@ -951,8 +1086,11 @@ No markdown, just the JSON array."""
                     text("INSERT INTO assets (run_id, channel_id, asset_type, content) VALUES (:rid, :cid, :type, :content)"),
                     {"rid": run_id, "cid": channel_id, "type": "publish_metadata", "content": metadata},
                 )
+            if concept_id:
+                await update_concept_status(concept_id, status="ready", latest_run_id=run_id, session=s)
             await s.commit()
         await engine.dispose()
+        await update_run_manifest(run_id, {"status": "pending_review", "stage": "pending_review", "final_video": final_path})
 
         # Copy to channel folder with title as filename
         _copy_to_channel_folder(final_path, title, channel_id, db_url)
@@ -963,12 +1101,18 @@ No markdown, just the JSON array."""
         try:
             engine = create_async_engine(db_url, pool_size=1, max_overflow=0)
             async with AsyncSession(engine) as s:
+                concept_id = (
+                    await s.execute(text("SELECT concept_id FROM content_runs WHERE id = :id"), {"id": run_id})
+                ).scalar_one_or_none()
                 await s.execute(
                     text("UPDATE content_runs SET status = 'failed', error = :err WHERE id = :id"),
                     {"id": run_id, "err": str(e)[:500]},
                 )
+                if concept_id:
+                    await update_concept_status(concept_id, status="failed", latest_run_id=run_id, session=s)
                 await s.commit()
             await engine.dispose()
+            await update_run_manifest(run_id, {"status": "failed", "error": str(e)[:500]})
         except Exception as db_err:
             logger.error("failed to update DB after pipeline failure", run_id=run_id, db_error=str(db_err)[:100])
 
@@ -1085,7 +1229,13 @@ async def _run_no_narration(run_id: int, concept: dict, output_dir: str, _update
 
     scenes = concept.get("scenes", [])
     title = concept.get("title", "Untitled")
-    channel_id = concept.get("channel_id", 14)
+    channel_id = int(concept.get("channel_id", 14))
+    runtime_policy = get_channel_runtime_policy(channel_id, concept)
+    video_provider = str(runtime_policy["video_provider"] or "grok").strip().lower()
+    video_model = runtime_policy["video_model"]
+    video_resolution = runtime_policy["video_resolution"] or "720p"
+    audio_policy = str(runtime_policy["audio_policy"] or "native_sfx").strip().lower()
+    use_native_video_audio = audio_policy in {"native_sfx", "native_dialogue"}
     WIDTH, HEIGHT = SHORT_WIDTH, SHORT_HEIGHT
 
     images_dir = os.path.join(output_dir, "images")
@@ -1095,6 +1245,8 @@ async def _run_no_narration(run_id: int, concept: dict, output_dir: str, _update
         os.makedirs(d, exist_ok=True)
 
     from packages.clients.grok import generate_image as grok_gen_image, generate_video_async
+    from packages.clients.veo import generate_video_async as veo_generate_video_async
+    from apps.orchestrator.channel_builders.shared import get_veo_duration
 
     # 0. Build character reference descriptions for consistent characters
     character_descriptions = {}  # character_name -> text description
@@ -1193,7 +1345,6 @@ async def _run_no_narration(run_id: int, concept: dict, output_dir: str, _update
                     logger.warning("character description failed", character=char_name, error=str(e)[:100])
 
     # 1. Generate images, then wait for approval, then animate
-    SKIP_APPROVAL_CHANNELS = {23, 29, 32, 34}  # Informational: Techognizer, Globe Thoughts, Mathematicious, Ctrl Z
     await _update_step("generating scene images")
     segment_paths = []
 
@@ -1238,7 +1389,7 @@ async def _run_no_narration(run_id: int, concept: dict, output_dir: str, _update
                     edit_prompt = f"Edit this image: {scene_prompt}. Keep the same art style and setting."
                     await edit_image_dalle_async(prompt=edit_prompt, input_image_path=prev_last_frame, output_path=img_path, size=img_size)
                 else:
-                    await _update_step(f"generating scene {i + 1}/{len(scenes)} — calling gpt-image-1.5")
+                    await _update_step(f"generating scene {i + 1}/{len(scenes)} — calling OpenAI image model")
                     from packages.clients.grok import generate_image_dalle_async
                     await generate_image_dalle_async(prompt=scene_prompt, output_path=img_path, size=img_size)
                 await _update_step(f"scene {i + 1}/{len(scenes)} image done ({_scene_t.time()-_scene_start:.0f}s)")
@@ -1246,17 +1397,33 @@ async def _run_no_narration(run_id: int, concept: dict, output_dir: str, _update
     # --- APPROVAL GATE: wait for user to review images before animating ---
     # Skip if clips already exist (images were approved in a previous run that failed during animation)
     _existing_clips = [f for f in os.listdir(clips_dir) if f.endswith('.mp4')] if os.path.isdir(clips_dir) else []
+    approval_file = os.path.join(output_dir, ".images_approved")
+    deny_file = os.path.join(output_dir, ".images_denied")
     if _existing_clips:
         logger.info("skipping image approval — clips exist from previous run", count=len(_existing_clips))
-    elif channel_id not in SKIP_APPROVAL_CHANNELS:
+    elif os.path.exists(approval_file):
+        logger.info("skipping image approval — already approved (carried forward from previous run)")
+        os.remove(approval_file)
+    elif not should_skip_image_review(channel_id):
         all_images_exist = all(
             os.path.exists(os.path.join(images_dir, f"scene_{i}.png"))
             for i in range(len(scenes))
         )
         if all_images_exist:
             await _update_step("images ready for review")
-            approval_file = os.path.join(output_dir, ".images_approved")
-            deny_file = os.path.join(output_dir, ".images_denied")
+            review_task_id = await create_review_task(
+                run_id=run_id,
+                kind="images",
+                concept_id=concept.get("concept_id"),
+                channel_id=channel_id,
+                stage="images ready for review",
+                payload={
+                    "expected_images": len(scenes),
+                    "images_dir": os.path.abspath(images_dir),
+                    "image_names": [f"scene_{i}.png" for i in range(len(scenes))],
+                },
+            )
+            await update_run_manifest(run_id, {"review_task_id": review_task_id, "stage": "images ready for review"})
             for _f in [approval_file, deny_file]:
                 if os.path.exists(_f):
                     os.remove(_f)
@@ -1265,11 +1432,27 @@ async def _run_no_narration(run_id: int, concept: dict, output_dir: str, _update
                 if os.path.exists(approval_file):
                     logger.info("user approved images")
                     os.remove(approval_file)
+                    await resolve_review_task(
+                        run_id=run_id,
+                        kind="images",
+                        status="approved",
+                        resolution={"source": "file_fallback"},
+                    )
                     break
                 if os.path.exists(deny_file):
                     logger.info("user denied images — stopping")
                     os.remove(deny_file)
+                    await resolve_review_task(
+                        run_id=run_id,
+                        kind="images",
+                        status="rejected",
+                        resolution={"source": "file_fallback"},
+                    )
                     raise RuntimeError("Images denied by user")
+                pending_task = await get_pending_review_task(run_id, "images")
+                if pending_task is None:
+                    logger.info("image review resolved via review task")
+                    break
 
     # --- PASS 2: Animate each scene ---
     for i, scene in enumerate(scenes):
@@ -1301,14 +1484,30 @@ async def _run_no_narration(run_id: int, concept: dict, output_dir: str, _update
             else:
                 await _update_step(f"generating scene {i + 1}/{len(scenes)} — text-to-video" + (" (with ref)" if scene_ref_url else ""))
 
-            await generate_video_async(
-                prompt=motion_prompt,
-                output_path=clip_path,
-                duration=min(duration, 10),
-                aspect_ratio="9:16",
-                image_url=img_b64,
-                reference_image_url=scene_ref_url if text_to_video else None,
-            )
+            if video_provider == "veo":
+                veo_kwargs = {
+                    "prompt": motion_prompt,
+                    "output_path": clip_path,
+                    "model": video_model or "veo-3.1-lite-generate-001",
+                    "duration_seconds": get_veo_duration(duration),
+                    "aspect_ratio": "9:16",
+                    "resolution": video_resolution,
+                    "generate_audio": use_native_video_audio,
+                    "timeout_seconds": 600,
+                }
+                if not text_to_video and img_path:
+                    veo_kwargs["image_path"] = img_path
+                await veo_generate_video_async(**veo_kwargs)
+            else:
+                await generate_video_async(
+                    prompt=motion_prompt,
+                    output_path=clip_path,
+                    duration=min(duration, 10),
+                    aspect_ratio="9:16",
+                    image_url=img_b64,
+                    reference_image_url=scene_ref_url if text_to_video else None,
+                    resolution=video_resolution,
+                )
             logger.info("scene animated", scene=i)
 
         # Extract last frame for seamless chaining to next scene
@@ -1331,19 +1530,25 @@ async def _run_no_narration(run_id: int, concept: dict, output_dir: str, _update
                 logger.info("chained last frame to next scene", from_scene=i, to_scene=i + 1)
 
         # Create segment — keep Grok native audio (run in executor to avoid blocking)
-        # Pad last segment so xfade doesn't clip the ending
-        seg_duration = duration + (0.6 if i == len(scenes) - 1 else 0)
-        await asyncio.get_event_loop().run_in_executor(None, lambda d=seg_duration: subprocess.run([
-            "ffmpeg", "-y",
-            "-stream_loop", "-1", "-i", clip_path,
-            "-t", str(d),
-            "-vf", f"scale={WIDTH}:{HEIGHT}:force_original_aspect_ratio=decrease,pad={WIDTH}:{HEIGHT}:(ow-iw)/2:(oh-ih)/2",
-            "-r", "30", "-pix_fmt", "yuv420p",
-            "-c:v", "libx264", "-preset", "fast", "-crf", "23", "-pix_fmt", "yuv420p",
-            "-c:a", "aac", "-ar", "44100", "-b:a", "192k",
-            "-movflags", "+faststart",
-            seg_path,
-        ], capture_output=True, timeout=120))
+        # Do not pad the final segment; the extra cloned tail reads like a repeated beat.
+        seg_duration = duration
+        def _render_scene_segment(d=seg_duration):
+            cmd = [
+                "ffmpeg", "-y",
+                "-stream_loop", "-1", "-i", clip_path,
+                "-t", str(d),
+                "-vf", f"scale={WIDTH}:{HEIGHT}:force_original_aspect_ratio=decrease,pad={WIDTH}:{HEIGHT}:(ow-iw)/2:(oh-ih)/2",
+                "-r", "30", "-pix_fmt", "yuv420p",
+                "-c:v", "libx264", "-preset", "fast", "-crf", "23", "-pix_fmt", "yuv420p",
+                "-movflags", "+faststart",
+            ]
+            if audio_policy == "none":
+                cmd.extend(["-an", seg_path])
+            else:
+                cmd.extend(["-map", "0:v:0", "-map", "0:a?", "-c:a", "aac", "-ar", "44100", "-b:a", "192k", seg_path])
+            return subprocess.run(cmd, capture_output=True, timeout=120)
+
+        await asyncio.get_event_loop().run_in_executor(None, _render_scene_segment)
 
         if os.path.exists(seg_path):
             segment_paths.append(seg_path)
@@ -1460,15 +1665,23 @@ async def _run_no_narration(run_id: int, concept: dict, output_dir: str, _update
         "title": title,
         "description": concept.get("caption", ""),
         "tags": concept.get("tags", []),
-        "category": CHANNEL_CATEGORY.get(channel_id, "Entertainment"),
+        "category": get_channel_category(channel_id),
     }
     metadata = json.dumps(metadata_dict)
 
     engine = create_async_engine(db_url, pool_size=1, max_overflow=0)
     async with AsyncSession(engine) as s:
+        concept_id = (
+            await s.execute(text("SELECT concept_id FROM content_runs WHERE id = :id"), {"id": run_id})
+        ).scalar_one_or_none()
         await s.execute(
             text("UPDATE content_runs SET status = 'pending_review', current_step = 'pending_review', completed_at = NOW() WHERE id = :id"),
             {"id": run_id},
+        )
+        await s.execute(
+            text("INSERT INTO assets (run_id, channel_id, asset_type, content) VALUES (:rid, :cid, :type, :content)"),
+            {"rid": run_id, "cid": channel_id, "type": "rendered_video",
+             "content": json.dumps({"path": final_path, "file_size_bytes": file_size})},
         )
         await s.execute(
             text("INSERT INTO assets (run_id, channel_id, asset_type, content) VALUES (:rid, :cid, :type, :content)"),
@@ -1484,8 +1697,11 @@ async def _run_no_narration(run_id: int, concept: dict, output_dir: str, _update
                 text("INSERT INTO assets (run_id, channel_id, asset_type, content) VALUES (:rid, :cid, :type, :content)"),
                 {"rid": run_id, "cid": channel_id, "type": "publish_metadata", "content": metadata},
             )
+        if concept_id:
+            await update_concept_status(concept_id, status="ready", latest_run_id=run_id, session=s)
         await s.commit()
     await engine.dispose()
+    await update_run_manifest(run_id, {"status": "pending_review", "stage": "pending_review", "final_video": final_path})
 
     _copy_to_channel_folder(final_path, title, channel_id, db_url)
     logger.info("no-narration pipeline complete", run_id=run_id, path=final_path,
@@ -1500,6 +1716,13 @@ async def _run_narration_first(run_id: int, concept: dict, output_dir: str, _upd
     """
     from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
     from sqlalchemy import text
+    from packages.clients.workflow_state import (
+        create_review_task,
+        get_pending_review_task,
+        resolve_review_task,
+        update_concept_status,
+        update_run_manifest,
+    )
     import base64
     import re as _re
 
@@ -1517,7 +1740,13 @@ async def _run_narration_first(run_id: int, concept: dict, output_dir: str, _upd
     voice_id = concept.get("voice_id", "56bWURjYFHyYyVf490Dp")
     narration_speed = concept.get("speed", None)
     title = concept.get("title", "Untitled")
-    channel_id = concept.get("channel_id", 14)
+    channel_id = int(concept.get("channel_id", 14))
+    runtime_policy = get_channel_runtime_policy(channel_id, concept)
+    video_provider = str(runtime_policy["video_provider"] or "grok").strip().lower()
+    video_model = runtime_policy["video_model"]
+    video_resolution = runtime_policy["video_resolution"] or ("1080p" if is_long_form else "720p")
+    anchor_policy = str(runtime_policy["anchor_policy"] or "none").strip().lower()
+    anchor_policy_block = build_anchor_policy_instruction(anchor_policy)
 
     # No-narration pipeline (memes, satisfying videos)
     if no_narration:
@@ -1639,7 +1868,7 @@ async def _run_narration_first(run_id: int, concept: dict, output_dir: str, _upd
         )
 
         aspect = "16:9 landscape" if is_long_form else "9:16 vertical portrait"
-        art_style = concept.get("art_style") or CHANNEL_ART_STYLE.get(channel_id, _DEFAULT_STYLE)
+        art_style = concept.get("art_style") or get_channel_art_style(channel_id)
         visual_system = f"""You write image prompts for YouTube videos. Channel: "{channel_name}" ({niche}).
 
 One prompt per narration line. Every prompt starts with "{art_style}"
@@ -1691,6 +1920,7 @@ SPEAKING/DIALOGUE (CRITICAL — violations look terrible):
 - The AI video generator animates ALL mouths if you say "characters talking" — you MUST specify which single character's mouth moves.
 - Make sure the speaking character matches who the text/narration attributes the dialogue to. If the text says "mom:" then the mom character speaks, not the teen.
 - Character gender must match: "your mom" = woman, "your dad" = man, "the teacher" = match context.
+{anchor_policy_block}
 
 TYPES:
 - "grok": animated video clip. DEFAULT — use for almost every line. The image is generated first, then animated.
@@ -1799,10 +2029,12 @@ CRITICAL: The viewer should be able to understand the video on MUTE just from th
     if n_diagram: parts.append(f"{n_diagram} diagrams")
     if n_grok: parts.append(f"{n_grok} video clips")
     await _update_step(f"generating {', '.join(parts)}")
-    art_style = CHANNEL_ART_STYLE.get(channel_id, _DEFAULT_STYLE)
+    art_style = get_channel_art_style(channel_id)
     from packages.clients.grok import generate_image as grok_gen_image
     from packages.clients.grok import generate_image_dalle as dalle_gen_image
     from packages.clients.grok import generate_video_async as grok_generate, extend_video_async as grok_extend
+    from packages.clients.veo import generate_video_async as veo_generate_video_async
+    from apps.orchestrator.channel_builders.shared import get_veo_duration
 
     from packages.clients.grok import generate_image_dalle_async
 
@@ -2139,7 +2371,7 @@ PROMPT: (only if NO) a corrected image prompt with detailed visual description o
         for i, path in img_results:
             visual_paths[i] = {"type": "image", "path": path}
 
-    # Generate diagram visuals with gpt-image-1.5 (handles text/charts well)
+    # Generate diagram visuals with the configured OpenAI image model.
     if diagram_indices:
         from concurrent.futures import ThreadPoolExecutor as _DiagramTPE
 
@@ -2181,11 +2413,11 @@ PROMPT: (only if NO) a corrected image prompt with detailed visual description o
     # Generate grok video clips
     if grok_indices:
         aspect_ratio = "16:9" if is_long_form else "9:16"
-        needs_consistency = any(visuals[i].get("consistent_character") for i in grok_indices)
+        needs_consistency = video_provider == "grok" and any(visuals[i].get("consistent_character") for i in grok_indices)
 
 
-        async def _gen_grok_with_retries(i, max_attempts=3):
-            """Generate a grok video clip: image first, then animate.
+        async def _gen_animated_clip_with_retries(i, max_attempts=3):
+            """Generate an animated clip: image first, then animate.
 
             1. Generate image with detailed scene prompt
             2. Animate image to video with short motion-only prompt
@@ -2194,12 +2426,12 @@ PROMPT: (only if NO) a corrected image prompt with detailed visual description o
             """
             clip_path = os.path.join(clips_dir, f"line_{i}.mp4")
             if os.path.exists(clip_path):
-                await _log(f"grok clip line {i} [cached]")
+                await _log(f"{video_provider} clip line {i} [cached]")
                 return i, clip_path
             dur = max(1, min(int(line_audio[i]["duration"]) + 1, 10))
 
             # Step 1: Generate the image
-            await _log(f"grok clip line {i} — calling gpt-image-1.5 ({dur}s target)")
+            await _log(f"{video_provider} clip line {i} — calling OpenAI image model ({dur}s target)")
             img_path = os.path.join(images_dir, f"line_{i}.png")
             if not os.path.exists(img_path):
                 _prompt = visuals[i].get("prompt") or visuals[i].get("image_prompt", "")
@@ -2207,9 +2439,9 @@ PROMPT: (only if NO) a corrected image prompt with detailed visual description o
                     import time as _img_t
                     _img_start = _img_t.time()
                     await _gen_video_image_async(prompt=_prompt, output_path=img_path)
-                    await _log(f"grok clip line {i} — image generated ({_img_t.time()-_img_start:.0f}s)")
+                    await _log(f"{video_provider} clip line {i} — image generated ({_img_t.time()-_img_start:.0f}s)")
                 except Exception as img_err:
-                    await _log(f"grok clip line {i} — image FAILED: {str(img_err)[:150]}")
+                    await _log(f"{video_provider} clip line {i} — image FAILED: {str(img_err)[:150]}")
                     raise
 
                 if not os.path.exists(img_path):
@@ -2228,30 +2460,43 @@ PROMPT: (only if NO) a corrected image prompt with detailed visual description o
 
             # Step 2: Animate with Grok video
             motion_prompt = visuals[i].get("video_prompt", "Slow cinematic movement, dramatic mood")
-            await _log(f"grok clip line {i} — animating image to video")
+            await _log(f"{video_provider} clip line {i} — animating image to video")
 
             for attempt in range(max_attempts):
                 try:
                     if attempt > 0:
                         await asyncio.sleep(5 * attempt)
-                        await _log(f"grok clip line {i} — retry {attempt}")
-                    async def _grok_progress(progress, elapsed, _i=i):
-                        await _log(f"grok clip line {_i} — {progress}% ({elapsed}s)")
+                        await _log(f"{video_provider} clip line {i} — retry {attempt}")
+                    if video_provider == "veo":
+                        await veo_generate_video_async(
+                            prompt=motion_prompt,
+                            output_path=clip_path,
+                            model=video_model or "veo-3.1-lite-generate-001",
+                            duration_seconds=get_veo_duration(dur),
+                            aspect_ratio=aspect_ratio,
+                            resolution=video_resolution,
+                            image_path=img_path,
+                            timeout_seconds=600,
+                        )
+                    else:
+                        async def _grok_progress(progress, elapsed, _i=i):
+                            await _log(f"grok clip line {_i} — {progress}% ({elapsed}s)")
 
-                    await grok_generate(
-                        prompt=motion_prompt,
-                        output_path=clip_path, duration=dur, aspect_ratio=aspect_ratio,
-                        image_url=img_data_url,
-                        progress_callback=_grok_progress,
-                    )
+                        await grok_generate(
+                            prompt=motion_prompt,
+                            output_path=clip_path, duration=dur, aspect_ratio=aspect_ratio,
+                            image_url=img_data_url,
+                            resolution=video_resolution,
+                            progress_callback=_grok_progress,
+                        )
 
-                    await _log(f"grok clip line {i} — done")
+                    await _log(f"{video_provider} clip line {i} — done")
                     return i, clip_path
                 except Exception as e:
                     if attempt == max_attempts - 1:
-                        await _log(f"grok clip line {i} — FAILED after {max_attempts} attempts: {str(e)[:100]}")
-                        raise RuntimeError(f"Grok video failed for line {i} after {max_attempts} attempts: {e}") from e
-                    await _log(f"grok clip line {i} — attempt {attempt} failed: {str(e)[:80]}")
+                        await _log(f"{video_provider} clip line {i} — FAILED after {max_attempts} attempts: {str(e)[:100]}")
+                        raise RuntimeError(f"{video_provider} video failed for line {i} after {max_attempts} attempts: {e}") from e
+                    await _log(f"{video_provider} clip line {i} — attempt {attempt} failed: {str(e)[:80]}")
 
         # If consistency, generate first for ref frame
         if needs_consistency:
@@ -2275,6 +2520,7 @@ PROMPT: (only if NO) a corrected image prompt with detailed visual description o
                         prompt=motion_prompt,
                         output_path=first_clip, duration=dur, aspect_ratio=aspect_ratio,
                         image_url=first_img_url,
+                        resolution=video_resolution,
                     )
                     break
                 except Exception as e:
@@ -2282,7 +2528,7 @@ PROMPT: (only if NO) a corrected image prompt with detailed visual description o
                         raise RuntimeError(f"Grok failed on first clip (line {first_gi}) after 3 attempts: {e}") from e
                     logger.warning("first grok clip retry", attempt=attempt, error=str(e)[:100])
 
-            visual_paths[first_gi] = {"type": "video", "path": first_clip, "source": "grok"}
+            visual_paths[first_gi] = {"type": "video", "path": first_clip, "source": video_provider}
             ref_path = os.path.join(clips_dir, "grok_ref.jpg")
             subprocess.run([
                 "ffmpeg", "-y", "-ss", "1", "-i", first_clip,
@@ -2296,17 +2542,17 @@ PROMPT: (only if NO) a corrected image prompt with detailed visual description o
             remaining = grok_indices
 
         if remaining:
-            await _update_step(f"generating {len(remaining)} video clips")
+            await _update_step(f"generating {len(remaining)} {video_provider} video clips")
             # Launch all concurrently with minimal stagger
             tasks = []
             for idx, i in enumerate(remaining):
                 async def _launch(i=i, delay=idx * 0.3):
                     await asyncio.sleep(delay)
-                    return await _gen_grok_with_retries(i)
+                    return await _gen_animated_clip_with_retries(i)
                 tasks.append(_launch())
             results = await asyncio.gather(*tasks)
             for i, clip_path in results:
-                visual_paths[i] = {"type": "video", "path": clip_path, "source": "grok"}
+                visual_paths[i] = {"type": "video", "path": clip_path, "source": video_provider}
 
     # 4. Create segments — each line's audio paired directly with its visual — PARALLEL
     await _update_step(f"visuals done — creating {len(line_audio)} segments")
@@ -2601,7 +2847,7 @@ PROMPT: (only if NO) a corrected image prompt with detailed visual description o
         "title": title,
         "description": concept.get("caption", ""),
         "tags": concept.get("tags", []),
-        "category": CHANNEL_CATEGORY.get(channel_id, "Entertainment"),
+        "category": get_channel_category(channel_id),
     }
     metadata = json.dumps(metadata_dict)
 
@@ -2823,30 +3069,50 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 lines.append(f"Dialogue: 0,{_format_time(start)},{_format_time(end)},Label,,0,0,0,,{clean_label}")
 
     if words:
-        # Split words into line groups — never mix words from different narration lines
-        # Detect line boundaries by time gaps > 0.5s between consecutive words
+        # Split into line groups. Prefer explicit line ids when available so we never
+        # mix words across narration lines like "smile? He". Fall back to gap-based
+        # grouping for older callers that pass 3-tuples only.
         line_groups = []
-        current_group = [words[0]]
-        for k in range(1, len(words)):
-            prev_end = words[k - 1][2]
-            curr_start = words[k][1]
-            if curr_start - prev_end > 0.25:
-                # Line boundary — flush current group
+        if len(words[0]) >= 4:
+            current_line_id = words[0][3]
+            current_group = [words[0]]
+            for word in words[1:]:
+                if word[3] != current_line_id:
+                    line_groups.append(current_group)
+                    current_group = [word]
+                    current_line_id = word[3]
+                else:
+                    current_group.append(word)
+            if current_group:
                 line_groups.append(current_group)
-                current_group = []
-            current_group.append(words[k])
-        if current_group:
-            line_groups.append(current_group)
+        else:
+            current_group = [words[0]]
+            for k in range(1, len(words)):
+                prev_end = words[k - 1][2]
+                curr_start = words[k][1]
+                if curr_start - prev_end > 0.25:
+                    line_groups.append(current_group)
+                    current_group = []
+                current_group.append(words[k])
+            if current_group:
+                line_groups.append(current_group)
 
         # Now group words into chunks of 3 WITHIN each line group
-        for line_words in line_groups:
+        for group_idx, line_words in enumerate(line_groups):
+            next_group_start = None
+            if group_idx + 1 < len(line_groups):
+                next_group_start = line_groups[group_idx + 1][0][1]
             for gi in range(0, len(line_words), 3):
                 group = line_words[gi:gi + 3]
                 texts = [_emoji_pat.sub("", w[0]) for w in group]
                 wc = len(group)
                 times = []
-                for j, (_, ws, we) in enumerate(group):
-                    times.append((ws, group[j + 1][1] if j + 1 < wc else we))
+                for j, word_entry in enumerate(group):
+                    _, ws, we = word_entry[:3]
+                    next_boundary = group[j + 1][1] if j + 1 < wc else we
+                    if j == wc - 1 and next_group_start is not None:
+                        next_boundary = min(next_boundary, max(next_group_start - 0.01, ws))
+                    times.append((ws, next_boundary))
                 for ai in range(wc):
                     parts = []
                     for j, t in enumerate(texts):

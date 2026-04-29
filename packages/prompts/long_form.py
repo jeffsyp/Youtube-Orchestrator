@@ -295,8 +295,9 @@ def build_longform_visual_batch_prompt(
     Called 4-6 times per long-form video. Each batch returns visuals
     keyed by line index.
     """
-    from apps.orchestrator.pipeline import CHANNEL_ART_STYLE, _DEFAULT_STYLE
-    art_style = CHANNEL_ART_STYLE.get(channel_id, _DEFAULT_STYLE)
+    from apps.orchestrator.pipeline import get_channel_art_style
+
+    art_style = get_channel_art_style(channel_id)
     aspect = "16:9 landscape" if is_long_form else "9:16 vertical portrait"
     img_style = "Cinematic style, detailed, dramatic lighting. Landscape 16:9 composition." if is_long_form else "Colorful cartoon style, bold outlines, bright colors. Vertical composition."
 
@@ -335,20 +336,20 @@ GOOD: Narration says "it costs $100 million to train GPT-4" → diagram showing 
 {prev_block}
 
 VISUAL TYPES:
-1. "grok" — AI video clip. DEFAULT. Use for almost everything. We generate an image first, then animate it.
+1. "grok" — Animated video clip. DEFAULT. Use for almost everything. We generate an image first, then animate it.
    - "prompt": MUST start with "{art_style}" then describe EXACTLY what the narration describes
    - "video_prompt": MOTION ONLY — how the image animates. GOOD: "camera slowly zooms in", "particles float upward", "character turns head". Keep it simple — one motion.
-   If the narration describes a scene, a concept, an analogy, a person, a place, an action — use "grok". Video keeps viewers engaged. Still images lose attention.
-2. "diagram" — Informational graphic rendered by gpt-image-1.5 (great at text, diagrams, charts). STILL IMAGE.
+   If the narration describes a scene, a concept, an analogy, a person, a place, an action — use "grok". Motion keeps viewers engaged. Still images lose attention.
+2. "diagram" — Informational graphic rendered by the configured OpenAI image model (great at text, diagrams, charts). STILL IMAGE.
    - "prompt": MUST start with "{art_style}" then describe the diagram/chart. Include exact text, labels, numbers to display.
    - Use for: flowcharts, process diagrams, comparisons, key stats/numbers, term definitions, before/after, step-by-step breakdowns.
    - The diagram MUST match the same art style as the rest of the video. If the video is hand-drawn whiteboard style, the diagram should look hand-drawn on a whiteboard too. If the video is cartoon style, the diagram should be cartoon style. No switching to a different aesthetic.
    - Use ONLY when the viewer needs to READ something — a number, a comparison, a definition. If the narration states a fact that lands harder as text on screen, use diagram. Everything else is "grok".
-3. "image" — Still image. RARELY USE. Only for extremely detailed scenes where the viewer needs time to study the image (e.g. a complex map, a detailed cross-section). Almost never the right choice — prefer "grok" for engagement.
+3. "image" — Still image. RARELY USE. Only for extremely detailed scenes where the viewer needs time to study the image (e.g. a complex map, a detailed cross-section). Almost never the right choice — prefer motion-first visuals for engagement.
 
 RULES:
-- "grok" (video) is the DEFAULT. Use it for every line unless the viewer specifically needs to READ text/numbers — then use "diagram".
-- For educational/explainer videos: use "diagram" for ~25-35% of visuals — whenever the narration states a key number, definition, comparison, or process. Everything else is "grok" video.
+- "grok" (animated video) is the DEFAULT. Use it for every line unless the viewer specifically needs to READ text/numbers — then use "diagram".
+- For educational/explainer videos: use "diagram" for ~25-35% of visuals — whenever the narration states a key number, definition, comparison, or process. Everything else is an animated video visual.
 - "image" (still) should be used almost never. Only for extremely detailed visuals the viewer needs to study.
 
 THINK LIKE A YOUTUBE EDITOR:
@@ -362,12 +363,12 @@ PROMPT RULES:
 - Every prompt must visualize the SPECIFIC concept being explained in that narration line
 - NEVER write generic prompts like "futuristic tech background" or "AI concept illustration"
 - Each prompt = a visualization that could ONLY belong to THIS narration line
-- For "grok" prompts: describe the concept being explained as a visual scene. What would a great animation of this concept look like?
+- For "grok" prompts: describe the concept being explained as a visual scene. What would a great motion-first visualization of this concept look like?
 - For "diagram" prompts: include the exact text, numbers, labels, and layout the viewer needs to read
 
 CRITICAL: Every term must be grounded in the video's universe. If the video is about League of Legends, "minions" means LEAGUE OF LEGENDS minions — write "League of Legends minions" not just "minions". If about Pokemon, "evolution" means POKEMON evolution. Always prefix ambiguous terms with the franchise/universe name so the image generator creates the right thing.
 
-For "grok" and "image" types, only describe things AI image generators are GOOD at: characters, animals, objects, landscapes, simple scenes.
+For "grok" and "image" types, only describe things visual generators are GOOD at: characters, animals, objects, landscapes, simple scenes.
 For "grok" and "image" types, NEVER describe: UIs, game interfaces, store screens, websites, split panels, screenshots.
 For text, numbers, definitions, comparisons, and processes — use "diagram" type instead.
 If narration talks about an interface or screen, show the CHARACTER reacting instead OR use a "diagram" to show the key info.

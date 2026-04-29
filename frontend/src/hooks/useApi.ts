@@ -41,6 +41,15 @@ export function useRunDetail(id: number) {
   });
 }
 
+export function useRunEvents(id: number) {
+  return useQuery({
+    queryKey: ['run-events', id],
+    queryFn: () => api.getRunEvents(id),
+    enabled: id > 0,
+    refetchInterval: 5000,
+  });
+}
+
 export function useRunMetrics(runId: number, enabled: boolean = true) {
   return useQuery({
     queryKey: ['metrics', 'run', runId],
@@ -110,6 +119,14 @@ export function useConceptDrafts(params?: { status?: string; channel_id?: number
     queryKey: ['concept-drafts', params],
     queryFn: () => api.getConceptDrafts(params),
     refetchInterval: 10000,
+  });
+}
+
+export function useReviewTasks(params?: { status?: string; kind?: string; limit?: number }) {
+  return useQuery({
+    queryKey: ['review-tasks', params],
+    queryFn: () => api.getReviewTasks(params),
+    refetchInterval: 5000,
   });
 }
 

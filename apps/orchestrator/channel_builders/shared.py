@@ -9,19 +9,100 @@ import base64
 import json
 import math
 import os
+import re
 import subprocess
 import wave
 
 import numpy as np
 import structlog
 
+from packages.clients.grok import get_openai_image_edit_kwargs, get_openai_image_model
+from packages.clients.veo import generate_video_async as veo_generate_video_async
+
 logger = structlog.get_logger()
+OPENAI_IMAGE_MODEL = get_openai_image_model()
 
 # Shared constants
 WIDTH, HEIGHT = 1080, 1920
 SR = 44100
 WHOOSH_SFX = os.path.join(os.path.dirname(__file__), "..", "..", "..", "assets", "sfx", "rising_whoosh.mp3")
 SHUTTER_SFX = os.path.join(os.path.dirname(__file__), "..", "..", "..", "assets", "sfx", "camera_shutter.mp3")
+
+
+def resolve_channel_media_policy(channel_id: int, concept: dict | None = None) -> dict[str, str | None]:
+    """Resolve profile-backed media policy for a channel."""
+    from packages.clients.channel_profiles import (
+        get_channel_anchor_policy,
+        get_channel_audio_policy,
+        get_channel_intro_policy,
+        get_channel_provider_strategy,
+        get_channel_video_model,
+        get_channel_video_provider,
+        get_channel_video_resolution,
+    )
+
+    concept = concept or {}
+    provider_strategy = str(
+        concept.get("provider_strategy") or get_channel_provider_strategy(channel_id)
+    ).strip().lower()
+    intro_policy = str(
+        concept.get("intro_policy") or get_channel_intro_policy(channel_id)
+    ).strip().lower()
+    audio_policy = str(
+        concept.get("audio_policy") or get_channel_audio_policy(channel_id)
+    ).strip().lower()
+    anchor_policy = str(
+        concept.get("anchor_policy") or get_channel_anchor_policy(channel_id)
+    ).strip().lower()
+
+    explicit_provider = str(
+        concept.get("video_provider") or get_channel_video_provider(channel_id, default="")
+    ).strip().lower()
+    video_provider = explicit_provider or ("veo" if provider_strategy == "veo" else "grok")
+
+    return {
+        "provider_strategy": provider_strategy,
+        "intro_policy": intro_policy,
+        "audio_policy": audio_policy,
+        "anchor_policy": anchor_policy,
+        "video_provider": video_provider,
+        "video_model": concept.get("video_model") or get_channel_video_model(channel_id),
+        "video_resolution": concept.get("video_resolution") or get_channel_video_resolution(channel_id),
+    }
+
+
+def build_anchor_policy_prompt(anchor_policy: str) -> str:
+    """Return prompt guidance for recurring anchors."""
+    policy = (anchor_policy or "none").strip().lower()
+    if policy == "recurring_character":
+        return """
+
+CRITICAL — RECURRING ANCHOR:
+- Keep the SAME main character design, proportions, outfit language, and face silhouette across the whole video.
+- If the beat can plausibly stay with the anchor character, stay with them instead of cutting to random bystanders.
+"""
+    if policy == "recurring_pair":
+        return """
+
+CRITICAL — RECURRING ANCHOR:
+- Keep the SAME core pair visually consistent across the whole video.
+- Default to scenes that feature the pair together unless the narration explicitly isolates one of them.
+"""
+    if policy == "recurring_host":
+        return """
+
+CRITICAL — RECURRING ANCHOR:
+- Treat the host/presenter as the stable face of the video.
+- Keep the same host design across all host-led scenes and prefer host-centered framing when the narration is explanatory.
+"""
+    if policy == "proof_props":
+        return """
+
+CRITICAL — RECURRING ANCHOR:
+- Reuse recurring proof props across scenes: receipts, bills, price tags, calculators, cash stacks, charts, meters, or other concrete evidence objects.
+- The viewer should feel like the same proof language is carrying through the whole video.
+"""
+    return ""
 
 
 def get_duration(path: str) -> float:
@@ -46,6 +127,190 @@ def get_clip_duration(narr_path: str) -> int:
     """
     narr_dur = get_duration(narr_path)
     return min(math.ceil(narr_dur + 0.5), 10)
+
+
+def get_veo_duration(seconds: int | float) -> int:
+    """Clamp requested duration to Veo's supported image-to-video lengths."""
+    if seconds <= 4:
+        return 4
+    if seconds <= 6:
+        return 6
+    return 8
+
+
+_VEO_SOFTENING_REPLACEMENTS: list[tuple[str, str]] = [
+    (r"\bbloodshot\b", "glowing"),
+    (r"\bterrified\b", "startled"),
+    (r"\bterror\b", "shock"),
+    (r"\bfurious\b", "outraged"),
+    (r"\bshove(?:s|d)?\b", "jolt"),
+    (r"\blunge(?:s|d)?\b", "rush"),
+    (r"\bslam(?:s|med)?\b", "bump"),
+    (r"\bsmash(?:es|ed)?\b", "break apart"),
+    (r"\bcrash(?:es|ed|ing)?\b", "drop"),
+    (r"\btopples? over\b", "stumbles away from"),
+    (r"\bpitches forward\b", "lurches forward"),
+    (r"\bthunderous impact\b", "burst of dust"),
+]
+
+_VEO_STRONG_SOFTENING_REPLACEMENTS: list[tuple[str, str]] = [
+    (r"\bkunai\b", "training prop"),
+    (r"\bshuriken\b", "spinning prop"),
+    (r"\brogue ninja\b", "dark-clad figure"),
+    (r"\brogue ninja's\b", "dark-clad figure's"),
+    (r"\bblindfold(?:ed)?\b", "eyes covered"),
+    (r"\bskull\b", "head"),
+    (r"\bribcage\b", "upper body"),
+    (r"\bforehead\b", "front of the head"),
+    (r"\bchest\b", "torso"),
+    (r"\belbow\b", "arm"),
+    (r"\bbony fingers\b", "hands"),
+    (r"\bas if picking up a sound\b", "as if tracking a cue"),
+    (r"\bpicking up a sound\b", "tracking a cue"),
+    (r"\bfingers barely shift\b", "posture barely shifts"),
+    (r"\bunable to move\b", "holding still"),
+    (r"\bstrike combination\b", "rapid forward burst"),
+    (r"\bstrike\b", "move"),
+    (r"\bcrumpling\b", "staggering"),
+    (r"\bknocked off their feet\b", "stumbling backward"),
+    (r"\bcollapses forward\b", "stumbles forward"),
+    (r"\bdriving outward\b", "surging forward"),
+    (r"\bslam(?:s|med|ming)?\b", "plant"),
+]
+
+_VEO_ULTRA_SOFTENING_REPLACEMENTS: list[tuple[str, str]] = [
+    (r"\bkunai\b", "object"),
+    (r"\bshuriken\b", "prop"),
+    (r"\bninja\b", "figure"),
+    (r"\brogue\b", "mysterious"),
+    (r"\bfight(?:ing)?\b", "motion"),
+    (r"\bcombat\b", "action"),
+    (r"\bbarrage\b", "burst of movement"),
+    (r"\bpunch(?:es|ing)?\b", "hand motion"),
+    (r"\bkick(?:s|ing)?\b", "leg motion"),
+    (r"\bblock(?:s|ing)?\b", "redirect"),
+    (r"\bstrike(?:s|ing)?\b", "move"),
+    (r"\battack(?:s|ing)?\b", "advance"),
+    (r"\bexplosive\b", "dramatic"),
+    (r"\bviolent\b", "intense"),
+]
+
+
+def _soften_veo_prompt(prompt: str, *, stronger: bool = False, ultra: bool = False) -> str:
+    """Lightly sanitize animation prompts when Veo filters a request."""
+    softened = prompt
+    for pattern, replacement in _VEO_SOFTENING_REPLACEMENTS:
+        softened = re.sub(pattern, replacement, softened, flags=re.IGNORECASE)
+    if stronger:
+        for pattern, replacement in _VEO_STRONG_SOFTENING_REPLACEMENTS:
+            softened = re.sub(pattern, replacement, softened, flags=re.IGNORECASE)
+    if ultra:
+        for pattern, replacement in _VEO_ULTRA_SOFTENING_REPLACEMENTS:
+            softened = re.sub(pattern, replacement, softened, flags=re.IGNORECASE)
+
+    safety_tail = (
+        " Keep the action cinematic, readable, and non-graphic. "
+        "Emphasize surprise, motion, dust, and spectacle over bodily harm."
+    )
+    if stronger:
+        safety_tail = (
+            " Keep the action PG-13 and non-graphic. "
+            "Avoid collisions, impacts, injuries, panic, suffering, weapons landing, or direct body strikes. "
+            "Keep characters separated when possible and emphasize near misses, reaction, motion, dust, and mythic spectacle instead."
+        )
+    if ultra:
+        safety_tail = (
+            " Keep the action abstract, PG, and non-graphic. "
+            "Avoid weapons, hits, injuries, combat wording, intimidation, or direct body contact. "
+            "Emphasize stylized motion, reaction, spacing, dust, light, and cinematic movement instead."
+        )
+
+    if not softened.rstrip().endswith("."):
+        softened = softened.rstrip() + "."
+    return f"{softened}{safety_tail}"
+
+
+def _is_veo_guideline_rejection(message: str) -> bool:
+    lowered = message.lower()
+    return (
+        "veo filtered the request" in lowered
+        or "could not generate 1 videos" in lowered
+        or "usage guidelines" in lowered
+        or "could not be submitted" in lowered
+        or '"code": 3' in lowered
+        or "code': 3" in lowered
+        or "violates vertex ai" in lowered
+    )
+
+
+async def _generate_veo_clip_with_retries(
+    *,
+    prompt: str,
+    output_path: str,
+    model: str,
+    duration_seconds: int,
+    aspect_ratio: str,
+    resolution: str,
+    image_path: str,
+    last_frame_path: str | None = None,
+    timeout_seconds: int,
+) -> dict:
+    """Retry transient/internal Veo failures and progressively soften filtered prompts."""
+    prompt_variant = prompt
+    last_error: Exception | None = None
+    max_attempts = 6
+
+    for attempt in range(1, max_attempts + 1):
+        try:
+            return await veo_generate_video_async(
+                prompt=prompt_variant,
+                output_path=output_path,
+                model=model,
+                duration_seconds=duration_seconds,
+                aspect_ratio=aspect_ratio,
+                resolution=resolution,
+                image_path=image_path,
+                last_frame_path=last_frame_path,
+                timeout_seconds=timeout_seconds,
+            )
+        except Exception as e:
+            last_error = e
+            message = str(e)
+            is_filtered = _is_veo_guideline_rejection(message)
+            is_transient = (
+                "Internal error" in message
+                or "code': 13" in message
+                or "timed out" in message.lower()
+            )
+
+            if is_filtered and attempt < max_attempts:
+                prompt_variant = _soften_veo_prompt(
+                    prompt_variant,
+                    stronger=attempt >= 2,
+                    ultra=attempt >= 4,
+                )
+                logger.warning(
+                    "veo filtered prompt — retrying with softened wording",
+                    attempt=attempt,
+                    original_prompt=prompt[:120],
+                    softened_prompt=prompt_variant[:160],
+                    error=message[:220],
+                )
+                await asyncio.sleep(min(2 * attempt, 8))
+                continue
+
+            if is_transient and attempt < max_attempts:
+                logger.warning(
+                    "veo transient failure — retrying",
+                    attempt=attempt,
+                    error=message[:200],
+                )
+                await asyncio.sleep(min(5 * attempt, 15))
+                continue
+
+            raise
+
+    raise last_error or RuntimeError("Veo retry loop exhausted without an error object")
 
 
 async def run_tasks(coroutines: list, parallel: bool = True, max_concurrent: int = 5):
@@ -309,7 +574,8 @@ async def generate_and_animate_scenes(
         output_dir: base output directory
         _update_step: status callback
     """
-    from packages.clients.grok import generate_image_dalle_async, generate_image_grok_async, generate_video_async
+    from packages.clients.grok import generate_image_dalle_async, generate_image_grok_async, generate_video_async as grok_generate_video_async
+    from packages.clients.veo import generate_video_async as veo_generate_video_async
     # Pick image generator based on channel preference
     _gen_image = generate_image_grok_async if prefer_grok_images else generate_image_dalle_async
     from packages.clients.claude import generate as claude_generate
@@ -323,7 +589,36 @@ async def generate_and_animate_scenes(
 
     client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"), timeout=120.0)
     brief = concept.get("brief", "")
+    channel_id = int(concept.get("channel_id") or 0)
+    media_policy = resolve_channel_media_policy(channel_id, concept)
+    video_provider = str(media_policy["video_provider"] or "grok").strip().lower()
+    video_model = media_policy["video_model"]
+    video_resolution = media_policy["video_resolution"]
+    anchor_policy = str(media_policy["anchor_policy"] or "none")
     extra_rules = f"\n\nCONCEPT-SPECIFIC INSTRUCTIONS:\n{brief}" if brief else ""
+    anchor_policy_block = build_anchor_policy_prompt(anchor_policy)
+    subaction_mode = str(concept.get("subaction_mode") or "").strip().lower()
+    training_story_block = ""
+    if subaction_mode == "training_story":
+        training_story_block = """
+
+CRITICAL — TRAINING STORY MODE:
+- This is a TEACHER/STUDENT progression story, not a generic fight montage.
+- Keep the lesson understandable in broad terms: the viewer should be able to tell what the mentor is teaching and how the student is changing.
+- Favor visible cause-and-effect over vague reaction shots. If a line is about improvement, correction, or mastery, the sub-actions should make that progression readable on screen.
+- The mentor should feel active and intentional in training beats, not like a static bystander while the student does everything.
+- Let the exact choreography stay flexible. Do NOT lock the plan into one narrow sequence of props, moves, or camera choices if the same lesson can be shown more naturally another way.
+- If the narration names a specific skill or breakthrough, make that skill legible in practice, but choose the clearest visual proof rather than the most literal checklist version.
+- Favor strong, readable action and emotional clarity over aftermath-only images or abstract chaos, unless the narration is explicitly about aftermath.
+- For reversals or reveals, make the shift visually obvious and easy to follow, but keep the specific staging open-ended.
+"""
+    ref_style_prefix = (
+        "MATCH THE EXACT ART STYLE OF THE REFERENCE IMAGE. "
+        "Keep the same rendering medium, same line quality, same level of detail, same character design, "
+        "and same overall visual roughness. If the reference is cartoon, stay cartoon. "
+        "If the reference is photoreal, stay photoreal. Do NOT clean it up, polish it, "
+        "or switch mediums away from the reference."
+    )
 
     # Era enforcement — ALL image prompts and reviews must specify this era
     era = concept.get("era", "")
@@ -359,7 +654,7 @@ async def generate_and_animate_scenes(
             _narr_durs.append(3.0)
 
     plan_resp = claude_generate(
-        prompt=f"""Break this narration into animation sub-actions. Each sub-action is ONE simple movement (2-3 seconds for Grok to animate).
+        prompt=f"""Break this narration into animation sub-actions. Each sub-action is ONE simple movement (2-3 seconds for the animation model to render clearly).
 
 CHANNEL RULES (HIGHEST PRIORITY — every image_prompt must follow these exactly):
 {channel_rules}
@@ -370,20 +665,78 @@ NARRATION (with durations):
 CRITICAL — CHARACTER CONSISTENCY: If the CHANNEL RULES above describe a specific main character (e.g. a skeletorinio, a frog, a mascot), that exact character MUST appear in EVERY image_prompt as the subject. Do NOT substitute with generic humans, tourists, or other characters. The named main character is the star of every single scene unless the narration explicitly focuses on someone else.
 
 CRITICAL — NO CROSS-FRANCHISE CONTAMINATION: If the concept is a CROSSOVER (a character from Franchise A visiting Franchise B's world), ONLY the visiting character may come from Franchise A. All OTHER characters, backgrounds, and settings must be from Franchise B only. Every image_prompt must end with an explicit negative like "No other Dragon Ball characters. Only Hunter x Hunter characters besides Goku." to prevent the model from hallucinating the visitor's franchise-mates into the scene. If you don't know which franchise the visitor is from, infer from their name (Goku/Vegeta/Gohan → Dragon Ball; Naruto/Sasuke → Naruto; Luffy/Zoro → One Piece; Saitama → One Punch Man; etc.).
+{anchor_policy_block}
+{training_story_block}
 
-CRITICAL — CLIP COVERAGE: The total duration of sub-action clips for each narration line MUST cover the narration duration. A 6-second narration line needs 2-3 sub-actions (2x3s or 3x2s), NOT one 3s clip. A 4-second line needs at least 2 sub-actions. Only lines under 3.5s can have a single sub-action.
+CRITICAL — CLIP COVERAGE: The total duration of sub-action clips for each narration line MUST cover the narration duration AND provide cinematic coverage. A 6-second narration line needs 2-3 sub-actions of DIFFERENT shot_types (NOT one 3s clip, NOT three identical wide shots). A 4-second line needs at least 2 sub-actions of different shot_types. Only lines under 2.5s can have a single shot.
 
 CRITICAL — SHOT VARIETY: Across the full set of image_prompts, vary camera angle, distance, and composition aggressively. Never more than 2 consecutive scenes with the same framing. Mix: close-up, medium, wide, bird's-eye, low-angle, over-the-shoulder, dutch-angle. Mix tight/loose framing. Vary lighting when the scene changes (golden hour, overcast, night, torchlit). Repeating "wide shot at eye level" across most scenes is a FAIL — the video will look static and boring.
 
-CRITICAL — NO STATIC ANIMATION PROMPTS: Every animation_prompt must describe CONTINUOUS VISIBLE motion. Banned words: "motionless", "still", "sits", "stands", "peaceful", "calm", "slowly blinks", "half-closed", "unchanging". If the beat is inherently quiet, describe subject motion (twitching, breathing hard, shifting weight) OR camera motion (fast push-in, pull-back, dolly, whip-pan). A clip where nothing moves reads as a freeze.
+CRITICAL — CINEMATIC COVERAGE PER LINE (shot variety INSIDE one narration line):
+A narration line is not "one shot." Treat each line as a small scene that needs cinematic coverage — like a real director would shoot it.
+- DEFAULT minimum coverage:
+  - Lines with dialogue, addressed reaction, or two characters interacting → 2-3 sub-actions covering DIFFERENT angles (e.g. wide establishing → close-up reaction → over-the-shoulder)
+  - Lines with a single clean physical beat → 1-2 sub-actions, but if 2, the second MUST be a DIFFERENT shot_type (close-up of the proof detail, low-angle of the subject, reaction shot of a bystander)
+  - Lines under 2.5 seconds may use a single shot
+- COVERAGE PATTERNS (pick one per multi-shot line, vary the pattern across the script):
+  - WIDE → CLOSE: establish the situation, then cut to the detail or face that sells the joke
+  - LOW → HIGH: low-angle of the powerful thing happening, then high-angle of the consequence below
+  - OVER-SHOULDER → REACTION: OTS of subject looking at the thing, then close-up of subject's face reacting
+  - ACTION → AFTERMATH: medium of the cause, then close-up of the proof detail (broken prop, scorched ground, dropped item)
+- Adjacent shots inside the same line must NEVER share the same shot_type. Repeating "wide" three times for one line is a FAIL.
+- Coverage shots stay TEMPORALLY ALIGNED to the same narration line — they show different angles of THE SAME MOMENT or its immediate aftermath, not events from a different line. (See TEMPORAL ALIGNMENT rule below.)
 
-CRITICAL — LINE 0 IS THE HOOK (SHOW THE PAYOFF, NOT THE SETUP):
-Line 0's narration is the "what if" question, but the image_prompt for line 0 must show the MOST EXCITING / CLIMACTIC moment of the video — the payoff the viewer is being teased with. NOT the setup, NOT the protagonist holding an object, NOT "about to do" something. SHOW THE ACTUAL COOL THING HAPPENING.
-- BAD: "Skeletorinio stands holding a tiny red canister at the entrance of a jousting arena, knights charging in the distance." (This is setup — viewer swipes away.)
-- GOOD: "Skeletorinio in the center of the jousting arena, laughing, spraying orange pepper mist directly into the faces of two armored knights who are simultaneously falling off their galloping horses with tears streaming, crowd erupting. Dust exploding."
-- The viewer should hear "What if you brought pepper spray to medieval jousting" while SEEING the knights already wiping out. That's how hooks work on shorts.
-- Applies to ALL videos regardless of channel. The hook visual is the #1 determinant of watch time.
-- Lines 1+ still follow temporal alignment (below) — only line 0 gets the "show the payoff" privilege.
+CRITICAL — STORY BEAT VARIETY: Unless the concept is EXPLICITLY a repeated-comparison format (same test, different variable), each narration line should feel like a genuinely NEW beat with a new visual purpose. Do NOT solve escalation by reusing the same anchor composition with a slightly bigger crowd, slightly bigger threat, or slightly louder aftermath.
+- BAD: same throne, same hallway, same desk, same doorway, or same stage over and over with only more people added
+- GOOD: rotate through distinct beat types like arrival, wipe, chase, summon, reaction, aftermath, loot reveal, gate breach, duel, collapse, escape, crowd panic, or final domination
+- If multiple consecutive lines happen in the same overall location, move to a DIFFERENT part of that location and a DIFFERENT visual function: corridor, staircase, rooftop, gate, battlefield floor, loot chamber, balcony, close-up aftermath, etc.
+- The only time a repeated setup is desirable is when the whole concept is a deliberate consistency experiment or ranking comparison. Otherwise, repeated composition is a FAIL.
+
+CRITICAL — NO STATIC ANIMATION PROMPTS: Every animation_prompt must describe CONTINUOUS VISIBLE motion. Banned words: "motionless", "still", "sits", "stands", "peaceful", "calm", "slowly blinks", "half-closed", "unchanging". If the beat is inherently quiet, describe subject motion or environmental motion (twitching, breathing hard, shifting weight, dust drifting, papers flying). Never solve a weak beat with camera language.
+
+CRITICAL — CAMERA LANGUAGE IS BANNED IN animation_prompt:
+- Do NOT write: "camera", "zoom", "push in", "pull back", "pan", "whip-pan", "dolly", "rack focus", "tracking shot", "camera slowly"
+- Prompt clarity is strongest when the description focuses on CHARACTER / OBJECT / ENVIRONMENT motion only
+- GOOD: "Hisoka's grin twitches and disappears as sweat rolls down his face"
+- BAD: "Camera slowly pushes in on Hisoka's face"
+
+CRITICAL — MULTIPLE CHARACTERS ARE FINE, DIRECT CONTACT IS NOT:
+- The generator can handle several characters in frame, but it struggles when the key action requires two characters to physically touch, grapple, collide, wrestle, exchange objects hand-to-hand, or overlap heavily.
+- Prefer ONE moving subject per sub-action. Other characters may be visible, but they should mostly be watching, recoiling, bracing, or standing several feet away.
+- If narration implies "A hits B", "A grabs B", "A hands B something", "A and B clash", or "A knocks B out", do NOT try to show the literal contact moment in one crowded image.
+- Instead, split it into separate clean beats:
+  - Beat A: attacker powers up / swings / fires / lunges, with the other character visible but clearly separated
+  - Beat B: defender alone getting launched / cratered / stunned / falling / knocked out from the result
+- If the named attack is already iconic enough, you may simplify even further:
+  - Beat A: winner alone doing the named move cleanly
+  - Beat B: loser alone in the aftermath, with damage / dust / crater / slash trail proving what happened
+- GOOD: "Zoro surges forward with blades raised while Killua braces several feet away"
+- GOOD: "Zoro alone surges through Onigiri, dust ripping backward"
+- GOOD: "Killua alone slams into rubble and slides down the wall, smoke bursting"
+- BAD: "Zoro's swords physically connect with Killua in the same frame"
+- BAD: "An official presses the license directly into Gojo's hand"
+- For prop handoff beats, show the prop EXTENDED TOWARD the main character, or already in their possession. Avoid literal hand-to-hand contact.
+
+CRITICAL — LITERAL PROOF OF THE JOKE:
+If the narration contains a specific proof-detail, the image must SHOW it literally and clearly.
+- "walking backward" must visibly read as backward walking
+- "smile disappears" must show the smile already faltering or gone
+- "frozen midair" must show the object suspended, not just being thrown
+- "mail/license/officials beg" must show the license card, the officials, and the desperate body language
+- "stops talking" must show the speaker physically going silent — mouth mid-close or closed, frozen posture, stunned face
+- reaction punchlines must be DOMINANT in frame. If the joke is shock, fear, begging, or silence, the body language has to be obvious at a glance
+Do not settle for a generic version of the beat.
+
+CRITICAL — LINE 0 IS THE HOOK (SHOW THE STRONGEST START FRAME FOR THE PAYOFF):
+Line 0's narration is the hook, but this pipeline uses IMAGE-TO-VIDEO. That means the source image becomes the STARTING FRAME, not a loose visual reference.
+- So line 0 should show the CLEAREST, STRONGEST PRE-IMPACT SETUP of the payoff — the frame that most clearly promises the cool thing is about to happen.
+- Do NOT use a bland setup with no tension.
+- Do NOT use the fully completed payoff if that leaves the animation nowhere meaningful to go.
+- Aim for "half a second before the impact" rather than "after everything already happened."
+- BAD: "Skeletorinio stands holding a tiny red canister at the entrance of a jousting arena, knights tiny in the distance." (too early and weak)
+- BAD: "The knights are already face-down on the ground while pepper mist settles." (too late — nothing left to animate)
+- GOOD: "Skeletorinio in the center of the jousting arena, grinning, already spraying orange pepper mist toward two armored knights who are just starting to lose control of their horses." (strong starting frame, obvious next motion)
+- Applies to ALL image-to-video scenes, especially the hook. The first frame should be the strongest readable setup for motion, not a static prelude and not a completed aftermath.
 
 CRITICAL — EVERY IMAGE MUST SHOW ACTION IN PROGRESS (NO STANDING/POSING):
 Every `image_prompt` must depict a MOMENT OF ACTION — something physically happening RIGHT NOW. Never "character standing in a location" or "character surrounded by people watching." The character must be MID-MOTION: swinging, crashing, falling, running, grabbing, throwing, reacting with their whole body.
@@ -400,10 +753,60 @@ Each sub-action's `image_prompt` and `animation_prompt` MUST depict ONLY the spe
 - If narration line N+2 says "they crash", THAT is where the crash animation belongs.
 The visible action on screen must match WHAT THE VIEWER IS HEARING AT THAT MOMENT. Front-loading dramatic action into earlier scenes (because the planner is excited about the climax) breaks narration sync and makes the video feel buggy. Every line gets its own beat — no more, no less.
 
+CRITICAL — SETUP THEN REACTION, IN THAT ORDER:
+If one narration line contains a setup action followed by a reaction, split them into separate sub-actions and keep the reaction OUT of the setup frame.
+- Example: "Gojo jogs backward behind Satotz; Gon and Killua nearly trip staring"
+  - Sub-action A: Satotz leads, Gojo is clearly jogging backward behind him, Gon and Killua are still following the group normally.
+  - Sub-action B: Gon and Killua finally notice, twist toward Gojo, and nearly trip.
+- BAD: The very first frame already shows Gon and Killua bug-eyed, pointing, stumbling, or mid-reaction before the viewer has seen the thing they are reacting to.
+- GOOD: First show the weird thing clearly. Then show the reaction it causes.
+- Apply this to ALL setup→reaction beats: first the surprising action, then the shocked faces / stumbling / begging / silence / panic.
+
+CRITICAL — ATTACKER BEAT THEN CONSEQUENCE BEAT:
+For fights, hits, knockouts, blasts, or collisions, prefer separated cause→effect staging over literal contact staging.
+- BAD: one image or clip that tries to show "Zoro hits Killua and knocks him out"
+- GOOD: sub-action A = "Zoro powers up and slashes forward, Killua still separated in frame"
+- GOOD: sub-action B = "Killua alone getting blasted backward into stone, sparks and debris exploding"
+- GOOD: sub-action A = "Zoro alone launches Onigiri through dust"
+- GOOD: sub-action B = "Killua alone sprawled on cracked stone with a fresh slash gouge behind him"
+- GOOD: sub-action A = "Gojo raises Infinity while Hisoka's card approaches"
+- GOOD: sub-action B = "The card folds and drops while Hisoka recoils"
+If a viewer can understand the move and then the result across two simple clips, choose that over one complex contact shot every time.
+
+CRITICAL — LEGIBILITY FIRST (THE FRAME MUST READ IN HALF A SECOND):
+Before writing any image_prompt, reduce the beat to ONE visual sentence a stranger would understand on mute.
+- Ask: "What is the one thing the viewer should understand from this frame?"
+- If the answer contains "and", split it into two sub-actions unless the second detail is only background support.
+- Favor ICONIC SHORTHAND over clutter: one recognizable character design, one recognizable prop, one recognizable location, one recognizable action.
+- A strong frame usually has:
+  - one dominant subject
+  - one dominant action
+  - one proof detail or prop
+  - one clear location
+  - supporting characters only if they make the idea clearer
+- GOOD: "Modern runner in a USA uniform beside an ancient runner in a tunic at a starting line"
+- GOOD: "Zoro alone surging into a slash in a ruined arena"
+- GOOD: "Killua alone cratered into rubble, smoke bursting from impact"
+- BAD: "Zoro hits Killua while rubble explodes, lightning crackles, and the crowd reacts"
+- BAD: "Gojo jogs backward while Satotz leads and Gon points and Killua stumbles in the same first frame"
+- BAD: "Same throne room again, but now with more raiders" or "same desk again, but more paperwork"
+
+CRITICAL — IMAGE PROMPT ORDER:
+Write image_prompt details in this order so the model gets the readable idea first:
+1. FRAMING: close-up / medium / wide / side view / low angle / overhead
+2. MAIN SUBJECT: exact named character or object the viewer should focus on first
+3. ACTION STATE: what that subject is doing RIGHT NOW
+4. PROOF DETAIL: the one prop/body cue proving the narration claim
+5. SUPPORTING CHARACTERS: only if needed, and keep them secondary
+6. LOCATION: one specific recognizable place
+Example skeleton:
+"Wide side view. Zoro from One Piece in the left foreground raises all three swords for a slash. Killua stands several feet away bracing, clearly separated. Cracked arena stone underfoot. Tournament arena background. NO text anywhere."
+
 For each sub-action, decide:
+- "shot_type": REQUIRED. One of "wide", "medium", "close-up", "low-angle", "high-angle", "over-shoulder", "side-profile", "bird-eye". This is the FIRST phrase in the image_prompt — the prose framing must match this label. Adjacent sub-actions on the same `line` must use DIFFERENT shot_types.
 - "new_scene": true if this needs a fresh GPT-generated image (new setting, new character entering). false if it chains from the previous clip's last frame.
-- "image_prompt": what the starting image should show (BEFORE the action happens). Only needed if new_scene=true.
-- "animation_prompt": ONE simple action for Grok (2-3 seconds). One verb. e.g. "opens door and walks through", "swings sword hitting opponent", "energy builds in fist"
+- "image_prompt": what the starting image should show (BEFORE the action happens). Only needed if new_scene=true. MUST begin with the shot_type as a readable framing phrase (e.g. "Close-up on...", "Wide shot of...", "Low-angle on...", "Over-the-shoulder of...").
+- "animation_prompt": ONE simple action for the animation model (2-3 seconds). One moving subject. e.g. "opens door and walks through", "raises sword and lunges", "energy builds in fist", "slides backward into a wall"
 - "line": which narration line (0-indexed) this belongs to
 - "duration": seconds (2-3)
 - "chain_rule": if chaining, what must be in the last frame for the chain to work (e.g. "Zoro visible in hallway")
@@ -441,9 +844,11 @@ CRITICAL RULES FOR IMAGE PROMPTS:
    - If narration says "X, then Y" or "X and then Y" — that's TWO sub-actions for the same line, not one image showing both.
    - BAD: narration "Goku Instant Transmissions to the exit, then back" → ONE image with split-screen showing both
    - GOOD: narration "Goku Instant Transmissions to the exit, then back" → sub-action A: Goku flashing in at the exit (light burst, examiners shocked) + sub-action B: Goku flashing back at the start (chained from A's last frame, examinees gasping)
+   - GOOD: narration "Gojo jogs backward behind Satotz; Gon and Killua nearly trip staring" → sub-action A: Gojo backward-jogging in formation behind Satotz while Gon/Killua still run normally + sub-action B: Gon/Killua notice and nearly trip.
+   - GOOD: narration "Zoro hits Killua and knocks him out" → sub-action A: Zoro powers up and attacks while Killua stays separated in frame + sub-action B: Killua alone getting launched, cratered, or knocked out by the result
    - Multiple sub-actions for the same `line` index is fully supported — use it whenever the narration has multiple beats.
 
-5. For fight/action scenes: show the MOMENT OF IMPACT or the STARTING POINT of the action, with both characters visible and the result beginning to happen.
+5. For fight/action scenes: prefer the STARTING POINT of the attack or the CONSEQUENCE of the hit, not the literal instant of two characters making contact. Keep the active character and the affected character readable and separated whenever possible.
 
 OTHER RULES:
 - Line 0 (the hook) is always new_scene=true
@@ -455,23 +860,49 @@ Return ONLY a JSON array of objects.""",
         max_tokens=4000,
     )
 
-    plan_match = _re.search(r'\[.*\]', plan_resp, _re.DOTALL)
-    if plan_match:
-        sub_actions = json.loads(plan_match.group())
+    plan_path = os.path.join(images_dir, "plan.json")
+    cached_plan = None
+    if os.path.exists(plan_path):
+        try:
+            with open(plan_path) as pf:
+                maybe_plan = json.load(pf)
+            if isinstance(maybe_plan, list) and maybe_plan:
+                cached_plan = maybe_plan
+                logger.info("sub-actions loaded from cache", count=len(cached_plan))
+        except Exception:
+            cached_plan = None
+
+    if cached_plan is not None:
+        sub_actions = cached_plan
     else:
-        sub_actions = [
-            {"new_scene": True, "image_prompt": f"Scene for: {line}", "animation_prompt": "Subtle movement.", "line": i, "duration": 3}
-            for i, line in enumerate(narration_lines)
-        ]
-    # Save plan to disk so the API can read it for narration mapping
-    with open(os.path.join(images_dir, "plan.json"), "w") as pf:
-        json.dump(sub_actions, pf, indent=2)
+        plan_match = _re.search(r'\[.*\]', plan_resp, _re.DOTALL)
+        if plan_match:
+            sub_actions = json.loads(plan_match.group())
+        else:
+            sub_actions = [
+                {"new_scene": True, "image_prompt": f"Scene for: {line}", "animation_prompt": "Subtle movement.", "line": i, "duration": 3}
+                for i, line in enumerate(narration_lines)
+            ]
+        # Save plan to disk so the API can read it for narration mapping
+        with open(plan_path, "w") as pf:
+            json.dump(sub_actions, pf, indent=2)
     logger.info("sub-actions planned", count=len(sub_actions))
 
     # ─── STEP 3a: Generate all NEW scene images first (reviewable) ───
-    await _update_step("generating scene images")
+    pending_new_scene_indices = [
+        sa_idx
+        for sa_idx, sa in enumerate(sub_actions)
+        if sa.get("new_scene", True)
+        and not os.path.exists(os.path.join(images_dir, f"sub_{sa_idx:03d}.png"))
+    ]
+    total_pending_new_scenes = len(pending_new_scene_indices)
+    if total_pending_new_scenes:
+        await _update_step(f"generating scene image 1/{total_pending_new_scenes}")
+    else:
+        await _update_step("generating scene images")
     import anthropic
     review_client = anthropic.Anthropic()
+    generated_scene_counter = 0
     for sa_idx, sa in enumerate(sub_actions):
         if not sa.get("new_scene", True):
             continue  # chained clips get images later
@@ -479,6 +910,8 @@ Return ONLY a JSON array of objects.""",
         img_path = os.path.join(images_dir, f"sub_{sa_idx:03d}.png")
         if os.path.exists(img_path):
             continue
+        generated_scene_counter += 1
+        await _update_step(f"generating scene image {generated_scene_counter}/{total_pending_new_scenes}")
 
         # Use character reference if provided (more consistent than style anchor)
         _edit_ref_path = character_ref_path if character_ref_path and os.path.exists(character_ref_path) else style_anchor_path
@@ -494,12 +927,10 @@ Return ONLY a JSON array of objects.""",
                 # Keep edit prompt SHORT — the reference image handles character/style.
                 # Long prompts (art_style + channel_rules) cause gpt-image to override the reference.
                 resp = await client.images.edit(
-                    model="gpt-image-1.5",
+                    model=OPENAI_IMAGE_MODEL,
                     image=style_ref,
-                    prompt=f"{era_prefix}MATCH THE EXACT ART STYLE OF THE REFERENCE IMAGE. Same photographic look, same level of detail, same character design. NOT a cartoon, NOT cel-shaded, NOT a sketch — identical rendering style to the reference. {img_prompt} NO text anywhere.",
-                    size="1024x1536",
-                    quality="medium",
-                    input_fidelity="high",
+                    prompt=f"{era_prefix}{ref_style_prefix} {img_prompt} NO text anywhere.",
+                    **get_openai_image_edit_kwargs(size="1024x1536", quality="medium"),
                 )
                 style_ref.close()
                 if resp.data and resp.data[0].b64_json:
@@ -513,12 +944,10 @@ Return ONLY a JSON array of objects.""",
                     try:
                         style_ref_retry = open(_edit_ref_path, "rb")
                         resp = await client.images.edit(
-                            model="gpt-image-1.5",
+                            model=OPENAI_IMAGE_MODEL,
                             image=style_ref_retry,
-                            prompt=f"{era_prefix}MATCH THE EXACT ART STYLE OF THE REFERENCE IMAGE. Same photographic look, same level of detail, same character design. NOT a cartoon, NOT cel-shaded, NOT a sketch — identical rendering style to the reference. {img_prompt} NO text anywhere.",
-                            size="1024x1536",
-                            quality="medium",
-                            input_fidelity="high",
+                            prompt=f"{era_prefix}{ref_style_prefix} {img_prompt} NO text anywhere.",
+                            **get_openai_image_edit_kwargs(size="1024x1536", quality="medium"),
                         )
                         style_ref_retry.close()
                         if resp.data and resp.data[0].b64_json:
@@ -564,10 +993,16 @@ Check ALL of these:
 1. Does the image show the SPECIFIC ACTION described in the narration? Not just the right characters — the actual action happening.
 2. Is it a SINGLE SCENE? Comic panel layouts, manga grids, split panels = automatic FAIL.
 3. Are the characters recognizable as who they should be?
-4. Does the art style match what's expected? (crude cartoon should be crude cartoon, not anime)
+4. Does the art style match what's expected? The exact finish matters, not just "cartoony."
 5. ERA CHECK: If an era is required above, ALL humans must be in period-accurate clothing. Modern clothing (T-shirts, jeans, suits, casual wear), modern vehicles, or modern objects in a historical-era video = automatic FAIL.
-5. Does the image show the STARTING POINT of the action (before the result)? Images showing the aftermath instead of the moment = FAIL.
-6. Is there anything that contradicts the narration?
+6. Does the image show the STARTING POINT of the action (before the result)? Images showing the aftermath instead of the moment = FAIL.
+7. Does the image visibly prove the specific joke/detail in the narration? If the narration says "backward", "smile gone", "license", "begging", "frozen midair", or another concrete proof-detail, the image must make that detail obvious at a glance.
+8. If the narration beat is primarily a REACTION punchline ("stops talking", "goes silent", "begs", "stares", "smile disappears"), is that reaction visually dominant and unmistakable? Subtle face changes are FAILs.
+9. Is there anything that contradicts the narration?
+10. If multiple characters are present, is the staging simple and readable enough for the generator? Crowded touching, grappling, hand-to-hand exchanges, or collision-dependent poses should FAIL unless absolutely necessary to the beat.
+11. Does the frame communicate ONE dominant visual claim on mute? If it feels split-focus, busy, or "technically related but hard to parse at a glance," FAIL it.
+
+FAIL any image that drifts into the wrong finish. If the expected style is crude cartoon, reject polished webtoon/chibi/mobile-game art. If the expected style is clean anime-cartoon, reject grimy doodle, painterly realism, plush/chibi softness, or glossy 3D-game rendering. The style must match the exact channel identity, not just be "cartoony."
 
 Answer PASS or FAIL with specific reason."""},
                 ]}],
@@ -583,18 +1018,16 @@ Answer PASS or FAIL with specific reason."""},
                         output_path=img_path, size="1024x1536",
                     )
                 else:
-                    _regen_prompt = f"{era_prefix}MATCH THE EXACT ART STYLE OF THE REFERENCE IMAGE. Same photographic look, same level of detail, same character design. NOT a cartoon, NOT cel-shaded, NOT a sketch — identical rendering style to the reference. {img_prompt} Make sure this EXACTLY matches: {narr_text}. NO text anywhere."
+                    _regen_prompt = f"{era_prefix}{ref_style_prefix} {img_prompt} Make sure this EXACTLY matches: {narr_text}. NO text anywhere."
                     # Retry the edit up to 3 times with the reference before giving up
                     for _retry in range(3):
                         try:
                             style_ref2 = open(_edit_ref_path, "rb")
                             resp2 = await client.images.edit(
-                                model="gpt-image-1.5",
+                                model=OPENAI_IMAGE_MODEL,
                                 image=style_ref2,
                                 prompt=_regen_prompt,
-                                size="1024x1536",
-                                quality="medium",
-                                input_fidelity="high",
+                                **get_openai_image_edit_kwargs(size="1024x1536", quality="medium"),
                             )
                             style_ref2.close()
                             if resp2.data and resp2.data[0].b64_json:
@@ -625,7 +1058,20 @@ Answer PASS or FAIL with specific reason."""},
         logger.info("skipping image approval — already approved (carried forward from previous run)")
         os.remove(approval_file)
     else:
+        from packages.clients.workflow_state import create_review_task, get_pending_review_task, resolve_review_task
         await _update_step("images ready for review")
+        await create_review_task(
+            run_id=run_id,
+            kind="images",
+            concept_id=concept.get("concept_id"),
+            channel_id=concept.get("channel_id"),
+            stage="images ready for review",
+            payload={
+                "expected_images": len([sa for sa in sub_actions if sa.get("new_scene", True)]),
+                "images_dir": os.path.abspath(images_dir),
+                "image_names": [f"sub_{idx:03d}.png" for idx, sa in enumerate(sub_actions) if sa.get("new_scene", True)],
+            },
+        )
 
         # Clean up stale deny file only (approval was checked above)
         if os.path.exists(deny_file):
@@ -637,11 +1083,23 @@ Answer PASS or FAIL with specific reason."""},
             if os.path.exists(approval_file):
                 logger.info("user approved images — continuing to animation")
                 os.remove(approval_file)
+                await resolve_review_task(
+                    run_id=run_id,
+                    kind="images",
+                    status="approved",
+                    resolution={"source": "file_fallback"},
+                )
                 break
 
             if os.path.exists(deny_file):
                 logger.info("user denied images — checking feedback")
                 os.remove(deny_file)
+                await resolve_review_task(
+                    run_id=run_id,
+                    kind="images",
+                    status="rejected",
+                    resolution={"source": "file_fallback"},
+                )
                 # Regenerate images that have feedback files — use edit-with-reference, not text-only,
                 # to maintain style consistency with other scenes.
                 for sa_idx, sa in enumerate(sub_actions):
@@ -653,7 +1111,7 @@ Answer PASS or FAIL with specific reason."""},
                         feedback_text = open(feedback_path).read().strip()
                         if os.path.exists(img_path):
                             os.remove(img_path)
-                        _deny_prompt = f"{era_prefix}MATCH THE EXACT ART STYLE OF THE REFERENCE IMAGE. Same photographic look, same level of detail, same character design. NOT a cartoon, NOT cel-shaded, NOT a sketch — identical rendering style to the reference. {sa.get('image_prompt', '')} User feedback: {feedback_text}. NO text anywhere."
+                        _deny_prompt = f"{era_prefix}{ref_style_prefix} {sa.get('image_prompt', '')} User feedback: {feedback_text}. NO text anywhere."
                         if prefer_grok_images:
                             await _gen_image(
                                 prompt=f"{art_style_prompt} {sa.get('image_prompt', '')} User feedback: {feedback_text}. NO text anywhere.",
@@ -664,12 +1122,10 @@ Answer PASS or FAIL with specific reason."""},
                                 try:
                                     ref_file = open(_edit_ref_path, "rb")
                                     resp = await client.images.edit(
-                                        model="gpt-image-1.5",
+                                        model=OPENAI_IMAGE_MODEL,
                                         image=ref_file,
                                         prompt=_deny_prompt,
-                                        size="1024x1536",
-                                        quality="medium",
-                                        input_fidelity="high",
+                                        **get_openai_image_edit_kwargs(size="1024x1536", quality="medium"),
                                     )
                                     ref_file.close()
                                     if resp.data and resp.data[0].b64_json:
@@ -687,7 +1143,25 @@ Answer PASS or FAIL with specific reason."""},
                                 )
                         os.remove(feedback_path)
                         logger.info("regenerated from feedback", sub_action=sa_idx, feedback=feedback_text[:60])
+                await create_review_task(
+                    run_id=run_id,
+                    kind="images",
+                    concept_id=concept.get("concept_id"),
+                    channel_id=concept.get("channel_id"),
+                    stage="images ready for review",
+                    payload={
+                        "expected_images": len([sa for sa in sub_actions if sa.get("new_scene", True)]),
+                        "images_dir": os.path.abspath(images_dir),
+                        "image_names": [f"sub_{idx:03d}.png" for idx, sa in enumerate(sub_actions) if sa.get("new_scene", True)],
+                    },
+                )
                 await _update_step("images ready for review")
+                continue
+
+            pending_task = await get_pending_review_task(run_id, "images")
+            if pending_task is None:
+                logger.info("image review resolved via review task")
+                break
 
 
     # ─── STEP 3c: Animate with chaining ───
@@ -731,18 +1205,39 @@ Answer PASS or FAIL with specific reason."""},
             logger.info("chained from last frame", sub_action=sa_idx)
 
         # Animate
-        with open(img_path, "rb") as f:
-            img_b64 = f"data:image/png;base64,{base64.b64encode(f.read()).decode()}"
+        if video_provider == "veo":
+            veo_duration = get_veo_duration(duration)
+            await _generate_veo_clip_with_retries(
+                prompt=anim_prompt,
+                output_path=clip_path,
+                model=video_model or "veo-3.1-lite-generate-001",
+                duration_seconds=veo_duration,
+                aspect_ratio="9:16",
+                resolution=video_resolution or "720p",
+                image_path=img_path,
+                timeout_seconds=600,
+            )
+        else:
+            with open(img_path, "rb") as f:
+                img_b64 = f"data:image/png;base64,{base64.b64encode(f.read()).decode()}"
 
-        await generate_video_async(
-            prompt=anim_prompt,
-            output_path=clip_path,
-            duration=duration,
-            aspect_ratio="9:16",
-            image_url=img_b64,
-            timeout=600,
+            await grok_generate_video_async(
+                prompt=anim_prompt,
+                output_path=clip_path,
+                duration=duration,
+                aspect_ratio="9:16",
+                image_url=img_b64,
+                resolution=video_resolution or "720p",
+                timeout=600,
+            )
+        logger.info(
+            "animated",
+            sub_action=sa_idx,
+            prompt=anim_prompt[:60],
+            provider=video_provider,
+            model=video_model,
+            resolution=video_resolution,
         )
-        logger.info("animated", sub_action=sa_idx, prompt=anim_prompt[:60])
 
         # Extract last frame for potential chaining
         lf = os.path.join(images_dir, f"sub_{sa_idx:03d}_lastframe.png")
@@ -956,29 +1451,80 @@ def build_silent_segments(
 
 
 def build_intro_teasers(
-    n_lines: int, narr_dir: str, clips_dir: str, segments_dir: str,
+    n_lines: int,
+    narr_dir: str,
+    clips_dir: str,
+    segments_dir: str,
+    line_clip_map: dict[int, list[str]] | None = None,
+    *,
+    channel_id: int | None = None,
+    concept: dict | None = None,
+    intro_policy: str | None = None,
 ) -> float:
-    """Build intro teaser clips — ONE teaser per scene (one shutter per scene).
+    """Build intro teasers from distinct scenes, not every raw clip in order.
 
-    If there are fewer scenes than needed to fill narration duration, pause on
-    the last teaser until narration finishes.
+    For channels that generate multiple sub-clips per narration line, use one
+    representative clip per line so the intro doesn't look like it repeated or
+    lagged on the same beat.
     """
     title_narr_dur = get_duration(os.path.join(narr_dir, "line_00.mp3"))
+    if intro_policy is None and channel_id is not None:
+        intro_policy = str(resolve_channel_media_policy(channel_id, concept)["intro_policy"] or "teaser_intro")
+    intro_policy = (intro_policy or "teaser_intro").strip().lower()
     teaser_clip_dur = 0.6  # matches shutter sfx interval
+    teasers_path = os.path.join(segments_dir, "teasers.mp4")
 
-    # Pick ONE teaser per scene (exclude scene 0 which is the hook itself)
-    all_clips = sorted([f for f in os.listdir(clips_dir) if f.endswith('.mp4') and not f.startswith('.')])
-    if not all_clips:
+    if intro_policy in {"cold_open", "matchup_card"}:
+        hook_segment = os.path.join(segments_dir, "seg_00.mp4")
+        if os.path.exists(hook_segment):
+            import shutil as _sh
+            _sh.copy2(hook_segment, teasers_path)
+            return get_duration(teasers_path)
+
+    teaser_sources: list[str] = []
+
+    if line_clip_map:
+        # Prefer one distinct teaser per narrated scene. Skip the hook line when
+        # possible so the intro previews future beats instead of replaying the opener.
+        ordered_line_indices = [idx for idx in range(1, n_lines) if line_clip_map.get(idx)]
+        if not ordered_line_indices:
+            ordered_line_indices = [idx for idx in range(n_lines) if line_clip_map.get(idx)]
+
+        for line_idx in ordered_line_indices:
+            clip_names = [name for name in line_clip_map.get(line_idx, []) if name]
+            if not clip_names:
+                continue
+            teaser_sources.append(os.path.join(clips_dir, clip_names[0]))
+
+    if not teaser_sources:
+        all_clips = sorted([f for f in os.listdir(clips_dir) if f.endswith('.mp4') and not f.startswith('.')])
+        if not all_clips:
+            raise RuntimeError(f"No clips found in {clips_dir}")
+
+        numbered_clips = [f for f in all_clips if re.match(r"clip_\d+\.mp4$", f)]
+        if numbered_clips:
+            # Skip clip_00 when possible so the intro doesn't immediately replay
+            # the same shot as the first real scene after the hook narration.
+            preferred = [f for f in numbered_clips if f != "clip_00.mp4"]
+            teaser_sources = [os.path.join(clips_dir, f) for f in (preferred or numbered_clips)]
+        else:
+            teaser_sources = [os.path.join(clips_dir, f) for f in all_clips]
+
+    if not teaser_sources:
         raise RuntimeError(f"No clips found in {clips_dir}")
 
-    # One teaser per scene (use every clip, one per)
-    n_teasers = len(all_clips)
+    n_teasers = len(teaser_sources)
 
     for j in range(n_teasers):
         tp = os.path.join(segments_dir, f"teaser_{j:02d}.mp4")
-        clip_path = os.path.join(clips_dir, all_clips[j])
+        clip_path = teaser_sources[j]
+        try:
+            clip_dur = get_duration(clip_path)
+        except Exception:
+            clip_dur = teaser_clip_dur + 0.4
+        sample_offset = max(0.15, min(0.7, max(0.0, clip_dur - teaser_clip_dur - 0.1) * 0.35))
         subprocess.run([
-            "ffmpeg", "-y", "-ss", "0.4",  # grab a mid-clip moment
+            "ffmpeg", "-y", "-ss", str(sample_offset),
             "-i", clip_path,
             "-t", str(teaser_clip_dur),
             "-vf", f"scale={WIDTH}:{HEIGHT}:force_original_aspect_ratio=decrease,pad={WIDTH}:{HEIGHT}:(ow-iw)/2:(oh-ih)/2",
@@ -987,7 +1533,6 @@ def build_intro_teasers(
         ], capture_output=True, timeout=10)
 
     # Concat teasers
-    teasers_path = os.path.join(segments_dir, "teasers.mp4")
     tl = os.path.join(segments_dir, "teaser_list.txt")
     with open(tl, "w") as f:
         for j in range(n_teasers):
@@ -1049,6 +1594,7 @@ def concat_silent_video(
     XFADE_DUR = 0.4
     XFADE_INTO_CONTENT = XFADE_DUR  # xfade entirely over real content, no freeze extension
     EXT_DUR = XFADE_DUR - XFADE_INTO_CONTENT  # 0 — no freeze extension
+    END_HOLD_DUR = 0.5  # give the last spoken beat room to finish cleanly
 
     all_video_path = os.path.join(output_dir, "all_video_silent.mp4")
 
@@ -1127,6 +1673,17 @@ def concat_silent_video(
         all_video_path,
     ], capture_output=True, timeout=300)
 
+    if END_HOLD_DUR > 0 and os.path.exists(all_video_path):
+        padded_path = os.path.join(output_dir, "_all_video_silent_padded.mp4")
+        subprocess.run([
+            "ffmpeg", "-y", "-i", all_video_path,
+            "-vf", f"tpad=stop_mode=clone:stop_duration={END_HOLD_DUR}",
+            "-c:v", "libx264", "-preset", "fast", "-crf", "23", "-pix_fmt", "yuv420p", "-an",
+            padded_path,
+        ], capture_output=True, timeout=180)
+        if os.path.exists(padded_path):
+            os.replace(padded_path, all_video_path)
+
     # Cleanup temps
     for p in extended_segs:
         if p != segs[-1] and os.path.exists(p):
@@ -1147,28 +1704,46 @@ def build_numpy_audio(
     seg_durations: list[float],
     total_dur: float,
     output_dir: str,
+    *,
+    channel_id: int | None = None,
+    concept: dict | None = None,
+    audio_policy: str | None = None,
+    intro_policy: str | None = None,
 ) -> tuple[str, list[float]]:
     """Build entire audio as one WAV using numpy. Returns (audio_path, seg_starts)."""
+    if channel_id is not None:
+        media_policy = resolve_channel_media_policy(channel_id, concept)
+        if audio_policy is None:
+            audio_policy = str(media_policy["audio_policy"] or "voiceover")
+        if intro_policy is None:
+            intro_policy = str(media_policy["intro_policy"] or "teaser_intro")
+
+    audio_policy = (audio_policy or "voiceover").strip().lower()
+    intro_policy = (intro_policy or "teaser_intro").strip().lower()
+    add_intro_sfx = intro_policy in {"teaser_intro", "matchup_card"}
+    include_music = bool(music_path) and audio_policy == "voiceover"
+
     total_samples = int(total_dur * SR) + SR
     output = np.zeros(total_samples, dtype=np.float32)
 
-    whoosh = load_audio_samples(WHOOSH_SFX)
-    shutter = load_audio_samples(SHUTTER_SFX)[:int(0.3 * SR)] * 1.2
     title_narr = load_audio_samples(os.path.join(narr_dir, "line_00.mp3"))
+    if add_intro_sfx:
+        whoosh = load_audio_samples(WHOOSH_SFX)
+        shutter = load_audio_samples(SHUTTER_SFX)[:int(0.3 * SR)] * 1.2
 
-    # Whoosh stretched to teaser duration
-    whoosh_resampled = np.interp(
-        np.linspace(0, len(whoosh) - 1, int(actual_teaser_dur * SR)),
-        np.arange(len(whoosh)), whoosh,
-    ) * 0.3
-    output[:len(whoosh_resampled)] += whoosh_resampled
+        # Whoosh stretched to teaser duration
+        whoosh_resampled = np.interp(
+            np.linspace(0, len(whoosh) - 1, int(actual_teaser_dur * SR)),
+            np.arange(len(whoosh)), whoosh,
+        ) * 0.3
+        output[:len(whoosh_resampled)] += whoosh_resampled
 
-    # Camera shutter clicks at 0.6s intervals
-    n_teasers = max(4, int(actual_teaser_dur / 0.6))
-    for j in range(n_teasers):
-        pos = int(j * 0.6 * SR)
-        end = min(pos + len(shutter), int(actual_teaser_dur * SR))
-        output[pos:end] += shutter[:end - pos]
+        # Camera shutter clicks at 0.6s intervals
+        n_teasers = max(4, int(actual_teaser_dur / 0.6))
+        for j in range(n_teasers):
+            pos = int(j * 0.6 * SR)
+            end = min(pos + len(shutter), int(actual_teaser_dur * SR))
+            output[pos:end] += shutter[:end - pos]
 
     # Title narration over intro
     narr_len = min(len(title_narr), int(actual_teaser_dur * SR))
@@ -1191,9 +1766,10 @@ def build_numpy_audio(
         current_pos += int((seg_durations[i] - overlap) * SR)
 
     # Background music (starts after intro)
-    music = load_audio_samples(music_path)
-    ml = min(len(music), total_samples - intro_end)
-    output[intro_end:intro_end + ml] += music[:ml] * 0.05
+    if include_music:
+        music = load_audio_samples(music_path)
+        ml = min(len(music), total_samples - intro_end)
+        output[intro_end:intro_end + ml] += music[:ml] * 0.05
 
     # Normalize and write
     max_val = np.max(np.abs(output))
@@ -1233,7 +1809,7 @@ def add_subtitles(
     from apps.orchestrator.pipeline import _write_karaoke_ass
 
     all_words = [
-        (w["word"], seg_starts[w["line"]] + w["start"], seg_starts[w["line"]] + w["end"])
+        (w["word"], seg_starts[w["line"]] + w["start"], seg_starts[w["line"]] + w["end"], w["line"])
         for w in word_data
         if w["line"] < len(seg_starts)
     ]
@@ -1263,6 +1839,7 @@ async def update_database(
     """Update database with completed video."""
     from sqlalchemy.ext.asyncio import create_async_engine
     from sqlalchemy import text as sql_text
+    from packages.clients.workflow_state import update_concept_status, update_run_manifest
 
     if tags is None:
         tags = ["shorts", "viral"]
@@ -1270,6 +1847,9 @@ async def update_database(
     caption = f"{title}\n\n" + " ".join(f"#{t}" for t in tags)
     engine = create_async_engine(db_url)
     async with engine.begin() as conn:
+        concept_id = (
+            await conn.execute(sql_text("SELECT concept_id FROM content_runs WHERE id = :rid"), {"rid": run_id})
+        ).scalar_one_or_none()
         await conn.execute(
             sql_text("UPDATE content_runs SET status = 'pending_review', current_step = 'pending_review' WHERE id = :rid"),
             {"rid": run_id},
@@ -1286,4 +1866,7 @@ async def update_database(
             sql_text("INSERT INTO assets (run_id, channel_id, asset_type, content) VALUES (:rid, :cid, 'publish_metadata', :c)"),
             {"rid": run_id, "cid": channel_id, "c": json.dumps({"title": title, "description": caption, "tags": tags, "privacy": "private"})},
         )
+        if concept_id:
+            await update_concept_status(concept_id, status="ready", latest_run_id=run_id, session=conn)
     await engine.dispose()
+    await update_run_manifest(run_id, {"status": "pending_review", "stage": "pending_review", "final_video": os.path.join(output_dir, "final.mp4")})

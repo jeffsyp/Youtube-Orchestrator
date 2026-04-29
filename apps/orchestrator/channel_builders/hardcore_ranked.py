@@ -1,8 +1,7 @@
 """Hardcore Ranked channel builder — visual comparison/ranking videos.
 
-Frog character in astronaut helmet as the test subject.
+Uses a consistent googly-eyed skeleton protagonist with concept-specific accessories.
 Same visual anchor (camera angle, location) for every comparison.
-gpt-4o edit to place frog into consistent scenes using reference images.
 Uses shared functions for narration, intro, audio, subtitles.
 """
 import asyncio
@@ -10,12 +9,22 @@ import base64
 import json
 import os
 import re
+import shutil
+import subprocess
 
 import structlog
+from packages.clients.channel_profiles import (
+    get_channel_video_model,
+    get_channel_video_provider,
+    get_channel_video_resolution,
+)
+from packages.clients.grok import get_openai_image_edit_kwargs, get_openai_image_model
+from packages.utils.hardcore_ranked_language import normalize_hardcore_ranked_viewer_text
 
 from apps.orchestrator.channel_builders.shared import (
     generate_narration_with_timestamps,
     generate_image_prompts,
+    _generate_veo_clip_with_retries,
     build_silent_segments,
     build_intro_teasers,
     concat_silent_video,
@@ -29,47 +38,1014 @@ from apps.orchestrator.channel_builders.shared import (
 )
 
 logger = structlog.get_logger()
+OPENAI_IMAGE_MODEL = get_openai_image_model()
 
 # Channel-specific constants
 CHANNEL_ID = 26
 VOICE_ID = "TX3LPaxmHKxFdv7VOQHJ"  # Liam
 MUSIC_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "..", "assets", "music", "dark", "rising.mp3")
-FROG_REF = os.path.join(os.path.dirname(__file__), "..", "..", "..", "assets", "character_cache", "hardcore_ranked_frog_v3.png")
+CHARACTER_BASE_REF = os.path.join(os.path.dirname(__file__), "..", "..", "..", "assets", "character_cache", "skeletorinio_base.png")
+MANUAL_PLANET_REF_DIR = os.path.join(
+    os.path.dirname(__file__),
+    "..",
+    "..",
+    "..",
+    "assets",
+    "reference",
+    "hardcore_ranked_worlds",
+)
 TAGS = ["hardcore ranked", "comparison", "ranked", "shorts", "viral"]
+
+BASE_CHARACTER_IDENTITY = (
+    "The core Hardcore Ranked identity never changes: a human-sized glossy ivory-plastic skeleton with oversized googly eyes, "
+    "a grinning skull face, upright human posture, and a stylized but believable 3D character look. "
+    "He is not a real human and not a tiny toy. "
+    "He stays the same character in every scene; only video-specific accessories or gear may change."
+)
 
 # Channel-specific image prompt rules
 IMAGE_RULES = """RULES:
-- The main character is a HUMAN-SIZED PERSON wearing a green frog-themed astronaut suit with a frog-shaped helmet — NOT an actual frog. He is a human that looks like a frog because of his suit. Think of a human diver in a frog costume.
+- The main character is a HUMAN-SIZED glossy ivory-plastic skeleton with oversized googly eyes, a grinning skull face, and upright human posture. NOT a real human. NOT a miniature toy.
+- The core identity stays the same in every scene. Only concept-specific accessories or gear can change.
 - PHOTOREALISTIC world, the character is a 3D animated character in a real world
 
 THE SETTING DEPENDS ON THE CONCEPT — NOT ALWAYS A ROAD:
 - Swimming comparison → BEHIND the character looking DOWN a single Olympic swimming lane, like a TV camera behind the starting blocks. You see the lane stretching away from camera so you can see how far the character swims.
-- Vehicle comparison → a long straight road from behind the frog
+- Vehicle comparison → a long straight road from behind the skeleton
 - Climbing comparison → a tall wall/cliff from the side
 - The setting should let you SEE the difference in speed/distance/progress between each item
 - Choose the setting that makes the COMPARISON most visually obvious
 
-SAME SETUP EVERY SCENE — THIS IS THE ENTIRE POINT:
-- EVERY scene uses the EXACT SAME environment from the EXACT SAME camera angle
-- The ONLY thing that changes is the VARIABLE (different liquid, vehicle, surface)
-- The frog does the SAME action in every scene — only the variable differs
-- Think of it like a science experiment: same test, one variable changed
+CONSISTENCY MEANS SAME PREMISE, NOT ALWAYS THE SAME FRAME:
+- Keep the core experiment or comparison readable across the whole video
+- For tight lab-rig concepts, the setup can stay nearly identical
+- For journey, range, mission, or escalation concepts, the frame can move if that makes progress clearer
+- The ONLY things that should change are the ranked variable and the visible result of that variable
+- The skeleton should stay recognizable, but the shot should not stay locked if that makes the idea harder to understand
 
-EACH PROMPT MUST DESCRIBE ONLY WHAT CHANGES:
-- Do NOT re-describe the entire scene in each prompt
-- Just describe what is DIFFERENT: "The pool is now filled with thick golden honey. The frog is barely moving, stuck in the viscous liquid."
-- The base scene handles everything else (setting, angle, frog position)
+WHEN THE COMPARISON IS A TRUE LOCKED TEST:
+- You can describe only what changes and let the shared setup carry the rest
+
+WHEN A LOCKED FRAME IS HURTING READABILITY:
+- Re-establish the same premise in a clearer shot instead of forcing the exact same angle
+- The base scene is a hook, not a prison
 
 - Every prompt must end with "Photorealistic. NO text anywhere."
-- CONSISTENCY IS KEY — same camera angle, same frog, same environment, ONLY the variable changes"""
+- CONSISTENCY IS KEY — same premise, same character identity, same experiment logic, with framing flexible when it helps clarity"""
+
+
+def _heuristic_character_variant(title: str, brief: str) -> dict:
+    text = f"{title} {brief}".lower()
+    variant_name = "default athlete"
+    traits: list[str]
+
+    if any(term in text for term in ["planet", "space", "moon", "mars", "jupiter", "pluto", "ceres", "uranus", "neptune", "saturn", "mercury"]):
+        variant_name = "space athlete"
+        traits = [
+            "a glossy black astronaut helmet framing the skeleton skull",
+            "clean athletic tank top and fitted training shorts",
+            "very light space-training styling only, while keeping the skeleton body fully recognizable",
+        ]
+    elif any(term in text for term in ["swim", "pool", "ocean", "water", "underwater"]):
+        variant_name = "swim athlete"
+        traits = [
+            "sleek swim goggles or a swim cap suited to a skeleton athlete",
+            "minimal competitive swim gear",
+        ]
+    elif any(term in text for term in ["cook", "kitchen", "grill", "bake", "oven", "chef"]):
+        variant_name = "kitchen tester"
+        traits = [
+            "a simple apron or chef accessory",
+            "practical kitchen-safe outfit details",
+        ]
+    elif any(term in text for term in ["bike", "cycle", "motorcycle", "vehicle", "racecar", "car"]):
+        variant_name = "racer"
+        traits = [
+            "streamlined racing helmet or goggles",
+            "light performance gear matched to a racing test",
+        ]
+    else:
+        traits = [
+            "simple athletic outfit matched to the test",
+            "no unnecessary accessories unless the concept needs them",
+        ]
+
+    return {
+        "variant_name": variant_name,
+        "must_keep": BASE_CHARACTER_IDENTITY,
+        "traits": traits,
+        "negative_traits": [
+            "do not replace the skeleton body with generic human skin",
+            "do not remove the googly eyes or grinning skull face",
+            "do not turn him into a normal person in a costume",
+            "do not add logos, patches, printed words, backpacks, or bulky sci-fi gadgets unless the concept truly requires them",
+        ],
+    }
+
+
+def _variant_rules_text(character_variant: dict) -> str:
+    traits = character_variant.get("traits") or []
+    negatives = character_variant.get("negative_traits") or []
+    traits_text = "; ".join(traits) if traits else "no extra accessories"
+    negatives_text = "; ".join(negatives) if negatives else "no off-model redesigns"
+    return (
+        "\n\nCONCEPT-SPECIFIC SKELETON VARIANT:\n"
+        f"- {character_variant.get('must_keep', BASE_CHARACTER_IDENTITY)}\n"
+        f"- For THIS video, add these consistent variant traits: {traits_text}.\n"
+        f"- Forbidden drift: {negatives_text}.\n"
+        "- Every image prompt must keep this exact variant consistent across the entire video.\n"
+    )
+
+
+def _manual_planet_ref(slug: str) -> str | None:
+    path = os.path.join(MANUAL_PLANET_REF_DIR, f"{slug}_grounded.png")
+    return path if os.path.exists(path) else None
+
+
+def _parse_jump_label_inches(jump_label: str) -> int:
+    text = str(jump_label).strip().lower()
+    ft_match = re.search(r"(\d+)\s*ft", text)
+    in_match = re.search(r"(\d+)\s*in", text)
+    feet = int(ft_match.group(1)) if ft_match else 0
+    inches = int(in_match.group(1)) if in_match else 0
+    if feet or inches:
+        return feet * 12 + inches
+    num_match = re.search(r"(\d+)", text)
+    return int(num_match.group(1)) if num_match else 20
+
+
+def _display_jump_label(jump_label: str) -> str:
+    total_inches = _parse_jump_label_inches(jump_label)
+    feet, inches = divmod(total_inches, 12)
+    parts: list[str] = []
+    if feet:
+        parts.append(f"{feet} {'foot' if feet == 1 else 'feet'}")
+    if inches:
+        parts.append(f"{inches} {'inch' if inches == 1 else 'inches'}")
+    return " ".join(parts) if parts else str(jump_label)
+
+
+def _normalize_viewer_subject_text(text: str) -> str:
+    """Keep Hardcore Ranked user-facing copy in second person."""
+    return normalize_hardcore_ranked_viewer_text(text)
+
+
+async def _add_native_scene_label_with_model(edit_client, image_path: str, planet: str, jump_label: str, fact_label: str) -> None:
+    """Ask gpt-image to add the scene label naturally inside the image.
+
+    This avoids the obviously post-edited overlay look from PIL/ffmpeg text burns.
+    """
+    title_text = f"{str(planet).upper()} {_display_jump_label(jump_label).upper()}"
+    fact_text = str(fact_label).upper()
+    prompt = (
+        "Keep this image composition almost identical. Do NOT move the subject, mast, lander, horizon, or camera angle. "
+        "Add a clean broadcast-style measurement card in the upper-left corner that looks like it belongs in the original shot, not pasted on afterward. "
+        "The card should be a sleek dark rounded rectangle with crisp modern typography and subtle professional styling. "
+        f"Exact main line text: {title_text}. "
+        f"Exact smaller line text: {fact_text}. "
+        "The text must be perfectly legible, correctly spelled, and integrated naturally into the image. Preserve everything else."
+    )
+
+    for attempt in range(3):
+        img_file = open(image_path, "rb")
+        try:
+            resp = await edit_client.images.edit(
+                model=OPENAI_IMAGE_MODEL,
+                image=img_file,
+                prompt=prompt,
+                **get_openai_image_edit_kwargs(size="1024x1536", quality="medium"),
+            )
+        finally:
+            img_file.close()
+
+        if resp.data and resp.data[0].b64_json:
+            with open(image_path, "wb") as f:
+                f.write(base64.b64decode(resp.data[0].b64_json))
+            logger.info("scene label added natively by image model", image=image_path, attempt=attempt + 1)
+            return
+        await asyncio.sleep(1.5)
+
+    raise RuntimeError(f"Failed to add native scene label for {planet} after retries")
+
+
+async def _ensure_base_character_reference(_edit_client) -> str:
+    """Return the neutral Hardcore Ranked skeleton base asset."""
+    if not os.path.exists(CHARACTER_BASE_REF):
+        raise RuntimeError("Missing Hardcore Ranked skeleton reference image")
+    return CHARACTER_BASE_REF
+
+
+async def _build_character_variant_ref(edit_client, base_ref_path: str, variant: dict, output_path: str, title: str) -> str:
+    """Generate a concept-specific variant ref from the neutral skeleton base."""
+    if os.path.exists(output_path):
+        return output_path
+
+    traits = "; ".join(variant.get("traits") or [])
+    negatives = "; ".join(variant.get("negative_traits") or [])
+    prompt = (
+        f"Transform this exact Hardcore Ranked skeleton base character into the concept-specific variant for {title}. "
+        f"{variant.get('must_keep', BASE_CHARACTER_IDENTITY)} "
+        f"Add these consistent variant traits: {traits}. "
+        f"Forbidden drift: {negatives}. "
+        "Keep the same skull face, same googly eyes, same body proportions, and same full-body white-background reference image. "
+        "Do not change the pose or camera. Do not add any logos, patches, words, badges, backpacks, or extra gear beyond what the prompt explicitly calls for."
+    )
+
+    base_file = open(base_ref_path, "rb")
+    try:
+        resp = await edit_client.images.edit(
+            model=OPENAI_IMAGE_MODEL,
+            image=base_file,
+            prompt=prompt,
+            **get_openai_image_edit_kwargs(size="1024x1536", quality="medium"),
+        )
+    finally:
+        base_file.close()
+
+    if not (resp.data and resp.data[0].b64_json):
+        shutil.copy2(base_ref_path, output_path)
+        return output_path
+
+    with open(output_path, "wb") as f:
+        f.write(base64.b64decode(resp.data[0].b64_json))
+    logger.info("created hardcore ranked concept variant ref", path=output_path, variant=variant.get("variant_name"))
+    return output_path
+
+
+async def _adapt_manual_world_ref_for_variant(
+    edit_client,
+    source_path: str,
+    variant: dict,
+    output_path: str,
+    planet: str,
+) -> str:
+    """Preserve the approved world composition while updating the skeleton to the active per-video variant."""
+    if os.path.exists(output_path):
+        return output_path
+
+    traits = "; ".join(variant.get("traits") or [])
+    negatives = "; ".join(variant.get("negative_traits") or [])
+    prompt = (
+        "Keep this image composition almost identical. Preserve the exact planet surface, sky, horizon, mast, lander, "
+        "camera angle, crop, lighting, and grounded pre-jump stance. "
+        f"Update the skeleton character so it matches the active Hardcore Ranked variant for {planet}. "
+        f"Core identity to preserve: {variant.get('must_keep', BASE_CHARACTER_IDENTITY)} "
+        f"Required variant traits: {traits}. "
+        f"Forbidden drift: {negatives}. "
+        "Both feet must stay planted on the ground in the same place. "
+        "Keep the character clean and simple: no extra props, no logos, no printed text, no badges, and no unnecessary gadgets."
+    )
+
+    source_file = open(source_path, "rb")
+    try:
+        resp = await edit_client.images.edit(
+            model=OPENAI_IMAGE_MODEL,
+            image=source_file,
+            prompt=prompt,
+            **get_openai_image_edit_kwargs(size="1024x1536", quality="medium"),
+        )
+    finally:
+        source_file.close()
+
+    if not (resp.data and resp.data[0].b64_json):
+        shutil.copy2(source_path, output_path)
+        return output_path
+
+    with open(output_path, "wb") as f:
+        f.write(base64.b64decode(resp.data[0].b64_json))
+    logger.info("adapted approved world ref to active skeleton variant", path=output_path, planet=planet)
+    return output_path
+
+
+def _normalize_explicit_scene_prompt(prompt: str) -> str:
+    text = str(prompt or "").strip()
+    if not text:
+        return text
+    text = re.sub(r"(?i)simple crude cartoon\s*[—-][^.]*\.\s*", "", text)
+    text = re.sub(r"(?i)\bcartoon\b", "", text)
+    text = re.sub(r"(?i)\bfrog(?:-suit)?\b", "googly-eyed skeleton", text)
+    text = re.sub(r"(?i)\bfrog athlete\b", "googly-eyed skeleton athlete", text)
+    text = re.sub(r"(?i)\bfrog guy\b", "googly-eyed skeleton", text)
+    text = re.sub(r"(?i)\bfrog person\b", "googly-eyed skeleton person", text)
+    text = re.sub(r"(?i)\s{2,}", " ", text).strip()
+    if "photorealistic" not in text.lower():
+        text = (
+            "Photorealistic real-world test footage with a glossy googly-eyed skeleton mascot when a presenter appears. "
+            + text
+        )
+    if "NO text anywhere" not in text:
+        text = text.rstrip(". ") + ". NO text anywhere."
+    return text
+
+
+def _normalize_explicit_video_prompt(prompt: str) -> str:
+    text = str(prompt or "").strip()
+    if not text:
+        return text
+    text = re.sub(r"(?i)\bfrog(?:-suit)?\b", "skeleton", text)
+    text = re.sub(r"(?i)\bfrog athlete\b", "skeleton athlete", text)
+    text = re.sub(r"(?i)\bfrog guy\b", "skeleton", text)
+    return re.sub(r"\s{2,}", " ", text).strip()
+
+
+def _is_numbered_ranking(narration_lines: list[str]) -> bool:
+    ranked_lines = [str(line).strip() for line in narration_lines[1:] if str(line).strip()]
+    if not ranked_lines:
+        return False
+    numbered = sum(1 for line in ranked_lines if re.search(r"(?i)^number\s+\d+", line))
+    return numbered >= max(2, len(ranked_lines) - 1)
+
+
+def _is_locked_test_comparison(concept: dict, scenes_meta: list[dict], narration_lines: list[str]) -> bool:
+    if concept.get("format_strategy") == "ranked_actual_planets":
+        return True
+
+    title = str(concept.get("title") or "")
+    brief = str(concept.get("brief") or "")
+    text = f"{title} {brief}".lower()
+    comparison_signals = [
+        "ranked",
+        "which",
+        "every",
+        "how long",
+        "how hard",
+        "how far",
+        "how fast",
+        "how high",
+        "how deep",
+        "how much",
+        "how hot",
+        "how cold",
+        "by crater size",
+        "by force",
+        "from every",
+        "same object",
+        "same test",
+    ]
+    return _is_numbered_ranking(narration_lines) and (
+        any(signal in text for signal in comparison_signals) or bool(scenes_meta)
+    )
+
+
+def _is_ranked_actual_planets(concept: dict, scenes_meta: list[dict]) -> bool:
+    if concept.get("format_strategy") == "ranked_actual_planets" and scenes_meta:
+        return True
+    if not scenes_meta:
+        return False
+    required_keys = {"planet", "jump_label", "fact_label", "slug"}
+    return all(required_keys.issubset(set(scene.keys())) for scene in scenes_meta if isinstance(scene, dict))
+
+
+def _has_explicit_scene_plan(concept: dict, scenes_meta: list[dict], narration_lines: list[str]) -> bool:
+    if concept.get("format_strategy") == "ranked_actual_planets":
+        return False
+    if _is_locked_test_comparison(concept, scenes_meta, narration_lines):
+        return False
+    if not scenes_meta:
+        return False
+    return all(isinstance(scene, dict) and scene.get("image_prompt") for scene in scenes_meta)
+
+
+def _scene_meta_for_line_index(scenes_meta: list[dict], line_index: int, n_lines: int) -> dict:
+    if not scenes_meta:
+        return {}
+    if len(scenes_meta) == n_lines:
+        idx = line_index
+    elif len(scenes_meta) == max(1, n_lines - 1):
+        idx = max(0, line_index - 1)
+    else:
+        idx = min(line_index, len(scenes_meta) - 1)
+    return scenes_meta[idx] if 0 <= idx < len(scenes_meta) else {}
+
+
+def _extract_ranked_subject_name(line: str, fallback: str = "subject") -> str:
+    text = str(line or "").strip()
+    match = re.search(r"(?i)number\s+\d+\s*:\s*([^.\n]+)", text)
+    if match:
+        return match.group(1).strip()
+    first_sentence = text.split(".")[0].strip()
+    return first_sentence or fallback
+
+
+def _impact_mode_for_comparison(title: str, brief: str, narration_lines: list[str], scenes_meta: list[dict]) -> bool:
+    if _specimen_test_mode_for_comparison(title, brief, narration_lines, scenes_meta):
+        return False
+    if _pull_test_mode_for_comparison(title, brief, narration_lines, scenes_meta):
+        return False
+
+    blob = " ".join(
+        [
+            title,
+            brief,
+            *[str(line) for line in narration_lines],
+            *[
+                f"{scene.get('image_prompt', '')} {scene.get('video_prompt', '')}"
+                for scene in scenes_meta
+                if isinstance(scene, dict)
+            ],
+        ]
+    ).lower()
+    impact_terms = [
+        "hit",
+        "hits",
+        "hardest",
+        "impact",
+        "bite force",
+        "tail club",
+        "tail whip",
+        "slam",
+        "slams",
+        "smash",
+        "smashes",
+        "charge",
+        "ram",
+        "crater",
+        "force",
+        "shockwave",
+        "shatter",
+        "drops",
+        "dropping",
+        "stomp",
+        "kick",
+        "punch",
+    ]
+    return _is_locked_test_comparison({"title": title, "brief": brief}, scenes_meta, narration_lines) and any(
+        term in blob for term in impact_terms
+    )
+
+
+def _pull_test_mode_for_comparison(title: str, brief: str, narration_lines: list[str], scenes_meta: list[dict]) -> bool:
+    if not _is_locked_test_comparison({"title": title, "brief": brief}, scenes_meta, narration_lines):
+        return False
+
+    blob = " ".join(
+        [
+            title,
+            brief,
+            *[str(line) for line in narration_lines],
+            *[
+                f"{scene.get('image_prompt', '')} {scene.get('video_prompt', '')}"
+                for scene in scenes_meta
+                if isinstance(scene, dict)
+            ],
+        ]
+    ).lower()
+
+    pull_terms = [
+        "pull",
+        "pulls",
+        "pulling",
+        "drag",
+        "drags",
+        "dragging",
+        "tow",
+        "tows",
+        "towing",
+        "haul",
+        "hauls",
+        "hauling",
+    ]
+    load_terms = [
+        "truck",
+        "semi",
+        "trailer",
+        "car",
+        "cart",
+        "sled",
+        "wagon",
+        "crate",
+        "boat",
+        "ship",
+        "plane",
+        "jet",
+        "load",
+        "weight",
+    ]
+    rig_terms = [
+        "rope",
+        "harness",
+        "tow strap",
+        "tow line",
+        "chain",
+        "cable",
+        "hitch",
+    ]
+    has_pull_signal = any(term in blob for term in pull_terms)
+    has_load_signal = any(term in blob for term in load_terms)
+    has_rig_signal = any(term in blob for term in rig_terms)
+    return has_pull_signal and (has_load_signal or has_rig_signal)
+
+
+def _specimen_test_mode_for_comparison(title: str, brief: str, narration_lines: list[str], scenes_meta: list[dict]) -> bool:
+    if not _is_locked_test_comparison({"title": title, "brief": brief}, scenes_meta, narration_lines):
+        return False
+
+    blob = " ".join(
+        [
+            title,
+            brief,
+            *[str(line) for line in narration_lines],
+            *[
+                f"{scene.get('image_prompt', '')} {scene.get('video_prompt', '')}"
+                for scene in scenes_meta
+                if isinstance(scene, dict)
+            ],
+        ]
+    ).lower()
+
+    sample_shape_terms = [
+        "same block",
+        "same cube",
+        "same slab",
+        "same plate",
+        "same sheet",
+        "same rod",
+        "same bar",
+        "same beam",
+        "same panel",
+        "same tile",
+        "same sample",
+        "same object",
+        "same phone",
+        "same bottle",
+        "same cup",
+        "same pane",
+        "same material",
+        "same piece",
+        "identical block",
+        "identical sample",
+        "identical object",
+    ]
+    material_terms = [
+        "material",
+        "materials",
+        "metal",
+        "metals",
+        "wood",
+        "ice",
+        "glass",
+        "plastic",
+        "rubber",
+        "concrete",
+        "steel",
+        "aluminum",
+        "aluminium",
+        "titanium",
+        "tungsten",
+        "graphite",
+        "carbon",
+        "ceramic",
+        "stone",
+        "brick",
+        "foam",
+        "aerogel",
+        "copper",
+        "gold",
+        "silver",
+    ]
+    reaction_terms = [
+        "burn through",
+        "burns through",
+        "melt",
+        "melts",
+        "melting",
+        "melt through",
+        "dissolve",
+        "dissolves",
+        "dissolving",
+        "corrode",
+        "corrodes",
+        "corrosion",
+        "acid",
+        "lava",
+        "flame",
+        "fire",
+        "torch",
+        "plasma",
+        "laser",
+        "freeze",
+        "freezes",
+        "frozen",
+        "boil",
+        "boils",
+        "boiling",
+        "ignite",
+        "ignites",
+        "vaporize",
+        "vaporizes",
+        "soften",
+        "softens",
+        "warp",
+        "warps",
+        "buckle",
+        "buckles",
+        "crack",
+        "cracks",
+        "shatter",
+        "shatters",
+        "survive",
+        "survives",
+        "resist",
+        "resists",
+        "holds shape",
+        "solidifies",
+        "solidify",
+    ]
+
+    has_sample_signal = any(term in blob for term in sample_shape_terms) or sum(
+        1 for term in material_terms if term in blob
+    ) >= 2
+    has_reaction_signal = any(term in blob for term in reaction_terms)
+    return has_sample_signal and has_reaction_signal
+
+
+def _is_ballistic_liquid_test(title: str, brief: str, narration_lines: list[str]) -> bool:
+    blob = " ".join([title, brief, *[str(line) for line in narration_lines]]).lower()
+    bullet_terms = [
+        "bullet",
+        "bullets",
+        "9mm",
+        "ballistic",
+        "cavitation",
+        "stops a bullet",
+        "stop a bullet",
+    ]
+    liquid_terms = [
+        "liquid",
+        "liquids",
+        "water",
+        "honey",
+        "slurry",
+        "mercury",
+        "nitrogen",
+        "gel",
+        "gallium",
+    ]
+    return any(term in blob for term in bullet_terms) and any(term in blob for term in liquid_terms)
+
+
+def _is_vehicle_range_comparison(title: str, brief: str, narration_lines: list[str]) -> bool:
+    blob = " ".join([title, brief, *[str(line) for line in narration_lines]]).lower()
+    vehicle_terms = [
+        "vehicle",
+        "vehicles",
+        "car",
+        "cars",
+        "truck",
+        "semi",
+        "semi truck",
+        "prius",
+        "bugatti",
+        "tesla",
+        "boeing",
+        "747",
+        "plane",
+        "airplane",
+        "jet",
+        "ship",
+        "cargo ship",
+        "submarine",
+    ]
+    endurance_terms = [
+        "full tank",
+        "one full tank",
+        "one tank",
+        "full fuel load",
+        "full charge",
+        "range",
+        "running out of fuel",
+        "runs out of fuel",
+        "until empty",
+        "race to empty",
+        "before running out",
+        "how far",
+        "miles",
+        "mile",
+    ]
+    return any(term in blob for term in vehicle_terms) and any(term in blob for term in endurance_terms)
+
+
+def _vehicle_range_lane_text(subject: str) -> str:
+    blob = str(subject or "").lower()
+    if any(term in blob for term in ["boeing", "747", "plane", "airplane", "jet"]):
+        return "the runway-to-sky air corridor above the same start line"
+    if "submarine" in blob:
+        return "the underwater lane below the same origin point"
+    if "ship" in blob:
+        return "the ocean shipping lane tied to the same origin point"
+    return "the long straight road lane from the same start line"
+
+
+def _use_fresh_premise_scene_generation(
+    concept_type: str,
+    *,
+    is_ballistic_liquid_test: bool = False,
+) -> bool:
+    return (
+        concept_type in {"LOCKED_TEST", "PULL_TEST", "IMPACT"}
+        or (concept_type == "SPECIMEN_TEST" and not is_ballistic_liquid_test)
+    )
+
+
+def _ballistic_penetration_label(line: str) -> tuple[str, str]:
+    text = _ranked_line_result_text(line) or str(line or "").strip()
+    blob = text.lower()
+    inches_match = re.search(r"(\d+)\s*inches?", blob)
+    inches = int(inches_match.group(1)) if inches_match else None
+
+    exit_terms = ["still exits", "bullet exits", "exits", "laughs", "blows through", "goes through"]
+    exits = any(term in blob for term in exit_terms)
+
+    if inches is None:
+        return (
+            "the bullet path must clearly end at a visibly different depth than the other liquids",
+            "a visibly different penetration depth inside the same transparent tank",
+        )
+
+    depth_ratio = min(max(inches / 36.0, 0.0), 1.0)
+    if exits or depth_ratio >= 0.95:
+        depth_desc = (
+            f"the bullet has traveled essentially the full tank length, with a long cavitation tunnel and a violent exit burst at the far wall around {inches} inches"
+        )
+    elif depth_ratio >= 0.72:
+        depth_desc = (
+            f"the bullet has traveled deep into the final quarter of the tank, with its wake reaching about {inches} inches before the far wall"
+        )
+    elif depth_ratio >= 0.45:
+        depth_desc = (
+            f"the bullet is visibly stopped around the middle of the tank at about {inches} inches, with no far-side exit burst"
+        )
+    elif depth_ratio >= 0.2:
+        depth_desc = (
+            f"the bullet is visibly stopped within the first third of the tank at about {inches} inches, clearly far short of the far wall"
+        )
+    else:
+        depth_desc = (
+            f"the bullet is stopped very close to the entry side at about {inches} inches, with almost the whole tank still untouched"
+        )
+
+    if exits:
+        compare_desc = f"a longer through-shot that exits after roughly {inches} inches"
+    else:
+        compare_desc = f"a shorter stop depth of roughly {inches} inches inside the tank"
+    return depth_desc, compare_desc
+
+
+def _method_ladder_mode_for_comparison(title: str, brief: str, narration_lines: list[str], scenes_meta: list[dict]) -> bool:
+    blob = " ".join([title, brief, *[str(line) for line in narration_lines]]).lower()
+    method_terms = [
+        "shovel",
+        "drill",
+        "rig",
+        "machine",
+        "vehicle",
+        "contraption",
+        "submarine",
+        "suit",
+        "rocket",
+        "heat source",
+        "boil",
+        "reach",
+        "center of the earth",
+        "ocean crush",
+        "survive in",
+        "last in",
+        "get to",
+    ]
+    return _is_locked_test_comparison({"title": title, "brief": brief}, scenes_meta, narration_lines) and any(
+        term in blob for term in method_terms
+    )
+
+
+def _method_ladder_line_payload(line: str) -> tuple[str, str]:
+    text = str(line or "").strip()
+    parts = [part.strip() for part in text.split(".") if part.strip()]
+    if not parts:
+        return ("method", "")
+    method = parts[1] if len(parts) > 1 and re.search(r"(?i)^number\s+\d+\s*$", parts[0]) else parts[0]
+    outcome = ". ".join(parts[2:] if len(parts) > 2 and re.search(r"(?i)^number\s+\d+\s*$", parts[0]) else parts[1:])
+    return method.strip(), outcome.strip()
+
+
+def _ranked_line_result_text(line: str) -> str:
+    parts = [part.strip() for part in str(line or "").split(".") if part.strip()]
+    if len(parts) <= 1:
+        return ""
+    return ". ".join(parts[1:3]).strip()
+
+
+def _specimen_visual_reaction_text(line: str) -> str:
+    text = _ranked_line_result_text(line) or str(line or "").strip()
+    blob = text.lower()
+    if any(term in blob for term in ["under one second", "gone in under", "gone instantly", "near instant"]):
+        return "a violent steam burst and near-instant disappearance of most of the sample"
+    if any(term in blob for term in ["ignite", "thirty seconds to nothing", "burns through", "to nothing"]):
+        return "rapid ignition, black charring, cracking, and fast structural collapse"
+    if any(term in blob for term in ["two minutes", "lava wins", "softens", "deforms"]):
+        return "the block glowing orange, softening, rounding over, and visibly sagging under the sustained pour"
+    if any(term in blob for term in ["holds for several minutes", "holds for", "above most lava temps", "survives significantly longer"]):
+        return "the surface oxidizing and glowing while the block keeps most of its shape with only slow edge erosion"
+    if any(term in blob for term in ["solid rock on top", "lava lost", "slows", "cools", "barely reacts"]):
+        return "the lava stream slowing down and crusting into dark solid rock on top of an intact block while the block itself barely changes"
+    return text
+
+
+def _specimen_motion_change_text(line: str) -> str:
+    text = _ranked_line_result_text(line) or str(line or "").strip()
+    blob = text.lower()
+    if any(term in blob for term in ["under one second", "gone in under", "gone instantly", "near instant"]):
+        return "the sample flashing to steam, collapsing downward, and losing most of its visible mass almost immediately after contact"
+    if any(term in blob for term in ["ignite", "thirty seconds to nothing", "burns through", "to nothing"]):
+        return "the surface catching fire, blackening, cracking, and the block rapidly collapsing into ash and char while lava punches through"
+    if any(term in blob for term in ["two minutes", "lava wins", "softens", "deforms"]):
+        return "the block heating from dark to orange, edges rounding off, walls bowing, and the whole mass slowly slumping under the stream"
+    if any(term in blob for term in ["holds for several minutes", "holds for", "above most lava temps", "survives significantly longer"]):
+        return "the surface oxidizing, glowing, and shedding a little material while the block mostly keeps its square shape through the shot"
+    if any(term in blob for term in ["solid rock on top", "lava lost", "slows", "cools", "barely reacts"]):
+        return "a dark crust rapidly spreading across the top, the lava stream narrowing and thickening, and the block staying rigid while the lava hardens into rock"
+    return "the sample visibly changing under the hazard before the shot ends"
+
+
+def _impact_action_details(line: str, scene_meta: dict) -> tuple[str, str, str]:
+    hint_blob = f"{line} {scene_meta.get('image_prompt', '')} {scene_meta.get('video_prompt', '')}".lower()
+    if any(term in hint_blob for term in ["bite force", "bite", "jaw", "jaws"]):
+        return (
+            "lunging forward and clamping its jaws shut on the reinforced strike block",
+            "the metal block caves inward under the bite and shock dust bursts out around the teeth",
+            "lunges, bites down hard, keeps pressure on the plate, metal buckles and debris spits outward",
+        )
+    if any(term in hint_blob for term in ["tail club", "tail whip", "tail"]):
+        return (
+            "whipping its tail sideways into the force plate",
+            "the plate caves in and a circular shockwave kicks rubble and dust across the arena floor",
+            "winds the hips, swings the tail through the plate, the impact ring blooms outward, chunks of concrete spray",
+        )
+    if any(term in hint_blob for term in ["horn", "charge", "ram"]):
+        return (
+            "dropping its head and charging horn-first into the impact wall",
+            "the wall folds inward, sparks and debris explode out, and the test lane fills with dust",
+            "backs up, paws the ground, charges full speed, slams head-first into the wall, then skids through the debris cloud",
+        )
+    if any(term in hint_blob for term in ["stomp", "foot", "kick", "leg"]):
+        return (
+            "rearing up and hammering the test plate with one brutal stomp",
+            "the floor crater deepens instantly and the blast of dust ripples away from the point of contact",
+            "rears, slams a foot straight down into the plate, dust erupts, the crater widens, fragments bounce across frame",
+        )
+    return (
+        "slamming its full body weight into the impact plate",
+        "the plate buckles and a thick dust ring tears across the same test lane",
+        "surges forward and crashes into the plate, the whole rig recoils, dust and fragments explode into the air",
+    )
+
+
+def _impact_result_text(line: str) -> str:
+    return _ranked_line_result_text(line)
+
+
+def _pull_test_result_text(line: str) -> str:
+    return _ranked_line_result_text(line)
+
+
+def _pull_action_details(line: str) -> tuple[str, str, str]:
+    result_text = _pull_test_result_text(line)
+    blob = f"{line} {result_text}".lower()
+    if any(term in blob for term in ["doesn't even notice", "does not even notice", "laughs", "doesn't move", "does not move"]):
+        return (
+            "leaning into the same tow harness with everything it has while the line never fully tightens",
+            "the rope stays mostly slack and the truck does not move at all",
+            "leans hard into the harness, paws or braces for traction, but the tow line barely tightens and the truck stays completely still",
+        )
+    if any(term in blob for term in ["rocks once", "rocks", "twitches", "budges", "tiny budge"]):
+        return (
+            "digging in against the same tow line until it snaps taut for one hard yank",
+            "the truck jerks once, a wheel twitches, and then everything settles back down",
+            "surges into the harness, the rope goes fully tight, the truck jolts once with a visible wheel twitch, then stops again",
+        )
+    if any(term in blob for term in ["one inch", "1 inch", "it moved", "inches", "tiny roll", "barely moves"]):
+        return (
+            "straining continuously against the same tow line with full-body traction",
+            "the truck creeps forward a tiny amount, scraping the floor and leaving a short dust streak behind the tire",
+            "leans low, keeps the harness fully tight, claws or hooves digging in while the truck creeps forward a tiny visible amount",
+        )
+    if any(term in blob for term in ["rolls clean", "drags it clean", "drags it", "rolls", "moves it clean", "full drag"]):
+        return (
+            "powering forward with the same tow harness fully loaded",
+            "the truck wheels roll clearly and the whole truck starts following behind under steady pull",
+            "explodes into the pull, the tow line stays bar-tight, the tires begin rolling, and the whole truck follows behind in one continuous drag",
+        )
+    return (
+        "throwing its weight into the same tow harness on the same traction lane",
+        "the tow line tightens and the truck movement changes in a visibly measurable way",
+        "leans into the harness, the tow line snaps tight, traction debris kicks up, and the truck response is clearly visible in frame",
+    )
+
+
+def _default_specimen_test_plan(title: str, brief: str) -> dict[str, str]:
+    _subject = (brief or title or "the comparison").strip()
+    if _is_ballistic_liquid_test(title, brief, []):
+        return {
+            "sample_shape": "long transparent rectangular ballistic lane filled with one liquid, like a narrow swimming-pool lane section with repeating one-foot floor segments",
+            "rig": "a locked industrial ballistic lab with the same rifle mount, the same long transparent pool-lane-style tank, visible repeating floor segments for scale, and the same high-speed full side camera",
+            "test_action": "the same rifle fires one round horizontally through the center of the long transparent liquid lane from the same distance every time, with the whole lane visible from entry side to far wall",
+            "hook_frame": f"the untouched long transparent pool-lane-style ballistic tank is mounted in the rig before the shot begins for {_subject}",
+        }
+    return {
+        "sample_shape": "oversized industrial test block",
+        "rig": "a large controlled industrial materials-test bay with one fixed applicator aimed at a heavy refractory platform",
+        "test_action": "the same test source engages the center of the mounted sample from the same angle every time",
+        "hook_frame": f"the untouched baseline sample is mounted in the rig before the test begins for {_subject}",
+    }
+
+
+def _specimen_test_uses_host(title: str, brief: str, narration_lines: list[str]) -> bool:
+    blob = " ".join([title, brief, *[str(line) for line in narration_lines]]).lower()
+    host_needed_patterns = [
+        r"\byou\b",
+        r"\byour\b",
+        r"\bperson\b",
+        r"\bhuman\b",
+        r"\bbody\b",
+        r"\bhand\b",
+        r"\bhands\b",
+        r"\bwear\b",
+        r"\bfit\b",
+        r"\bcarry\b",
+        r"\bcan you\b",
+        r"\bwould you\b",
+        r"\bhow long could you\b",
+    ]
+    return any(re.search(pattern, blob) for pattern in host_needed_patterns)
+
+
+def _infer_specimen_test_plan(title: str, brief: str, narration_lines: list[str]) -> dict[str, str]:
+    from packages.clients.claude import generate as claude_generate
+
+    if _is_ballistic_liquid_test(title, brief, narration_lines):
+        return {
+            "sample_shape": "long transparent rectangular ballistic lane filled with one liquid, like a narrow swimming-pool lane section with repeating one-foot floor segments",
+            "rig": "a locked industrial ballistic lab with the same rifle mount, the same long transparent pool-lane-style tank, visible repeating floor segments for scale, and the same high-speed full side camera",
+            "test_action": "the same rifle fires one round horizontally through the center of the long transparent liquid lane from the same distance every time, with the whole lane visible from entry side to far wall",
+            "hook_frame": "the untouched long transparent pool-lane-style ballistic tank is mounted in the rig with the rifle aimed at the near face before the shot",
+        }
+
+    default_plan = _default_specimen_test_plan(title, brief)
+    resp = claude_generate(
+        prompt=f"""Design the repeated visual experiment for this Hardcore Ranked concept.
+
+CONCEPT TITLE: {title}
+BRIEF: {brief}
+NARRATION:
+{chr(10).join(f"- {line}" for line in narration_lines)}
+
+Return ONLY JSON with these exact keys:
+{{
+  "sample_shape": "short noun phrase for one standardized test sample geometry",
+  "rig": "short noun phrase for the constant apparatus and environment",
+  "test_action": "one sentence describing the constant process or hazard applied to the sample",
+  "hook_frame": "one sentence describing the opening untouched baseline frame"
+}}
+
+RULES:
+- Infer the most natural repeated experiment from the concept.
+- Same rig, same camera, same sample geometry every time.
+- Bias toward a LARGE industrial-scale experiment with an oversized sample and very obvious visible reactions unless the concept specifically needs something tiny.
+- If comparing materials or substances, use identical blocks, plates, panels, rods, or another obvious standardized sample shape. Do NOT use humanoid figures.
+- Never use a person-shaped dummy unless the concept is explicitly about bodies or mannequins.
+- Make the apparatus visually obvious and physically believable.
+- Keep the answer compact and concrete.
+""",
+        max_tokens=300,
+    )
+
+    match = re.search(r"\{.*\}", resp, re.DOTALL)
+    if not match:
+        return default_plan
+
+    try:
+        parsed = json.loads(match.group())
+    except json.JSONDecodeError:
+        return default_plan
+
+    plan = dict(default_plan)
+    for key in ("sample_shape", "rig", "test_action", "hook_frame"):
+        value = str(parsed.get(key) or "").strip()
+        if value:
+            plan[key] = value.rstrip(". ")
+    return plan
 
 
 async def build_hardcore_ranked(run_id: int, concept: dict, output_dir: str, _update_step, db_url: str):
     """Full Hardcore Ranked video build."""
-    from packages.clients.grok import generate_image_dalle_async, generate_video_async
+    from packages.clients.grok import generate_image_dalle_async
 
     title = concept.get("title", "Untitled")
     narration_lines = concept.get("narration", [])
+    scenes_meta = concept.get("scenes") if isinstance(concept.get("scenes"), list) else []
+    is_planet_jump_format = _is_ranked_actual_planets(concept, scenes_meta)
+    video_provider = str(concept.get("video_provider") or get_channel_video_provider(CHANNEL_ID)).strip().lower()
+    video_model = concept.get("video_model") or get_channel_video_model(CHANNEL_ID)
+    video_resolution = concept.get("video_resolution") or get_channel_video_resolution(CHANNEL_ID)
 
     narr_dir = os.path.join(output_dir, "narration")
     images_dir = os.path.join(output_dir, "images")
@@ -97,7 +1073,7 @@ KEY FACTS: {key_facts}
 
 THE FORMAT:
 - Line 1 MUST state the topic as a neutral question: "How fast can you swim across a pool in every liquid?" or "How long does each material take to melt in the sun?" — this IS the title. Shorts viewers don't see video titles.
-- NEVER name the test-subject character — no "frog", no "frog guy", no nickname. If a human subject is needed, refer to generic "you" / "a person" / "the test subject".
+- NEVER name the test-subject character — no frog, no skeleton, no mascot name, no goofy label. If a subject is needed, say "you" / "a person" / "the test subject".
 - Line 2 onwards: NUMBERED ranked list. Each line starts with the rank number. Example:
   - "Number 1: Water. Four seconds. Built for this."
   - "Number 2: Honey. Three hours. Basically a statue."
@@ -110,7 +1086,7 @@ THE FORMAT:
 - The SAME ACTION is performed in every scene — only the VARIABLE changes
 - Start with the most normal, escalate to the most insane
 - The LAST item should be absurd and break the format (explosion, launch into space, instant destruction)
-- 6-8 narration lines, ~20-30 seconds. SHORTER IS BETTER.
+- 6-8 narration lines, target ~25 seconds. Stay under 30 when possible. SHORTER IS BETTER.
 - Each line = one scene, each under 15 words. ONE variable per line, no exceptions.
 - Include specific numbers/facts for each item — the numbers ARE the comparison
 
@@ -129,156 +1105,635 @@ Return ONLY a JSON object:
         if not narration_lines:
             raise ValueError("Failed to generate narration script")
 
+    title = _normalize_viewer_subject_text(title)
+    narration_lines = [_normalize_viewer_subject_text(line) for line in narration_lines]
+
     n_lines = len(narration_lines)
+    is_locked_test_comparison = _is_locked_test_comparison(concept, scenes_meta, narration_lines)
+    is_method_ladder = _method_ladder_mode_for_comparison(title, concept.get("brief", ""), narration_lines, scenes_meta)
+    is_specimen_test = _specimen_test_mode_for_comparison(title, concept.get("brief", ""), narration_lines, scenes_meta)
+    is_pull_test = _pull_test_mode_for_comparison(title, concept.get("brief", ""), narration_lines, scenes_meta)
+    is_impact_comparison = _impact_mode_for_comparison(title, concept.get("brief", ""), narration_lines, scenes_meta)
+    has_explicit_scene_plan = _has_explicit_scene_plan(concept, scenes_meta, narration_lines)
+    specimen_test_plan: dict[str, str] | None = None
+    specimen_test_use_host = False
+
+    explicit_image_prompts: list[str] = []
+    explicit_video_prompts: list[str] = []
+    explicit_scene_prompts_for_lines: list[str] = []
+    explicit_video_prompts_for_lines: list[str] = []
+    if has_explicit_scene_plan:
+        explicit_image_prompts = [str(scene.get("image_prompt", "")).strip() for scene in scenes_meta]
+        explicit_video_prompts = [str(scene.get("video_prompt", "")).strip() for scene in scenes_meta]
+        if len(explicit_image_prompts) == n_lines:
+            explicit_scene_prompts_for_lines = explicit_image_prompts[:]
+            explicit_video_prompts_for_lines = explicit_video_prompts[:]
+        elif len(explicit_image_prompts) == max(1, n_lines - 1):
+            explicit_scene_prompts_for_lines = [explicit_image_prompts[0], *explicit_image_prompts]
+            explicit_video_prompts_for_lines = [explicit_video_prompts[0], *explicit_video_prompts]
+        else:
+            explicit_scene_prompts_for_lines = explicit_image_prompts[:n_lines]
+            explicit_video_prompts_for_lines = explicit_video_prompts[:n_lines]
+        while len(explicit_scene_prompts_for_lines) < n_lines and explicit_scene_prompts_for_lines:
+            explicit_scene_prompts_for_lines.append(explicit_scene_prompts_for_lines[-1])
+        while len(explicit_video_prompts_for_lines) < n_lines and explicit_video_prompts_for_lines:
+            explicit_video_prompts_for_lines.append(explicit_video_prompts_for_lines[-1])
+        explicit_scene_prompts_for_lines = [_normalize_explicit_scene_prompt(p) for p in explicit_scene_prompts_for_lines]
+        explicit_video_prompts_for_lines = [_normalize_explicit_video_prompt(p) for p in explicit_video_prompts_for_lines]
 
     # ─── STEP 2: Narration (shared) ───
     await _update_step("generating narration")
-    all_word_data = await generate_narration_with_timestamps(
+    await generate_narration_with_timestamps(
         narration_lines, narr_dir, output_dir, VOICE_ID, _update_step,
     )
 
-    # ─── STEP 3: Image prompts (shared + channel rules) ───
-    brief = concept.get("brief", "")
-    extra_rules = f"\n\nCONCEPT-SPECIFIC INSTRUCTIONS:\n{brief}" if brief else ""
-    image_prompts = await generate_image_prompts(narration_lines, IMAGE_RULES + extra_rules, _update_step)
-
-    # ─── STEP 4: Generate base scene → edit per liquid → animate ───
-    await _update_step("generating base scene")
-    import shutil
     from openai import AsyncOpenAI
     edit_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"), timeout=120.0)
 
-    # Determine concept type so we pick the right base scene + scene-change strategy
-    from packages.clients.claude import generate as claude_gen_base
-    concept_type_resp = claude_gen_base(
-        prompt=f"""Classify this Hardcore Ranked concept into ONE category:
+    # ─── STEP 3: Build concept-specific skeleton variant ───
+    brief = concept.get("brief", "")
+    is_ballistic_liquid_test = _is_ballistic_liquid_test(title, brief, narration_lines)
+    is_vehicle_range_test = _is_vehicle_range_comparison(title, brief, narration_lines)
+    character_variant = concept.get("character_variant") if isinstance(concept.get("character_variant"), dict) else None
+    character_ref_path = ""
+    if not has_explicit_scene_plan:
+        if not character_variant:
+            await _update_step("designing character variant")
+            character_variant = _heuristic_character_variant(title, brief)
+        concept["character_variant"] = character_variant
+        variant_path = os.path.join(output_dir, "character_variant.json")
+        with open(variant_path, "w") as vf:
+            json.dump(character_variant, vf, indent=2)
+
+        base_character_ref = await _ensure_base_character_reference(edit_client)
+        character_ref_path = await _build_character_variant_ref(
+            edit_client,
+            base_character_ref,
+            character_variant,
+            os.path.join(output_dir, "character_variant_ref.png"),
+            title,
+        )
+
+    # ─── STEP 4: Image prompts (shared + channel rules) ───
+    extra_rules = f"\n\nCONCEPT-SPECIFIC INSTRUCTIONS:\n{brief}" if brief else ""
+    if has_explicit_scene_plan or is_planet_jump_format:
+        image_prompts = []
+    else:
+        image_prompts = await generate_image_prompts(
+            narration_lines,
+            IMAGE_RULES + _variant_rules_text(character_variant) + extra_rules,
+            _update_step,
+        )
+
+    manual_planet_refs: dict[str, str] = {}
+    if is_planet_jump_format:
+        for scene in scenes_meta:
+            slug = str(scene.get("slug") or "").strip().lower()
+            if slug:
+                ref_path = _manual_planet_ref(slug)
+                if ref_path:
+                    manual_planet_refs[slug] = ref_path
+        logger.info(
+            "manual planet refs discovered",
+            found=sorted(manual_planet_refs.keys()),
+            expected=[str(scene.get("slug")) for scene in scenes_meta],
+        )
+    use_manual_planet_refs = is_planet_jump_format and len(manual_planet_refs) == len(scenes_meta)
+    if use_manual_planet_refs:
+        variant_ref_dir = os.path.join(output_dir, "variant_world_refs")
+        os.makedirs(variant_ref_dir, exist_ok=True)
+        adapted_refs: dict[str, str] = {}
+        for scene in scenes_meta:
+            slug = str(scene.get("slug") or "").strip().lower()
+            source_ref = manual_planet_refs.get(slug)
+            if not source_ref:
+                continue
+            adapted_refs[slug] = await _adapt_manual_world_ref_for_variant(
+                edit_client,
+                source_ref,
+                character_variant,
+                os.path.join(variant_ref_dir, f"{slug}_variant.png"),
+                scene.get("planet", slug.title()),
+            )
+        if len(adapted_refs) == len(scenes_meta):
+            manual_planet_refs = adapted_refs
+            logger.info("using variant-adapted approved world refs", slugs=sorted(adapted_refs.keys()))
+
+    # ─── STEP 5: Generate base scene → edit per liquid → animate ───
+    if has_explicit_scene_plan:
+        pending_scene_indices = [
+            i for i in range(n_lines)
+            if not os.path.exists(os.path.join(images_dir, f"scene_{i:02d}.png"))
+        ]
+        total_pending_scenes = len(pending_scene_indices)
+        if total_pending_scenes:
+            await _update_step(f"generating scene image 1/{total_pending_scenes}")
+        else:
+            await _update_step("generating scene images")
+        generated_scene_counter = 0
+        for i in range(n_lines):
+            img_path = os.path.join(images_dir, f"scene_{i:02d}.png")
+            if os.path.exists(img_path):
+                continue
+            generated_scene_counter += 1
+            await _update_step(f"generating scene image {generated_scene_counter}/{total_pending_scenes}")
+            prompt = explicit_scene_prompts_for_lines[i]
+            await generate_image_dalle_async(
+                prompt=prompt,
+                output_path=img_path,
+                size="1024x1536",
+            )
+            logger.info("explicit scene image generated", scene=i, prompt=prompt[:120])
+        base_scene_path = os.path.join(images_dir, "scene_00.png")
+        edit_prompts = explicit_scene_prompts_for_lines
+        concept_type = "EXPLICIT"
+    else:
+        total_pending_scenes = 0
+        if not os.path.exists(os.path.join(images_dir, "scene_00.png")):
+            total_pending_scenes += 1
+        total_pending_scenes += sum(
+            1 for i in range(1, n_lines)
+            if not os.path.exists(os.path.join(images_dir, f"scene_{i:02d}.png"))
+        )
+        generated_scene_counter = 0
+        if total_pending_scenes:
+            await _update_step(f"generating scene image 1/{total_pending_scenes}")
+        else:
+            await _update_step("generating base scene")
+
+        # Determine concept type so we pick the right base scene + scene-change strategy
+        concept_type = "MOTION" if is_planet_jump_format else None
+        if not concept_type and is_method_ladder:
+            concept_type = "LOCKED_TEST"
+        if not concept_type and is_specimen_test:
+            concept_type = "SPECIMEN_TEST"
+        if not concept_type and is_pull_test:
+            concept_type = "PULL_TEST"
+        if not concept_type and is_impact_comparison:
+            concept_type = "IMPACT"
+        if not concept_type:
+            from packages.clients.claude import generate as claude_gen_base
+            concept_type_resp = claude_gen_base(
+            prompt=f"""Classify this Hardcore Ranked concept into ONE category:
 
 CONCEPT: {title}
+BRIEF: {concept.get("brief", "")}
+NARRATION:
+{chr(10).join(f"- {line}" for line in narration_lines)}
 
 CATEGORIES:
 - "MOTION" — comparing terrain/condition where character physically moves (run, swim, roll, jump, race). The SETTING is the constant, the SURFACE/MEDIUM changes per scene.
 - "EQUIPMENT" — comparing tools/methods (cook with X, build with Y, cut with Z). The CHARACTER ACTION stays similar, the TOOL changes per scene.
 - "CONDITION" — comparing extreme environments or states (survive at X temperature, perform at Y pressure). The CHARACTER is in varying environments.
+- "SPECIMEN_TEST" — one standardized sample/object is exposed to the SAME hazard/process every time. The SAMPLE SHAPE and TEST LOGIC stay constant; framing can move if needed, but the same experiment must still be obvious.
+- "PULL_TEST" — the SAME towing or traction premise repeats every time. The SAME load and same pull test stay obvious; camera and framing can shift if needed, but the viewer must instantly understand it's still the same tow comparison.
+- "IMPACT" — comparing how hard different subjects hit, bite, smash, crash, stomp, drop, or create damage. The SAME impact-test premise stays obvious, but the shot can reframe to make the moment clearer.
 - "QUANTITY" — comparing amounts/scales (how many X can fit in Y, how much Z is too much).
 
 Return ONLY the category name, nothing else.""",
-        max_tokens=20,
-    )
-    concept_type = concept_type_resp.strip().upper().strip('"').split()[0] if concept_type_resp else "MOTION"
-    logger.info("concept type classified", type=concept_type)
+            max_tokens=20,
+            )
+            concept_type = concept_type_resp.strip().upper().strip('"').split()[0] if concept_type_resp else "MOTION"
+        if concept_type in {"SPECIMEN", "SAMPLE", "SAMPLE_TEST", "MATERIAL_TEST"}:
+            concept_type = "SPECIMEN_TEST"
+        if concept_type in {"PULL", "PULLING", "TRACTION", "TOW", "TUG", "TOW_TEST", "TRACTION_TEST"}:
+            concept_type = "PULL_TEST"
+        logger.info("concept type classified", type=concept_type)
 
-    brief = concept.get("brief", "")
-    if brief:
-        _base_text = brief
-        for _marker in ['For edits', 'For every edit', 'For animation', 'For each edit']:
-            _base_text = _base_text.split(_marker)[0]
-        _character_desc = "The character is a HUMAN-SIZED PERSON in a green frog-themed astronaut suit with a frog-shaped helmet — NOT an actual frog, NOT a cartoon frog, a HUMAN wearing a frog costume."
-        if concept_type == "MOTION":
-            _camera = "CAMERA: Behind-view, looking over the character's shoulder down the path/slope/track ahead. Like a TV camera behind a starting line."
-        elif concept_type == "EQUIPMENT":
-            _camera = "CAMERA: Side or three-quarter view showing the character interacting with the equipment/tool and the subject of the experiment clearly visible. The setting should match the activity (kitchen, workbench, outdoors, etc.)."
-        elif concept_type == "CONDITION":
-            _camera = "CAMERA: Wide or medium shot showing the character IN the extreme environment, with clear visual cues of the condition (temperature extremes, pressure, etc.)."
+        brief = concept.get("brief", "")
+        if use_manual_planet_refs:
+            base_prompt = "Approved manual Earth grounded reference."
+        elif is_planet_jump_format:
+            first_scene = scenes_meta[0]
+            variant_traits = "; ".join(character_variant.get("traits") or [])
+            base_prompt = (
+            "Photorealistic. SINGLE IMAGE only — NOT a comic panel, NOT a chart, NOT multiple panels. "
+            "Strict side-view full-body comparison shot. The human-sized googly-eyed skeleton character stands ON THE GROUND "
+            "with both feet planted flat beside a striped measurement mast and a silver research lander used for scale. "
+            "The body pose is neutral and grounded, with no crouch, no leap, no floating, and no hero-angle exaggeration. "
+            f"Keep these concept-specific accessories consistent: {variant_traits}. "
+            f"Actual {first_scene.get('planet', 'Earth')} environment: {first_scene.get('environment', 'open rocky plain')}. "
+            "The character is in a grounded pre-jump stance, ready to jump but NOT airborne. "
+            "Keep the mast and lander visible in the same frame for scale. "
+            "This is a static scientific measurement setup before the jump begins. NO text anywhere."
+            )
+        elif concept_type == "IMPACT":
+            variant_traits = "; ".join(character_variant.get("traits") or [])
+            base_prompt = (
+            "Photorealistic. SINGLE IMAGE only — NOT a comic panel, NOT a cartoon poster, NOT a game splash screen. "
+            "Locked scientific impact-test arena. Same side three-quarter camera on a reinforced strike wall and pressure plate in the center of frame. "
+            "A protected blast-shield booth sits at the left edge with the human-sized googly-eyed skeleton host visible for scale, wearing "
+            f"{variant_traits or 'simple protective observer gear'}. "
+            "The lane markings, dust lane, debris berm, and test rig never change. "
+            "This is a neutral pre-impact setup waiting for the ranked subject to hit the exact same target. "
+            "Paleo-accurate / physically believable if a creature appears. No chibi faces, no cartoon game-art exaggeration, no stadium crowd, no text anywhere."
+            )
+        elif concept_type == "PULL_TEST":
+            base_prompt = (
+            "Photorealistic. SINGLE IMAGE only — NOT a comic panel, NOT a cartoon poster, NOT a game splash screen. "
+            "Locked scientific traction-test lane. Same side three-quarter camera on a full-size semi truck or heavy industrial load attached to one fixed hitch and tow line in the center-right of frame. "
+            "The lane markings, tow line, dust lane, truck position, hitch point, and wheel alignment never change. "
+            "This is a neutral pre-pull setup waiting for the ranked subject to pull the exact same load from the exact same starting point. "
+            "Keep the full truck, hitch, and rope readable in one frame so the experiment is instantly obvious. "
+            "No crash wall, no impact plate, no stadium crowd, no text anywhere."
+            )
+        elif concept_type == "SPECIMEN_TEST":
+            specimen_test_plan = _infer_specimen_test_plan(title, brief, narration_lines)
+            specimen_test_use_host = _specimen_test_uses_host(title, brief, narration_lines)
+            variant_traits = "; ".join(character_variant.get("traits") or [])
+            _host_clause = (
+                f"A protected observation or control position at the edge shows the human-sized googly-eyed skeleton host actively operating or monitoring the rig, wearing {variant_traits or 'simple protective operator gear'}. "
+                if specimen_test_use_host
+                else ""
+            )
+            base_prompt = (
+            "Photorealistic. SINGLE IMAGE only — NOT a comic panel, NOT a poster, NOT a montage, NOT multiple panels. "
+            f"Locked LARGE-SCALE scientific specimen-test rig. Same side three-quarter camera on {specimen_test_plan['rig']}. "
+            f"At the center sits ONLY ONE standardized {specimen_test_plan['sample_shape']}, mounted in the same holder and orientation every time. "
+            "Do NOT show a lineup, shelf, array, or multiple comparison samples at once. One active test sample only. "
+            "Do NOT turn the tested sample into a humanoid dummy, creature, or random sculpture. "
+            f"The opening frame should show this baseline clearly: {specimen_test_plan['hook_frame']}. "
+            f"The repeated test action for later scenes is: {specimen_test_plan['test_action']}. "
+            "This should feel like a BIG industrial destruction test, not a tiny countertop demo. Make the sample and lava effects large, dramatic, and easy to read. "
+            "Keep the holder, platform, applicator, and reaction zone readable in one frame so the viewer instantly understands the experiment. "
+            "Do not include clocks, timers, readouts, labels, numbers, control-panel text, captions, or any other readable markings anywhere in frame. "
+            f"{_host_clause}"
+            "No text anywhere."
+            )
+        elif concept_type == "LOCKED_TEST":
+            variant_traits = "; ".join(character_variant.get("traits") or [])
+            _base_text = brief or title
+            if is_vehicle_range_test:
+                base_prompt = (
+                "Photorealistic. SINGLE IMAGE only — NOT a poster, NOT a montage, NOT multiple panels. "
+                "Shared endurance-comparison proving ground for how far different vehicles get from ONE clearly visible zero-mile starting point before running empty. "
+                "Show one neutral comparison world with the same start gantry and the same distance-marker system for every scene: a long straight highway lane on the surface, "
+                "a runway and air corridor above it, an ocean shipping lane tied to the same origin, and an underwater lane below it. "
+                "The point is instant readability of DISTANCE FROM THE SAME START, not an impossible destination, pit, or drill shaft. "
+                "Use repeating UNLABELED marker pylons or progress gates so short-range and long-range vehicles read differently at a glance. "
+                "Do not put any readable numbers, mileage labels, words, or signs on those markers. "
+                f"The human-sized googly-eyed skeleton driver/test subject stands at the start gantry for scale, wearing {variant_traits or 'simple test gear'}. "
+                f"The concept is: {_base_text.strip()}. "
+                "This hook frame is the neutral overview of the same start line and comparison world before any ranked vehicle launches. "
+                "No drill rig, no bore hole, no vertical shaft, no random industrial pit, no text anywhere."
+                )
+            else:
+                base_prompt = (
+                "Photorealistic. SINGLE IMAGE only — NOT a poster, NOT a montage, NOT multiple panels. "
+                "Scientific comparison setup for one impossible destination or challenge. "
+                "Establish one clear starting point or entry point that every attempt begins from. "
+                "Present it as a CONTROLLED industrial test site, not a raw dangerous cliff edge or open death pit. "
+                "Use reinforced flooring, safety rails, machine housings, access ladders, warning stripes, or a sealed drill collar so the setup reads like a managed experiment. "
+                "The setting should match the challenge naturally: underground/center-of-Earth drilling should start from a land-based industrial drilling yard or reinforced bore site, not a random offshore rig unless the concept explicitly requires ocean water. "
+                f"The human-sized googly-eyed skeleton host stays at the same observation position for scale, wearing {variant_traits or 'simple test gear'}. "
+                f"The concept is: {_base_text.strip()}. "
+                "The world and challenge stay the same in every scene, but later scenes are allowed to follow the machine or method farther into the challenge. "
+                "Examples: a giant vertical cutaway drill shaft, a deep-ocean pressure chamber lane, a furnace tunnel, a vacuum chamber, or a controlled survival rig. "
+                "The hook frame should clearly show the surface starting point or experiment entrance where every attempt begins, with the machine origin and safety structure visible. "
+                "This base frame is the neutral setup before any ranked method starts. No text anywhere."
+                )
+        elif brief:
+            _base_text = brief
+            for _marker in ['For edits', 'For every edit', 'For animation', 'For each edit']:
+                _base_text = _base_text.split(_marker)[0]
+            _character_desc = (
+            "The character is a HUMAN-SIZED glossy ivory-plastic skeleton with oversized googly eyes, a grinning skull face, upright human posture, "
+            "and the same core face/body from the reference image. "
+            f"Add these consistent variant traits: {'; '.join(character_variant.get('traits') or [])}."
+            )
+            if concept_type == "MOTION":
+                _camera = "CAMERA: Behind-view, looking over the character's shoulder down the path/slope/track ahead. Like a TV camera behind a starting line."
+            elif concept_type == "LOCKED_TEST":
+                _camera = (
+                    "CAMERA: Side-view or cutaway science-comparison shot anchored to one clear starting point. "
+                    "The same destination, chamber, shaft, furnace, vacuum rig, or test lane stays consistent in every scene, "
+                    "but later scenes may follow the method deeper while still showing that it began from the same place."
+                )
+            elif concept_type == "IMPACT":
+                _camera = (
+                    "CAMERA: Locked side three-quarter scientific test-arena view. Same strike wall or pressure plate centered in frame, "
+                    "same protected observation booth with the googly-eyed skeleton host off to one side for scale, same floor markings, same dust lane."
+                )
+            elif concept_type == "PULL_TEST":
+                _camera = (
+                    "CAMERA: Locked side three-quarter traction-test view. Same truck or heavy load, same hitch point, same tow line lane, same floor markings, same frame. "
+                    "The full pulling setup must stay readable so the viewer instantly understands the experiment."
+                )
+            elif concept_type == "EQUIPMENT":
+                _camera = "CAMERA: Side or three-quarter view showing the character interacting with the equipment/tool and the subject of the experiment clearly visible. The setting should match the activity (kitchen, workbench, outdoors, etc.)."
+            elif concept_type == "CONDITION":
+                _camera = "CAMERA: Wide or medium shot showing the character IN the extreme environment, with clear visual cues of the condition (temperature extremes, pressure, etc.)."
+            else:
+                _camera = "CAMERA: Wide shot showing the character and the quantity/scale being measured clearly."
+            base_prompt = f"Photorealistic. SINGLE IMAGE only — NOT a comic panel layout, NOT multiple panels, NOT a grid. One continuous scene. {_camera} {_character_desc} {_base_text.strip()} NO text anywhere. ONE single frame only."
         else:
-            _camera = "CAMERA: Wide shot showing the character and the quantity/scale being measured clearly."
-        base_prompt = f"Photorealistic. SINGLE IMAGE only — NOT a comic panel layout, NOT multiple panels, NOT a grid. One continuous scene. {_camera} {_character_desc} {_base_text.strip()} NO text anywhere. ONE single frame only."
-    else:
-        base_prompt_resp = claude_gen_base(
+            base_prompt_resp = claude_gen_base(
             prompt=f"""Based on this concept, describe the BASE SCENE for the comparison.
 
 CONCEPT: {title}
 CONCEPT TYPE: {concept_type}
 
-THE CHARACTER: A HUMAN-SIZED PERSON wearing a green frog-themed astronaut suit with a frog-shaped helmet. NOT an actual frog. A human in a frog costume.
+THE CHARACTER: A human-sized glossy ivory-plastic skeleton with oversized googly eyes, a grinning skull face, upright human posture, and the same core face/body from the reference image.
+CONCEPT-SPECIFIC VARIANT TRAITS: {'; '.join(character_variant.get("traits") or [])}
 
 CAMERA + SETTING based on concept type:
 - MOTION (races, jumps, rolls): Camera BEHIND character, looking down a track/path/slope. Starting-line energy.
+- LOCKED_TEST (one impossible destination/challenge, different methods): one shared premise and starting point. Framing can move if that makes progress clearer, but the same challenge/origin must stay obvious.
+- SPECIMEN_TEST (same hazard, same sample shape, different materials/results): the same test logic, sample shape, and hazard remain clear. Framing can tighten or widen if needed, but it must still read as the same experiment.
+- PULL_TEST (same load, different pullers): the same towing premise, load, and pull result remain clear. Camera can shift if needed, but the tow comparison must stay instantly readable.
+- IMPACT (hits, smashes, bites, drops): the same impact-test premise and target remain clear. Camera can reframe the hit if needed, but the test should still feel like one comparison world.
 - EQUIPMENT (cooking, building, testing tools): Side or three-quarter view. Setting matches the activity (kitchen for cooking, workbench for building, lab for testing). Tools/equipment clearly visible.
 - CONDITION (surviving extremes, temperatures): Character IN the environment, wide/medium shot. Environmental cues visible.
 - QUANTITY (how much fits, how many): Wide shot showing scale clearly.
 
-ACTION: The character must be MID-ACTION performing the specific activity from the title. Not standing still.
+ACTION: The scene must show the test about to happen or already happening. Not a static portrait.
 
 Start with "Photorealistic." End with "NO text anywhere."
 Return ONLY the prompt.""",
             max_tokens=300,
-        )
-        base_prompt = base_prompt_resp.strip().strip('"')
-    logger.info("base prompt", prompt=base_prompt[:100])
+            )
+            base_prompt = base_prompt_resp.strip().strip('"')
+        logger.info("base prompt", prompt=base_prompt[:100])
 
-    base_scene_path = os.path.join(images_dir, "base_scene.png")
-    if not os.path.exists(base_scene_path):
-        # Use frog reference image as input for consistent character
-        if os.path.exists(FROG_REF):
-            frog_file = open(FROG_REF, "rb")
-            try:
-                resp = await edit_client.images.edit(
-                    model="gpt-image-1.5",
+        base_scene_path = os.path.join(images_dir, "base_scene.png")
+        use_character_ref_for_base = os.path.exists(character_ref_path)
+        if concept_type == "SPECIMEN_TEST" and not specimen_test_use_host:
+            use_character_ref_for_base = False
+        if concept_type == "PULL_TEST":
+            use_character_ref_for_base = False
+        if use_manual_planet_refs:
+            earth_ref = manual_planet_refs.get("earth")
+            if not earth_ref:
+                raise RuntimeError("Missing approved manual Earth grounded reference for Hardcore Ranked planet format")
+            shutil.copy2(earth_ref, base_scene_path)
+            logger.info("using approved manual grounded Earth reference as base scene", path=earth_ref)
+        elif not os.path.exists(base_scene_path):
+            generated_scene_counter += 1
+            await _update_step(f"generating scene image {generated_scene_counter}/{total_pending_scenes}")
+            # Use character reference image as input for consistent character
+            if use_character_ref_for_base:
+                frog_file = open(character_ref_path, "rb")
+                try:
+                    resp = await edit_client.images.edit(
+                    model=OPENAI_IMAGE_MODEL,
                     image=frog_file,
                     prompt=f"Place this exact character into the scene. {base_prompt}",
-                    size="1024x1536",
-                    quality="medium",
-                    input_fidelity="high",
-                )
-                frog_file.close()
-                if resp.data and resp.data[0].b64_json:
-                    img_data = base64.b64decode(resp.data[0].b64_json)
-                    with open(base_scene_path, "wb") as f:
-                        f.write(img_data)
-            except Exception as e:
-                try: frog_file.close()
-                except: pass
-                logger.warning("frog ref edit failed, generating fresh", error=str(e)[:80])
+                    **get_openai_image_edit_kwargs(size="1024x1536", quality="medium"),
+                    )
+                    frog_file.close()
+                    if resp.data and resp.data[0].b64_json:
+                        img_data = base64.b64decode(resp.data[0].b64_json)
+                        with open(base_scene_path, "wb") as f:
+                            f.write(img_data)
+                except Exception as e:
+                    try: frog_file.close()
+                    except: pass
+                    logger.warning("character ref edit failed, generating fresh", error=str(e)[:80])
+                    await generate_image_dalle_async(
+                        prompt=base_prompt,
+                        output_path=base_scene_path, size="1024x1536",
+                    )
+            else:
                 await generate_image_dalle_async(
                     prompt=base_prompt,
                     output_path=base_scene_path, size="1024x1536",
                 )
-        else:
-            await generate_image_dalle_async(
-                prompt=base_prompt,
-                output_path=base_scene_path, size="1024x1536",
+            logger.info("base scene generated", prompt=base_prompt[:100])
+
+        # Scene 0 = base scene (hook/title)
+        scene_00 = os.path.join(images_dir, "scene_00.png")
+        if not os.path.exists(scene_00):
+            shutil.copy2(base_scene_path, scene_00)
+        if use_manual_planet_refs and scenes_meta:
+            first_scene = scenes_meta[0]
+            await _add_native_scene_label_with_model(
+            edit_client,
+            scene_00,
+            first_scene.get("planet", "Earth"),
+            first_scene.get("jump_label", "1 ft 8 in"),
+            first_scene.get("fact_label", "SPACE FACT"),
             )
-        logger.info("base scene generated", prompt=base_prompt[:100])
 
-    # Scene 0 = base scene (hook/title)
-    scene_00 = os.path.join(images_dir, "scene_00.png")
-    if not os.path.exists(scene_00):
-        shutil.copy2(base_scene_path, scene_00)
+        # Edit base scene for each liquid/variable with the configured OpenAI image model.
+        if total_pending_scenes and generated_scene_counter < total_pending_scenes:
+            await _update_step(f"generating scene image {generated_scene_counter + 1}/{total_pending_scenes}")
+        else:
+            await _update_step("creating scene variants")
 
-    # Edit base scene for each liquid/variable — gpt-image-1.5 edit with input_fidelity=high
-    await _update_step("creating scene variants")
-
-    from packages.clients.claude import generate as claude_gen_edits
+        from packages.clients.claude import generate as claude_gen_edits
 
     # Build concept-aware guidance for the per-scene edits
-    if concept_type == "MOTION":
+    if not has_explicit_scene_plan and concept_type == "MOTION":
         _edit_guidance = """MOTION concept guidance:
 - The character is in the SAME setting across all scenes (same road, same pool, same arena)
 - The SURFACE/MEDIUM/OPPONENT is what changes per scene
 - Show the character performing the action (running, swimming, jumping)
-- For RACE-style comparisons: since Grok can't animate things pulling ahead, BAKE the result into the image — if the frog loses, show the opponent already far ahead with motion blur and distance. If the frog wins, show them clearly in the lead.
+- For RACE-style comparisons: since Grok can't animate things pulling ahead, BAKE the result into the image — if the skeleton loses, show the opponent already far ahead with motion blur and distance. If the skeleton wins, show them clearly in the lead.
 - If the variable is a SURFACE (grass, ice, asphalt): show the character on that specific surface with visible differences in their traction/speed"""
-    elif concept_type == "EQUIPMENT":
+    elif not has_explicit_scene_plan and concept_type == "EQUIPMENT":
         _edit_guidance = """EQUIPMENT concept guidance:
 - The SETTING can evolve — a solar oven belongs outdoors, a microwave in a kitchen, a magnifying glass outside on a sunny day
 - Each scene should show the character actively USING the specific tool/method
 - The SUBJECT of the experiment (egg, soup, whatever is being cooked/built/tested) is clearly visible
 - Show the RESULT becoming visible — egg cooking, smoke rising, water boiling, etc.
 - The character's expression/posture should match the effort level required (straining for a slow method, relaxed for an easy one)"""
-    elif concept_type == "CONDITION":
+    elif not has_explicit_scene_plan and concept_type == "LOCKED_TEST":
+        if is_vehicle_range_test:
+            _edit_guidance = """LOCKED_TEST vehicle-range concept guidance:
+- Treat the scene as one repeated endurance comparison with the SAME visible zero-mile start line.
+- The world stays the same, but each vehicle uses the lane that makes sense for it: road, sky, shipping lane, or underwater lane.
+- ONLY the active vehicle and the amount of distance from the same start change from scene to scene.
+- The range difference must be obvious at a glance, not subtle. Think "barely left the start" versus "halfway across the world."
+- The failure or almost-empty moment must be obvious in-frame: coasting to dead, sputtering, gliding out, or visibly reaching its final range.
+- Never turn the concept into a pit, shaft, drill rig, unrelated industrial machine, or generic character portrait."""
+        else:
+            _edit_guidance = """LOCKED_TEST concept guidance:
+- Treat the scene as one repeated scientific experiment. The destination and starting point remain the same.
+- Every attempt begins from the same visible origin, but the scene may follow the method deeper or farther into the challenge.
+- ONLY the method/tool/vehicle/machine and the amount of progress change from scene to scene.
+- Each new method must visibly get farther, last longer, or survive a harsher stage of the same challenge.
+- The failure point must be obvious in-frame: melting, crushing, stalling, exploding, buckling, boiling, or stopping.
+- Never turn the concept into unrelated scenery changes or a generic character portrait. The comparison is about how far each method gets from the same start."""
+    elif not has_explicit_scene_plan and concept_type == "IMPACT":
+        _edit_guidance = """IMPACT concept guidance:
+- Treat the scene as one repeated impact-test premise. The same strike target and test logic should stay obvious, but framing can change if it makes the hit easier to read.
+- ONLY the striking subject and the style of impact change between scenes.
+- Use physically believable anatomy and motion. No chibi faces, no crowd, no arcade-game splash-art posing.
+- The force difference must be visually obvious: light hits dent the plate a little, mid-tier hits crack it, top-tier hits blast the rig apart.
+- Bake the exact impact moment or immediate aftermath into the frame — not a portrait of the subject roaring for the camera."""
+    elif not has_explicit_scene_plan and concept_type == "PULL_TEST":
+        _edit_guidance = """PULL_TEST concept guidance:
+- Treat the scene as one repeated towing comparison. The same load and tow premise should stay obvious, but the frame can shift if that makes the effort/result clearer.
+- ONLY the puller and the amount of movement change between scenes.
+- Keep the full towing setup readable in one frame so the viewer instantly understands the experiment.
+- The result must be obvious at a glance: slack rope and no movement, one hard twitch, a tiny inch of movement, or the truck fully rolling.
+- Show species-appropriate pulling posture and harnessing, not a random portrait or impact pose."""
+    elif not has_explicit_scene_plan and concept_type == "SPECIMEN_TEST":
+        _edit_guidance = """SPECIMEN_TEST concept guidance:
+- Treat the scene as one repeated controlled specimen test. The same rig family, sample geometry, and hazard should stay obvious, but the framing can move if it makes the reaction easier to read.
+- ONLY the tested material/object variant and its visible reaction change between scenes.
+- The constant process or hazard must be clearly visible engaging the sample.
+- The result must read instantly: igniting, melting, dissolving, cracking, solidifying, surviving, or otherwise reacting.
+- Never turn the sample into a humanoid dummy, creature, or unrelated sculpture unless the concept is explicitly about bodies/mannequins.
+- The viewer should instantly understand what is being tested and why this sample performed differently."""
+    elif not has_explicit_scene_plan and concept_type == "CONDITION":
         _edit_guidance = """CONDITION concept guidance:
 - The ENVIRONMENT is the variable — each scene should clearly show the character IN that specific extreme condition
 - Visual cues of the condition: ice forming (cold), sweat pouring (hot), body deformed (pressure), etc.
 - Background/setting must match the condition (frozen landscape vs molten lava)
 - The character's body reaction tells the story"""
-    else:
+    elif not has_explicit_scene_plan:
         _edit_guidance = """QUANTITY concept guidance:
 - Each scene shows a DIFFERENT amount/scale visibly
 - The character should be visible for scale reference
 - Make the scale comparison obvious — small pile vs massive mountain"""
 
-    edits_resp = claude_gen_edits(
-        prompt=f"""For each narration line (except line 0), write a SHORT edit instruction. The base scene shows: {base_prompt[:200]}...
+    if has_explicit_scene_plan:
+        edit_prompts = explicit_scene_prompts_for_lines
+    elif use_manual_planet_refs:
+        edit_prompts = ["No changes — grounded baseline Earth hook."]
+        for scene in scenes_meta:
+            edit_prompts.append(f"Use approved grounded {scene.get('planet', scene.get('slug', 'planet'))} reference.")
+        while len(edit_prompts) < n_lines:
+            edit_prompts.append(edit_prompts[-1])
+        edit_prompts = edit_prompts[:n_lines]
+    elif concept_type == "IMPACT":
+        edit_prompts = [
+            "No changes — use the locked impact-test arena and skeleton observer booth as the hook frame."
+        ]
+        for i in range(1, n_lines):
+            line = narration_lines[i]
+            scene_hint = _scene_meta_for_line_index(scenes_meta, i, n_lines)
+            subject = _extract_ranked_subject_name(line, "ranked subject")
+            strike_pose, visible_result, _ = _impact_action_details(line, scene_hint)
+            result_text = _impact_result_text(line)
+            edit_prompts.append(
+                "Same impact-test premise and same kind of reinforced strike setup. "
+                f"Replace the subject with {subject}, shown {strike_pose}. "
+                "Re-establish the target zone and impact logic clearly, but choose the framing that makes the hit easiest to understand. "
+                "Keep the ranked subject as a readable upright full-body target in the impact moment or immediate aftermath. "
+                "Do not turn the subject into a loose heap, puddle, scattered debris pile, or collapsed scrap shape. "
+                f"Make the anatomy physically believable and species-correct. "
+                f"Show {visible_result}. "
+                f"The visual damage must match this narration: {result_text or 'the hit lands harder than the previous subject'}. "
+                "No crowd, no stylized aura, no cartoon expression, no text anywhere."
+            )
+        while len(edit_prompts) < n_lines:
+            edit_prompts.append(edit_prompts[-1])
+        edit_prompts = edit_prompts[:n_lines]
+    elif concept_type == "PULL_TEST":
+        edit_prompts = [
+            "No changes — use the locked truck-pull rig as the hook frame."
+        ]
+        for i in range(1, n_lines):
+            line = narration_lines[i]
+            subject = _extract_ranked_subject_name(line, "puller")
+            pull_pose, visible_result, _ = _pull_action_details(line)
+            result_text = _pull_test_result_text(line)
+            edit_prompts.append(
+                "Same towing comparison premise with the same truck/load, same hitch logic, and the same kind of pull lane. "
+                f"Replace only the active puller with {subject}. "
+                "The frame can shift if needed, but the truck, pull line, and direction of effort must stay instantly readable. "
+                "Show the puller attached to the same tow harness or rope in a species-appropriate way, leaning into the pull with full-body effort. "
+                "Keep the towing setup readable in one frame — do not remove the truck, rope, hitch, or lane. "
+                f"Show {pull_pose}. "
+                f"The visible result must read as: {visible_result}. "
+                f"The truck response must match this narration: {result_text or 'the load reacts differently from the previous puller'}. "
+                "No impact plate, no crash-wall pose, no poster framing, no text anywhere."
+            )
+        while len(edit_prompts) < n_lines:
+            edit_prompts.append(edit_prompts[-1])
+        edit_prompts = edit_prompts[:n_lines]
+    elif concept_type == "SPECIMEN_TEST":
+        specimen_test_plan = specimen_test_plan or _infer_specimen_test_plan(title, concept.get("brief", ""), narration_lines)
+        specimen_test_use_host = specimen_test_use_host or _specimen_test_uses_host(title, concept.get("brief", ""), narration_lines)
+        is_ballistic_liquid_test = _is_ballistic_liquid_test(title, concept.get("brief", ""), narration_lines)
+        edit_prompts = [
+            "No changes — use the locked specimen-test rig as the hook frame."
+        ]
+        for i in range(1, n_lines):
+            line = narration_lines[i]
+            subject = _extract_ranked_subject_name(line, "tested sample")
+            visual_outcome = _specimen_visual_reaction_text(line)
+            penetration_instruction, comparison_instruction = _ballistic_penetration_label(line)
+            edit_prompts.append(
+                (
+                    "Same specimen-test premise, same hazard family, and same sample geometry. "
+                    f"Replace only the tested sample with {subject}. "
+                    f"The tested piece must stay the SAME single standardized {specimen_test_plan['sample_shape']} in the same position and mounting, not a humanoid dummy, creature, or random sculpture. "
+                    "Keep ONLY ONE active test sample in frame. Remove any lineup or extra comparison pieces. "
+                    "You may reframe the rig if needed, but the apparatus and hazard must still read as the same experiment. "
+                    f"Show the constant test action clearly: {specimen_test_plan['test_action']}. "
+                    "Make this feel larger and more dramatic than a tabletop demo: bigger lava volume, clearer overflow, more visible cracking, smoke, sparks, sagging, crusting, or steam where appropriate. "
+                    + (
+                        "Keep the host only if they are actively operating or monitoring the rig; otherwise leave the frame focused on the experiment. "
+                        if specimen_test_use_host
+                        else "Do not add the skeleton host or any observer character unless they are actively doing something important. "
+                    )
+                    + f"Make the visible reaction show this exact physical outcome: {visual_outcome or 'it performs differently from the previous sample under the same test'}. "
+                    + (
+                        "This is a ballistic stop-depth comparison. The bullet and its cavitation trail must be clearly visible INSIDE the long transparent pool-lane-style tank, and the stop point is the ranked variable. "
+                        "Keep the full lane visible from the rifle-side entry to the far wall so the viewer can read distance at a glance. "
+                        "The repeating one-foot floor segments inside or beneath the lane are the size reference, like a swimming-pool lane, not a tiny lab cylinder. "
+                        f"Show that {penetration_instruction}. "
+                        "Do not reuse the same bullet position from other scenes. The bullet depth must be obviously different at a glance. "
+                        if is_ballistic_liquid_test
+                        else ""
+                    )
+                    + "Keep the full rig readable so the comparison is obvious at a glance. Do not add any text, numbers, labels, captions, or screens anywhere. No text anywhere."
+                )
+            )
+        while len(edit_prompts) < n_lines:
+            edit_prompts.append(edit_prompts[-1])
+        edit_prompts = edit_prompts[:n_lines]
+    elif concept_type == "LOCKED_TEST":
+        edit_prompts = [
+            "No changes — use the locked experiment rig as the hook frame."
+        ]
+        for i in range(1, n_lines):
+            line = narration_lines[i]
+            method, outcome = _method_ladder_line_payload(line)
+            if is_vehicle_range_test:
+                lane_text = _vehicle_range_lane_text(method)
+                edit_prompts.append(
+                    f"Same endurance-comparison world, same zero-mile start gantry, same distance-marker system, same skeleton driver identity. "
+                    f"Replace only the active vehicle with {method}. Put it in {lane_text}. "
+                    f"Show it at the obvious point where it is finally running empty or reaching its final distance on one full tank or charge, like this: {outcome or 'it clearly gets farther than the previous vehicle before dying'}. "
+                    "Keep the same shared origin visible or strongly implied with the same UNLABELED marker pylons or progress gates so the distance traveled is instantly readable. "
+                    "Do not add any readable mileage numbers, words, labels, or road signs anywhere in frame. "
+                    "This does NOT need to be the exact same camera frame as the hook, but it must still clearly belong to the same comparison world and same start line. "
+                    "No pit, no drill shaft, no bore hole, no unrelated industrial machine, no text anywhere."
+                )
+            else:
+                edit_prompts.append(
+                    f"Same destination, same experiment world, same starting point, same skeleton host identity. "
+                    f"Change only the active method or machine to: {method}. "
+                    f"Show it getting farther into the challenge than the previous attempt, while clearly failing or succeeding like this: {outcome or 'it gets farther before failing'}. "
+                    "This does NOT need to be the exact same camera frame as the hook. It can be a fresh view from the same overall project. "
+                    "The scene may uniquely follow this method deeper into the challenge, including underground or cross-section views, but it must still clearly feel like it began from the same surface entry point or experiment origin as the other scenes. "
+                    "Keep consistent project markers like the same safety-color palette, same drilling project, same skeleton host gear, and the same overall mission. "
+                    "Make the progress measurable and visually obvious. No text anywhere."
+                )
+        while len(edit_prompts) < n_lines:
+            edit_prompts.append(edit_prompts[-1])
+        edit_prompts = edit_prompts[:n_lines]
+    elif is_planet_jump_format:
+        edit_prompts = ["No changes — grounded baseline Earth hook."]
+        for scene in scenes_meta:
+            edit_prompts.append(
+                f"Only change the planet environment to {scene.get('environment', scene.get('planet', 'planet surface'))}. "
+                "Treat the input image as a LOCKED TEMPLATE. Preserve the exact same side-view camera, crop, skeleton character size, body pose, foot placement, "
+                "striped mast position, and silver lander position. "
+                "The jumper must remain ON THE GROUND beside the mast with both boots fully touching the surface in a pre-jump stance. "
+                "Do NOT show the jumper crouching deeply, airborne, floating, landing, or at the apex. "
+                "This image is a static start frame before the jump only."
+            )
+        while len(edit_prompts) < n_lines:
+            edit_prompts.append(edit_prompts[-1])
+        edit_prompts = edit_prompts[:n_lines]
+    else:
+        edits_resp = claude_gen_edits(
+            prompt=f"""For each narration line (except line 0), write a SHORT edit instruction. The base scene shows: {base_prompt[:200]}...
 
 CONCEPT TITLE: {title}
 CONCEPT TYPE: {concept_type}
@@ -289,84 +1744,313 @@ NARRATION:
 {_edit_guidance}
 
 KEY RULES:
-- The CHARACTER (frog-suit) must stay visually consistent across scenes — same suit, same proportions
+- The CHARACTER must stay visually consistent across scenes — same skeleton face, same body proportions, same variant accessories
 - For MOTION concepts: keep the same camera angle and setting, only change the surface/opponent
 - For EQUIPMENT/CONDITION concepts: the BACKGROUND CAN CHANGE to match the tool/environment. Don't force the base scene's setting if it doesn't fit the variable.
+- For LOCKED_TEST / IMPACT / PULL_TEST / most SPECIMEN_TEST concepts: preserve the SAME PREMISE and experiment logic, but do NOT force the exact same frame if a clearer angle would explain the result better.
 - Each scene should be VISUALLY DISTINCT from the others — not all same background if the concept doesn't require it
 - The ranking should ESCALATE visually: the last scene should feel more extreme/impressive than the first
 - BAKE the result into the image (don't show something "about to happen" — show it happening/happened)
 
 Return ONLY a JSON array of {n_lines} strings. Line 0 should be "No changes — use base scene as is." """,
-        max_tokens=1500,
+            max_tokens=1500,
+        )
+        edits_match = re.search(r'\[.*\]', edits_resp, re.DOTALL)
+        edit_prompts = json.loads(edits_match.group()) if edits_match else ["No changes." for _ in range(n_lines)]
+        while len(edit_prompts) < n_lines:
+            edit_prompts.append("No changes.")
+        edit_prompts = edit_prompts[:n_lines]
+
+    use_fresh_premise_scene_generation = _use_fresh_premise_scene_generation(
+        concept_type,
+        is_ballistic_liquid_test=is_ballistic_liquid_test,
     )
-    edits_match = re.search(r'\[.*\]', edits_resp, re.DOTALL)
-    edit_prompts = json.loads(edits_match.group()) if edits_match else ["No changes." for _ in range(n_lines)]
-    while len(edit_prompts) < n_lines:
-        edit_prompts.append("No changes.")
-    edit_prompts = edit_prompts[:n_lines]
 
-    for i in range(1, n_lines):
-        img_path = os.path.join(images_dir, f"scene_{i:02d}.png")
-        if os.path.exists(img_path):
-            continue
-        for attempt in range(4):
-            try:
-                base_file = open(base_scene_path, "rb")
-                resp = await edit_client.images.edit(
-                    model="gpt-image-1.5",
-                    image=base_file,
-                    prompt=(
-                        f"The character must look IDENTICAL to the input image — same suit, same helmet, same body proportions, same colors. "
-                        + ("Same camera angle, same setting — only change the surface/opponent/variable. Everything else stays pixel-identical. " if concept_type == "MOTION"
-                           else "The character stays consistent but the BACKGROUND and SETTING can change to match the variable for this scene. ")
-                        + f"Change: {edit_prompts[i]} NO text anywhere."
-                    ),
-                    size="1024x1536",
-                    quality="medium",
-                    input_fidelity="high",
+    if not has_explicit_scene_plan:
+        for i in range(1, n_lines):
+            img_path = os.path.join(images_dir, f"scene_{i:02d}.png")
+            if os.path.exists(img_path):
+                continue
+            generated_scene_counter += 1
+            await _update_step(f"generating scene image {generated_scene_counter}/{total_pending_scenes}")
+            if use_manual_planet_refs:
+                scene_meta = scenes_meta[i - 1] if i - 1 < len(scenes_meta) else None
+                slug = str((scene_meta or {}).get("slug") or "").strip().lower()
+                ref_path = manual_planet_refs.get(slug)
+                if not ref_path:
+                    raise RuntimeError(f"Missing approved grounded reference for scene {i} slug={slug}")
+                shutil.copy2(ref_path, img_path)
+                await _add_native_scene_label_with_model(
+                    edit_client,
+                    img_path,
+                    scene_meta.get("planet", "Planet"),
+                    scene_meta.get("jump_label", "1 ft 8 in"),
+                    scene_meta.get("fact_label", "SPACE FACT"),
                 )
-                base_file.close()
-                if resp.data and resp.data[0].b64_json:
-                    img_data = base64.b64decode(resp.data[0].b64_json)
-                    with open(img_path, "wb") as f:
-                        f.write(img_data)
-                    logger.info("scene variant created", scene=i, edit=edit_prompts[i][:60])
-                    break
-            except Exception as e:
-                logger.warning("edit failed", scene=i, attempt=attempt, error=str(e)[:80])
-                try: base_file.close()
-                except: pass
-                await asyncio.sleep(3)
-        if not os.path.exists(img_path):
-            raise RuntimeError(f"Failed to create scene {i} variant after 4 attempts")
+                logger.info("copied approved manual grounded scene reference", scene=i, slug=slug, path=ref_path)
+                continue
+            review_text = ""
+            for attempt in range(4):
+                try:
+                    base_file = open(base_scene_path, "rb")
+                    if is_planet_jump_format:
+                        edit_instruction = (
+                            "TREAT THE INPUT IMAGE AS A LOCKED TEMPLATE. "
+                            "Do not change the skeleton's pose, height in frame, arm position, leg position, foot placement, or facial direction. "
+                            "Do not change the camera angle, crop, or framing. "
+                            "Keep the striped mast and silver lander visible in the exact same relative positions and scale. "
+                            f"{edit_prompts[i]} NO text anywhere."
+                        )
+                    elif use_fresh_premise_scene_generation:
+                        if concept_type == "SPECIMEN_TEST" and not specimen_test_use_host:
+                            ref_source = base_scene_path
+                        elif concept_type == "IMPACT":
+                            ref_source = base_scene_path
+                        else:
+                            ref_source = character_ref_path if os.path.exists(character_ref_path) else base_scene_path
+                        fresh_base = open(ref_source, "rb")
+                        try:
+                            if concept_type == "LOCKED_TEST":
+                                fresh_scene_prefix = (
+                                    "Create a fresh photorealistic scene from the SAME vehicle-range comparison world. "
+                                    "Keep the same zero-mile start gantry, same distance-marker system, same overall endurance proving ground, and the same skeleton driver identity. "
+                                    "The active vehicle may appear on the road lane, air corridor, shipping lane, or underwater lane as needed. "
+                                    "Do not turn this into a pit, shaft, drill site, or unrelated environment. "
+                                    if is_vehicle_range_test
+                                    else
+                                    "Create a fresh photorealistic scene from the SAME ranked experiment project. "
+                                    "Keep the same skeleton host identity, the same overall mission, and a clear connection to the same surface starting point or experiment origin. "
+                                    "Different scenes can use different framing if the same challenge remains obvious. "
+                                    "Do not turn this into unrelated poster art or a random new environment. "
+                                )
+                            elif concept_type == "PULL_TEST":
+                                fresh_scene_prefix = (
+                                    "Create a fresh photorealistic scene from the SAME towing comparison premise. "
+                                    "Keep the same truck/load challenge and the same skeleton identity, but choose the framing that makes the pull effort and the amount of movement easiest to read. "
+                                    "The tow line, hitch logic, and truck/load must still be obvious. "
+                                    "Do not turn this into a portrait, crash scene, or unrelated environment. "
+                                )
+                            elif concept_type == "IMPACT":
+                                fresh_scene_prefix = (
+                                    "Create a fresh photorealistic scene from the SAME impact-test premise. "
+                                    "Keep the same impact target logic, same arena family, and same skeleton observer identity, but choose the framing that makes the force and damage easiest to read. "
+                                    "The viewer must still instantly understand this is a controlled ranked impact comparison. "
+                                    "Do not turn this into poster art or a generic roaring portrait. "
+                                )
+                            else:
+                                fresh_scene_prefix = (
+                                    "Create a fresh photorealistic scene from the SAME specimen-test premise. "
+                                    "Keep the same hazard family, same sample geometry, and same test logic, but choose the framing that makes the reaction easiest to read. "
+                                    "The same experiment should stay obvious even if the camera is closer or wider than the hook. "
+                                    "Do not turn this into poster art or an unrelated environment. "
+                                )
+                            resp = await edit_client.images.edit(
+                                model=OPENAI_IMAGE_MODEL,
+                                image=fresh_base,
+                                prompt=(
+                                    f"{fresh_scene_prefix}{edit_prompts[i]}"
+                                ),
+                                **get_openai_image_edit_kwargs(size="1024x1536", quality="medium"),
+                            )
+                            fresh_base.close()
+                            if resp.data and resp.data[0].b64_json:
+                                img_data = base64.b64decode(resp.data[0].b64_json)
+                                with open(img_path, "wb") as f:
+                                    f.write(img_data)
+                                logger.info("fresh premise scene generated", concept_type=concept_type, scene=i, edit=edit_prompts[i][:60])
+                        except Exception as e:
+                            try: fresh_base.close()
+                            except: pass
+                            logger.warning("fresh premise scene failed", concept_type=concept_type, scene=i, attempt=attempt, error=str(e)[:80])
+                            await asyncio.sleep(3)
+                            continue
+                        edit_instruction = None
+                    elif concept_type == "IMPACT":
+                        edit_instruction = (
+                            "Treat the input image as the same impact-test premise and target logic. "
+                            "Keep the strike zone, arena family, and skeleton observation identity recognizable, but choose the crop that makes the hit easiest to read. "
+                            "Preserve the ranked subject as a readable target instead of a random debris pile. "
+                            "Do not turn it into poster art or a generic action splash. "
+                            f"{edit_prompts[i]}"
+                        )
+                    elif concept_type == "PULL_TEST":
+                        edit_instruction = (
+                            "Treat the input image as the same towing comparison premise. "
+                            "Keep the truck/load challenge, hitch logic, tow line, and same skeleton identity obvious, but choose the framing that makes the effort and movement easiest to read. "
+                            "Do not remove the towing rig or turn this into a portrait, poster image, or unrelated environment. "
+                            f"{edit_prompts[i]}"
+                        )
+                    elif concept_type == "SPECIMEN_TEST":
+                        specimen_test_plan = specimen_test_plan or _infer_specimen_test_plan(title, concept.get("brief", ""), narration_lines)
+                        specimen_test_use_host = specimen_test_use_host or _specimen_test_uses_host(title, concept.get("brief", ""), narration_lines)
+                        edit_instruction = (
+                            (
+                                "Treat the input image as the same specimen-test premise. "
+                                "Keep the rig family, holder logic, hazard family, and same standardized sample geometry obvious, but choose the framing that makes the reaction easiest to read. "
+                                f"Preserve the tested piece as the same single standardized {specimen_test_plan['sample_shape']} in the same mounted orientation. "
+                                "Keep only one active test sample in frame. Remove any lineup or extra comparison pieces. "
+                                "Keep the experiment feeling large and dramatic, with obvious effects from the lava or hazard. "
+                                + (
+                                    "If the host is present, keep them only as the same active operator/monitor. "
+                                    if specimen_test_use_host
+                                    else "Do not add the skeleton host or any idle observer. "
+                                )
+                                + "Never turn it into a humanoid dummy, creature, or unrelated sculpture. "
+                                + "Do not change the environment or convert it into poster art. "
+                                + f"{edit_prompts[i]}"
+                            )
+                        )
+                    else:
+                        edit_instruction = (
+                            f"The character must look IDENTICAL to the input image — same suit, same helmet, same body proportions, same colors. "
+                            + (
+                                "Same camera angle and same setting — only change the surface/opponent/variable. "
+                                if concept_type == "MOTION"
+                                else "Keep the same overall premise and character identity, but the framing and environment can shift if that makes the ranked difference easier to understand. "
+                            )
+                            + f"Change: {edit_prompts[i]} NO text anywhere."
+                        )
+                    if concept_type != "LOCKED_TEST":
+                        resp = await edit_client.images.edit(
+                            model=OPENAI_IMAGE_MODEL,
+                            image=base_file,
+                            prompt=edit_instruction,
+                            **get_openai_image_edit_kwargs(size="1024x1536", quality="medium"),
+                        )
+                        base_file.close()
+                        if resp.data and resp.data[0].b64_json:
+                            img_data = base64.b64decode(resp.data[0].b64_json)
+                            with open(img_path, "wb") as f:
+                                f.write(img_data)
+                            logger.info("scene variant created", scene=i, edit=edit_prompts[i][:60])
+                except Exception as e:
+                    logger.warning("edit failed", scene=i, attempt=attempt, error=str(e)[:80])
+                    try: base_file.close()
+                    except: pass
+                    await asyncio.sleep(3)
+                    continue
+                if not os.path.exists(img_path):
+                    continue
 
-        # Review: verify the edited image still matches the base scene
-        try:
-            import anthropic
-            review_client = anthropic.Anthropic()
-            with open(img_path, "rb") as rf:
-                img_b64_review = base64.b64encode(rf.read()).decode()
-            with open(base_scene_path, "rb") as rf:
-                base_b64_review = base64.b64encode(rf.read()).decode()
-            review = review_client.messages.create(
-                model="claude-haiku-4-5-20251001",
-                max_tokens=200,
-                messages=[{
-                    "role": "user",
-                    "content": [
-                        {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": base_b64_review}},
-                        {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": img_b64_review}},
-                        {"type": "text", "text": f"Image 1 is the base scene. Image 2 is an edited version. Does image 2 keep the SAME camera angle, same character position, same setting as image 1? Only the liquid/variable should change. Answer PASS or FAIL with reason."},
-                    ],
-                }],
-            )
-            review_text = review.content[0].text
-            if "FAIL" in review_text:
-                logger.warning("scene edit review FAILED", scene=i, reason=review_text[:100])
-            else:
-                logger.info("scene edit review passed", scene=i)
-        except Exception as e:
-            logger.warning("scene edit review skipped", error=str(e)[:80])
+                # Review: verify the edited image still matches the base scene
+                try:
+                    import anthropic
+                    review_client = anthropic.Anthropic()
+                    with open(img_path, "rb") as rf:
+                        img_b64_review = base64.b64encode(rf.read()).decode()
+                    with open(base_scene_path, "rb") as rf:
+                        base_b64_review = base64.b64encode(rf.read()).decode()
+                    if is_planet_jump_format:
+                        review_prompt = (
+                            "Image 1 is the locked base measurement setup. Image 2 should be the SAME setup on a different planet. "
+                            "PASS only if ALL of these are true: same side-view camera, same crop, same skeleton character size, same body pose, both boots touching the ground, "
+                            "striped mast visible, silver lander visible, and the image is clearly a pre-jump start frame. "
+                            "FAIL if the skeleton is airborne, floating, landing, crouching deeply, framed differently, missing the mast, or missing the lander. "
+                            "Answer PASS or FAIL with one short reason."
+                        )
+                    elif concept_type == "LOCKED_TEST":
+                        if is_vehicle_range_test:
+                            review_prompt = (
+                                "Image 1 is the base vehicle-range comparison world. Image 2 should preserve the SAME shared zero-mile start line and the SAME overall endurance proving ground, while showing one ranked vehicle farther along the appropriate lane. "
+                                "PASS if Image 2 still clearly feels like the same comparison world and same start point, and the distance traveled from that origin is instantly readable. "
+                                "PASS if the vehicle naturally uses a road lane, air corridor, shipping lane, or underwater lane tied to the same origin. "
+                                "FAIL if Image 2 turns into a pit, shaft, drill site, unrelated industrial machine, random portrait, or if the same-start range comparison is no longer obvious. "
+                                "FAIL if it adds readable mileage numbers, labels, or other text to the marker pylons or environment. "
+                                "Answer PASS or FAIL with one short reason."
+                            )
+                        else:
+                            review_prompt = (
+                                "Image 1 is the base experiment setup. Image 2 should preserve the SAME challenge and the SAME starting point or experiment origin, but it may use a clearer reframing to show progress. "
+                                "PASS if Image 2 still clearly feels like the same experiment and same overall project origin, while showing a distinct progress scene for that method. "
+                                "PASS if the shared mission stays obvious even when the environment or framing changes. "
+                                "FAIL only if Image 2 becomes a generic unrelated environment, loses the sense of one shared project, or turns into a portrait/splash image with no clear experiment. "
+                                "Answer PASS or FAIL with one short reason."
+                            )
+                    elif concept_type == "IMPACT":
+                        review_prompt = (
+                            "Image 1 is the base impact-test scene. Image 2 should preserve the SAME impact-test premise, target logic, and controlled arena feel, but it may use a clearer crop or angle to show the hit. "
+                            "PASS if the ranked impact comparison is still instantly obvious and the target zone or impact wall remains readable. "
+                            "FAIL if Image 2 turns into poster art, a different environment, or a generic action splash with no clear ranked impact-test setup. "
+                            "Answer PASS or FAIL with one short reason."
+                        )
+                    elif concept_type == "PULL_TEST":
+                        review_prompt = (
+                            "Image 1 is the base towing comparison scene. Image 2 should preserve the SAME truck/load challenge and towing logic, but it may use a clearer framing for the pull. "
+                            "PASS if the truck/load, tow connection, and amount of movement are still instantly understandable. "
+                            "FAIL if Image 2 removes the truck or rope, turns the setup into an impact arena, or becomes a generic portrait/action splash with no clear pull test. "
+                            "Answer PASS or FAIL with one short reason."
+                        )
+                    elif concept_type == "SPECIMEN_TEST":
+                        specimen_test_use_host = specimen_test_use_host or _specimen_test_uses_host(title, concept.get("brief", ""), narration_lines)
+                        is_ballistic_liquid_test = _is_ballistic_liquid_test(title, concept.get("brief", ""), narration_lines)
+                        penetration_instruction, comparison_instruction = _ballistic_penetration_label(narration_lines[i])
+                        review_prompt = (
+                            (
+                                "Image 1 is the base specimen-test scene. Image 2 should preserve the SAME hazard/test premise, holder logic, and standardized sample geometry. "
+                                + (
+                                    "The skeleton host may remain only as the same active operator or monitor. "
+                                    if specimen_test_use_host
+                                    else "There does not need to be any host character in frame. "
+                                )
+                                + "PASS if the experiment still clearly reads as the same repeated test even if the framing shifts to show the reaction more clearly. "
+                                + (
+                                    f"PASS only if the bullet stop depth is visibly different in this scene and clearly reads as {comparison_instruction}. "
+                                    "PASS only if the long lane still gives an obvious size reference with repeating segments, like a pool lane. "
+                                    "FAIL if the setup shrinks back into a short tank or cylinder, if the bullet appears to travel the same distance as other scenes, if the stop point is ambiguous, or if the far-side exit behavior contradicts the narration. "
+                                    if is_ballistic_liquid_test
+                                    else ""
+                                )
+                                + "FAIL if the TESTED SAMPLE becomes a humanoid dummy, creature, random sculpture, lineup of extra samples, poster art, unrelated environment, or if the apparatus disappears. "
+                                + "Answer PASS or FAIL with one short reason."
+                            )
+                        )
+                    else:
+                        review_prompt = (
+                            "Image 1 is the base scene. Image 2 is an edited version. "
+                            + (
+                                "PASS only if Image 2 keeps the same camera angle, same character position, and same setting, with only the ranked variable changing. "
+                                if concept_type == "MOTION"
+                                else "PASS if Image 2 keeps the same core premise and same character identity, even if the framing or environment shifts to explain the ranked variable more clearly. "
+                            )
+                            + "FAIL if Image 2 becomes unrelated poster art, loses the comparison premise, or changes the main character identity. "
+                            "Answer PASS or FAIL with one short reason."
+                        )
+                    review = review_client.messages.create(
+                        model="claude-haiku-4-5-20251001",
+                        max_tokens=200,
+                        messages=[{
+                            "role": "user",
+                            "content": [
+                                {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": base_b64_review}},
+                                {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": img_b64_review}},
+                                {"type": "text", "text": review_prompt},
+                            ],
+                        }],
+                    )
+                    review_text = review.content[0].text
+                    if "FAIL" in review_text:
+                        logger.warning("scene edit review FAILED", scene=i, reason=review_text[:100], attempt=attempt + 1)
+                        if use_fresh_premise_scene_generation and attempt >= 3 and os.path.exists(img_path):
+                            logger.warning(
+                                "scene edit review exhausted for fresh premise scene — falling back to manual review",
+                                scene=i,
+                                concept_type=concept_type,
+                                reason=review_text[:160],
+                            )
+                        else:
+                            if os.path.exists(img_path):
+                                os.remove(img_path)
+                            if attempt < 3:
+                                await asyncio.sleep(2)
+                                continue
+                    else:
+                        logger.info("scene edit review passed", scene=i)
+                except Exception as e:
+                    logger.warning("scene edit review skipped", error=str(e)[:80])
+                break
+            if not os.path.exists(img_path):
+                reason = review_text[:120] if review_text else "review failed"
+                raise RuntimeError(f"Failed to create grounded scene {i} variant after retries: {reason}")
 
     # ─── STEP 4c: Wait for user approval via file ───
     # Skip if clips already exist (images were approved in a previous run)
@@ -379,7 +2063,20 @@ Return ONLY a JSON array of {n_lines} strings. Line 0 should be "No changes — 
         logger.info("skipping image approval — already approved (carried forward from previous run)")
         os.remove(_approval_file)
     else:
+        from packages.clients.workflow_state import create_review_task, get_pending_review_task, resolve_review_task
         await _update_step("images ready for review")
+        await create_review_task(
+            run_id=run_id,
+            kind="images",
+            concept_id=concept.get("concept_id"),
+            channel_id=concept.get("channel_id"),
+            stage="images ready for review",
+            payload={
+                "expected_images": n_lines,
+                "images_dir": os.path.abspath(images_dir),
+                "image_names": [f"scene_{i:02d}.png" for i in range(n_lines)],
+            },
+        )
         if os.path.exists(_deny_file):
             os.remove(_deny_file)
         while True:
@@ -387,10 +2084,22 @@ Return ONLY a JSON array of {n_lines} strings. Line 0 should be "No changes — 
             if os.path.exists(_approval_file):
                 logger.info("user approved images")
                 os.remove(_approval_file)
+                await resolve_review_task(
+                    run_id=run_id,
+                    kind="images",
+                    status="approved",
+                    resolution={"source": "file_fallback"},
+                )
                 break
             if os.path.exists(_deny_file):
                 logger.info("user denied images — regenerating with feedback")
                 os.remove(_deny_file)
+                await resolve_review_task(
+                    run_id=run_id,
+                    kind="images",
+                    status="rejected",
+                    resolution={"source": "file_fallback"},
+                )
                 for i in range(n_lines):
                     fb_path = os.path.join(images_dir, f"scene_{i:02d}_feedback.txt")
                     img_path = os.path.join(images_dir, f"scene_{i:02d}.png")
@@ -406,14 +2115,14 @@ Return ONLY a JSON array of {n_lines} strings. Line 0 should be "No changes — 
                                 output_path=base_scene_path, size="1024x1536",
                             )
                             shutil.copy2(base_scene_path, img_path)
-                        else:
+                        elif not has_explicit_scene_plan:
                             base_file = open(base_scene_path, "rb")
                             try:
                                 resp = await edit_client.images.edit(
-                                    model="gpt-image-1.5",
+                                    model=OPENAI_IMAGE_MODEL,
                                     image=base_file,
                                     prompt=f"Same scene, same camera angle. {edit_prompts[i]} User feedback: {fb_text}. NO text anywhere.",
-                                    size="1024x1536", quality="medium", input_fidelity="high",
+                                    **get_openai_image_edit_kwargs(size="1024x1536", quality="medium"),
                                 )
                                 base_file.close()
                                 if resp.data and resp.data[0].b64_json:
@@ -427,6 +2136,11 @@ Return ONLY a JSON array of {n_lines} strings. Line 0 should be "No changes — 
                                     prompt=f"{base_prompt} {edit_prompts[i]} User feedback: {fb_text}. NO text anywhere.",
                                     output_path=img_path, size="1024x1536",
                                 )
+                        else:
+                            await generate_image_dalle_async(
+                                prompt=f"{edit_prompts[i]} User feedback: {fb_text}.",
+                                output_path=img_path, size="1024x1536",
+                            )
                         os.remove(fb_path)
                         logger.info("regenerated from feedback", scene=i, feedback=fb_text[:60])
                 # Also handle base_scene feedback
@@ -442,13 +2156,219 @@ Return ONLY a JSON array of {n_lines} strings. Line 0 should be "No changes — 
                     shutil.copy2(base_scene_path, os.path.join(images_dir, "scene_00.png"))
                     os.remove(base_fb)
                     logger.info("regenerated base scene from feedback", feedback=fb_text[:60])
+                await create_review_task(
+                    run_id=run_id,
+                    kind="images",
+                    concept_id=concept.get("concept_id"),
+                    channel_id=concept.get("channel_id"),
+                    stage="images ready for review",
+                    payload={
+                        "expected_images": n_lines,
+                        "images_dir": os.path.abspath(images_dir),
+                        "image_names": [f"scene_{i:02d}.png" for i in range(n_lines)],
+                    },
+                )
                 await _update_step("images ready for review")
+                continue
+
+            pending_task = await get_pending_review_task(run_id, "images")
+            if pending_task is None:
+                logger.info("image review resolved via review task")
+                break
 
     # ─── STEP 5: Animation prompts — concept-specific movement per scene ───
     await _update_step("planning animations")
-    from packages.clients.claude import generate as claude_gen
-    anim_resp = claude_gen(
-        prompt=f"""For each narration line, write an EXTREMELY AGGRESSIVE animation prompt. Grok defaults to slow zooms — we must FORCE it to animate the specific physical action for this concept.
+    if has_explicit_scene_plan:
+        anim_prompts = explicit_video_prompts_for_lines[:]
+        while len(anim_prompts) < n_lines:
+            anim_prompts.append(anim_prompts[-1] if anim_prompts else "Subtle motion.")
+    elif concept_type == "LOCKED_TEST":
+        if is_vehicle_range_test:
+            anim_prompts = [
+                "Same vehicle-range comparison world. The skeleton test subject stands at the zero-mile start gantry and gestures across the untouched endurance proving ground while the road lane, air corridor, shipping lane, and underwater lane all visibly connect back to the same origin. Keep the opening centered on the shared start line. No scene cuts."
+            ]
+        else:
+            anim_prompts = [
+                "Same experiment starting point. The skeleton host stands behind the safety rail and points at the untouched industrial setup like a science-show intro while the machine is idle inside a reinforced drill collar or protected entry rig. Keep the opening centered on the controlled origin of the experiment. No scene cuts."
+            ]
+        for i in range(1, n_lines):
+            line = narration_lines[i]
+            method, outcome = _method_ladder_line_payload(line)
+            if is_vehicle_range_test:
+                lane_text = _vehicle_range_lane_text(method)
+                anim_prompts.append(
+                    f"Same shared start line and same endurance-comparison world. Show {method} launching from the same origin into {lane_text}. "
+                    "Keep the repeating UNLABELED marker gates or progress bands readable so the distance from the shared start stays obvious. "
+                    "Do not generate any readable mileage numbers, labels, or text in the world. "
+                    f"The vehicle should clearly push toward its final range, then run dry or fade out like this: {outcome or 'it clearly gets farther than the previous vehicle before dying out'}. "
+                    "Keep the viewer oriented inside the same proving ground, not a random pit or unrelated industrial scene. No scene cuts."
+                )
+            else:
+                anim_prompts.append(
+                    f"Same challenge and same starting point. Show {method} actively attempting the challenge. "
+                    "Begin by clearly showing the same origin point as the other attempts, then let the camera follow this method deeper or farther as it progresses. "
+                    f"The machine should visibly get farther or last longer than the previous attempt, then fail or succeed like this: {outcome or 'it gets farther before failing'}. "
+                    "Make the motion intense and physical: drilling, descending, burning, buckling, melting, crushing, or breaking through. "
+                    "Keep the viewer oriented so it still feels like one shared experiment, not a random unrelated scene. No scene cuts."
+                )
+        while len(anim_prompts) < n_lines:
+            anim_prompts.append(anim_prompts[-1])
+    elif concept_type == "IMPACT":
+        anim_prompts = [
+            "Same impact-test premise. The skeleton host braces behind the blast shield and points toward the untouched strike wall while dust hangs in the air. Keep the target logic and arena readable from the opening frame. No scene cuts."
+        ]
+        for i in range(1, n_lines):
+            line = narration_lines[i]
+            scene_hint = _scene_meta_for_line_index(scenes_meta, i, n_lines)
+            subject = _extract_ranked_subject_name(line, "ranked subject")
+            _, visible_result, motion_prompt = _impact_action_details(line, scene_hint)
+            result_text = _impact_result_text(line)
+            anim_prompts.append(
+                f"Same impact-test premise and same target logic. {subject} is fully committed to the hit: {motion_prompt}. "
+                f"Show {visible_result}. "
+                f"The damage escalation must match this line: {result_text or 'harder than the previous subject'}. "
+                "Keep the strike target or impact wall readable so the comparison stays clear, but reframe if that makes the impact easier to understand. "
+                "Make the motion violent and decisive, not a slow zoom or idle pose. No scene cuts."
+            )
+        while len(anim_prompts) < n_lines:
+            anim_prompts.append(anim_prompts[-1])
+    elif concept_type == "PULL_TEST":
+        anim_prompts = [
+            "Same towing comparison premise. Show the untouched truck/load, hitch, and tow line before the attempt starts. Keep the whole towing rig readable in the opening frame. No scene cuts."
+        ]
+        for i in range(1, n_lines):
+            line = narration_lines[i]
+            subject = _extract_ranked_subject_name(line, "puller")
+            _, visible_result, motion_prompt = _pull_action_details(line)
+            result_text = _pull_test_result_text(line)
+            anim_prompts.append(
+                f"Same towing comparison premise. {subject} is fully committed to the pull: {motion_prompt}. "
+                f"Show {visible_result}. "
+                f"The truck response must match this line: {result_text or 'the load reacts differently from the previous puller'}. "
+                "Keep the truck, hitch, and tow line visible so the comparison is instantly readable, but reframe if that makes the effort or movement clearer. "
+                "No scene cuts."
+            )
+        while len(anim_prompts) < n_lines:
+            anim_prompts.append(anim_prompts[-1])
+    elif concept_type == "SPECIMEN_TEST":
+        specimen_test_plan = specimen_test_plan or _infer_specimen_test_plan(title, concept.get("brief", ""), narration_lines)
+        specimen_test_use_host = specimen_test_use_host or _specimen_test_uses_host(title, concept.get("brief", ""), narration_lines)
+        is_ballistic_liquid_test = _is_ballistic_liquid_test(title, concept.get("brief", ""), narration_lines)
+        anim_prompts = [
+            (
+                "Same full-side ballistic comparison setup on the long transparent pool-lane-style tank. "
+                "Hold the untouched setup for the whole clip as a calm readable baseline: one rifle, one lane, one liquid, no shot fired yet, no smoke cloud, no extra explosions. "
+                "Keep the repeating one-foot lane segments clearly visible for scale. Never generate any text, captions, numbers, labels, timers, or overlays. No scene cuts."
+                if is_ballistic_liquid_test
+                else (
+                    f"Same large-scale specimen-test premise. The skeleton host actively watches or operates the untouched standardized {specimen_test_plan['sample_shape']} while the apparatus waits idle. Keep the full rig and sample visible. Never generate any text, captions, numbers, labels, timers, or overlays. No scene cuts."
+                    if specimen_test_use_host
+                    else f"Same large-scale specimen-test premise. Show the untouched standardized {specimen_test_plan['sample_shape']} mounted inside the industrial apparatus before the pour starts. Fill the frame with the rig and sample, not an observer. Never generate any text, captions, numbers, labels, timers, or overlays. No scene cuts."
+                )
+            )
+        ]
+        for i in range(1, n_lines):
+            line = narration_lines[i]
+            subject = _extract_ranked_subject_name(line, "tested sample")
+            visual_outcome = _specimen_visual_reaction_text(line)
+            motion_change = _specimen_motion_change_text(line)
+            penetration_instruction, comparison_instruction = _ballistic_penetration_label(line)
+            anim_prompts.append(
+                (
+                    "Same exact ballistic lab lane and same side-view camera. "
+                    f"The liquid lane is now {subject}, but it must stay the same single long transparent pool-lane-style tank with the same rifle, same entry point, and the same visible one-foot scale segments. "
+                    "For the first second, hold on the untouched setup so the viewer clearly sees the full lane and scale before the shot. "
+                    "Then fire EXACTLY ONE bullet. Show only one muzzle flash and one projectile. No burst fire, no second shot, no repeated impacts. "
+                    "The camera should smoothly track the single bullet in slow motion through the liquid after the setup beat, keeping the bullet and cavitation tunnel readable the whole time. "
+                    f"Make the bullet path clearly read as {penetration_instruction}. "
+                    f"The viewer should instantly understand that this scene represents {comparison_instruction}. "
+                    "Keep the liquid response physically believable: one cavitation tunnel, one pressure wave, one realistic splash or exit burst if it exits, not a giant explosion. "
+                    "Do not fill the frame with smoke, muzzle chaos, or debris that hides the bullet. "
+                    "If the bullet stops in the liquid, visibly show it slowing and halting at the correct depth. If it exits, show a single far-wall exit burst once. "
+                    "No scene cuts, no text, no overlays, no labels, no timers."
+                    if is_ballistic_liquid_test
+                    else (
+                        f"Same specimen-test premise. The test begins the same way as every other scene: {specimen_test_plan['test_action']}. "
+                        f"The tested sample is now {subject}, but it must stay the same single standardized {specimen_test_plan['sample_shape']} mounted the same way. "
+                        "Keep only one active sample in frame for the whole shot. Make the experiment feel big and violent, with obvious lava effects, overflow, sparks, cracking, crusting, or steam. "
+                        + (
+                            "If the host appears, they must be actively operating or reacting to the rig, not just standing there. "
+                            if specimen_test_use_host
+                            else "Do not add the skeleton host or any idle observer. "
+                        )
+                        + f"Show this exact physical outcome visually, without words on screen: {visual_outcome or 'it reacts differently from the previous sample under the same test'}. "
+                        + f"The shot must not stay static: start with the sample clearly intact, then visibly show {motion_change}. "
+                        + "By the end of the clip, the sample must be in a clearly different physical state than at the start. Do not just show lava pouring onto an unchanged block. "
+                        + "Never generate any text, captions, numbers, labels, timers, UI, or subtitle-like overlays inside the video itself. "
+                        + "Keep the apparatus, holder, and reaction zone readable together in one shot, but reframe if that makes the reaction easier to follow. No scene cuts."
+                    )
+                )
+            )
+        while len(anim_prompts) < n_lines:
+            anim_prompts.append(anim_prompts[-1])
+    elif is_planet_jump_format:
+        jump_inches_by_scene = [
+            _parse_jump_label_inches(scene.get("jump_label", "1 ft 8 in"))
+            for scene in scenes_meta
+        ]
+        ranked_scene_indices = sorted(
+            range(len(jump_inches_by_scene)),
+            key=lambda idx: jump_inches_by_scene[idx],
+            reverse=True,
+        )
+        top_two_scene_indices = set(ranked_scene_indices[:2])
+        anim_prompts = [
+            "Start on the ground beside the striped mast. The skeleton athlete does one tiny anticipatory bend and settles back down. Keep the full body, mast, lander, and native measurement card visible. No camera movement."
+        ]
+        for scene_idx, scene in enumerate(scenes_meta):
+            jump_label = scene.get("jump_label", "1 ft 8 in")
+            jump_inches = _parse_jump_label_inches(jump_label)
+            framing_note = "Keep the full body, mast, lander, and native label card visible with the usual side-view framing."
+            if jump_inches <= 10:
+                jump_action = "The jumper bends deeply, pushes upward with effort, barely rises a few inches beside the mast, then lands back down fast and heavy."
+                framing_note = "Keep the camera locked and close so the failed jump feels heavy and cramped."
+            elif jump_inches <= 24:
+                jump_action = f"The jumper starts grounded, performs a normal athletic jump to about {jump_label}, then lands back in the same place."
+                framing_note = "Keep the classic side-view comparison framing locked in place."
+            elif jump_inches <= 72:
+                jump_action = (
+                    "The jumper crouches and launches obviously higher than Earth, soaring several mast-heights upward in one clean arc, "
+                    "hanging long enough that the height difference is unmistakable before dropping back to the same landing spot."
+                )
+                framing_note = "Start wider than the Earth shot with a lot more sky, and let the camera visibly track up so the height looks dramatically bigger than Earth."
+            elif jump_inches <= 240:
+                jump_action = (
+                    "The jumper rockets upward with absurd low gravity, climbing far beyond the mast until the mast and lander look small below, "
+                    "then falls all the way back down to the same landing point."
+                )
+                framing_note = "Start very wide and low, then track upward aggressively so the jumper becomes tiny against the sky before following the fall back down."
+            else:
+                jump_action = (
+                    "The jumper blasts skyward with completely impossible low-gravity power, shooting out of the original ground frame and leaving only sky for a long beat, "
+                    "while the mast and lander shrink into tiny dots far below before a huge delayed fall carries the jumper back down to the same landing spot."
+                )
+                framing_note = "Start extremely wide with massive headroom, let the jumper leave the original ground frame entirely, and keep following upward until the jump feels wildly, hilariously taller than every previous world."
+            if scene_idx in top_two_scene_indices:
+                jump_action += (
+                    " The airtime must feel absurdly long: the jumper becomes a tiny speck high in the sky, hangs there for a beat, "
+                    "and only much later re-enters from far above."
+                )
+                framing_note += (
+                    " Treat this as an extreme-world hero shot, not a normal comparison jump. The viewer should feel like the jumper nearly escaped the scene."
+                )
+            anim_prompts.append(
+                f"{jump_action} Show the FULL motion cycle in one shot: start on ground, takeoff, apex, and landing. "
+                f"Visually overexaggerate the height difference compared with the previous worlds so each new jump is unmistakably bigger or smaller at a glance. "
+                f"Keep the {scene.get('planet', 'planet')} environment stable, with the mast and lander visible for scale. "
+                f"Keep the native measurement card intact in the frame. {framing_note} No scene cuts."
+            )
+        while len(anim_prompts) < n_lines:
+            anim_prompts.append(anim_prompts[-1])
+        anim_prompts = anim_prompts[:n_lines]
+    else:
+        from packages.clients.claude import generate as claude_gen
+        anim_resp = claude_gen(
+            prompt=f"""For each narration line, write an EXTREMELY AGGRESSIVE animation prompt. Grok defaults to slow zooms — we must FORCE it to animate the specific physical action for this concept.
 
 CONCEPT TITLE: {title}
 
@@ -469,11 +2389,11 @@ STEP 2 — WRITE EVERY PROMPT WITH:
 2. What the object/variable is DOING in reaction (the egg cooks, the hill tilts, the sprinter pulls ahead, the water freezes)
 3. Environmental cues that sell the moment: steam, dust, sparks, smoke, splashes, wind, light
 4. Frog's expression/reaction: concentrated focus, panic, pride, disbelief, exhaustion — match the moment
-5. The frog stays ON THE EXPERIMENT — never wanders off, never does random filler motion, always engaged with the variable being tested
+5. The skeleton stays ON THE EXPERIMENT — never wanders off, never does random filler motion, always engaged with the variable being tested
 
 RULES:
-- The frog is the EXPERIMENTER. Every scene shows them performing the specific action from the narration.
-- Line 0 (hook): frog at the starting position, prepping the action (holding the lens, readying the pan, lining up the shot). Build anticipation.
+- The skeleton is the EXPERIMENTER. Every scene shows them performing the specific action from the narration.
+- Line 0 (hook): skeleton at the starting position, prepping the action (holding the lens, readying the pan, lining up the shot). Build anticipation.
 - Lines 1+: FULL EXECUTION of the specific action. Each scene shows a different variable/attempt.
 - Use specific verbs matching the concept: for racing → pumping, cycling, thundering / for cooking → stirring, flipping, searing / for freezing → shivering, trembling, cracking / for jumping → crouching, launching, landing
 - NEVER: generic "moves", "does stuff", random idle animation. Always specific to the concept.
@@ -481,37 +2401,77 @@ RULES:
 - Each prompt should be 3-4 sentences packed with motion verbs relevant to the specific concept.
 
 Return ONLY a JSON array of {n_lines} strings.""",
-        max_tokens=2500,
-    )
-    anim_match = re.search(r'\[.*\]', anim_resp, re.DOTALL)
-    anim_prompts = json.loads(anim_match.group()) if anim_match else ["Subtle idle movement." for _ in range(n_lines)]
-    while len(anim_prompts) < n_lines:
-        anim_prompts.append("Subtle idle movement.")
-    anim_prompts = anim_prompts[:n_lines]
+            max_tokens=2500,
+        )
+        anim_match = re.search(r'\[.*\]', anim_resp, re.DOTALL)
+        anim_prompts = json.loads(anim_match.group()) if anim_match else ["Subtle idle movement." for _ in range(n_lines)]
+        while len(anim_prompts) < n_lines:
+            anim_prompts.append("Subtle idle movement.")
+        anim_prompts = anim_prompts[:n_lines]
     logger.info("animation prompts generated", count=len(anim_prompts))
 
-    await _update_step("animating scenes (parallel)")
+    def _veo_duration(narr_path: str, line_index: int | None = None) -> int:
+        if is_planet_jump_format and line_index is not None and line_index > 0:
+            scene_idx = line_index - 1
+            if scene_idx in top_two_scene_indices:
+                return 8
+            if 0 <= scene_idx < len(jump_inches_by_scene) and jump_inches_by_scene[scene_idx] >= 120:
+                return 6
+        requested = get_clip_duration(narr_path)
+        if requested <= 4:
+            return 4
+        if requested <= 6:
+            return 6
+        return 8
 
-    async def animate_scene(i):
+    async def animate_scene(i, provider: str, model: str | None, resolution: str):
         clip_path = os.path.join(clips_dir, f"clip_{i:02d}.mp4")
         if os.path.exists(clip_path):
             return
-        dur = get_clip_duration(os.path.join(narr_dir, f"line_{i:02d}.mp3"))
-        # Each scene uses its OWN edited image (not the base)
+        narr_path = os.path.join(narr_dir, f"line_{i:02d}.mp3")
+        scene_label = "hook" if i == 0 else f"scene {i}/{n_lines - 1}"
+        await _update_step(f"animating {scene_label} with {provider}")
         img_path = os.path.join(images_dir, f"scene_{i:02d}.png")
-        with open(img_path, "rb") as f:
-            img_b64 = f"data:image/png;base64,{base64.b64encode(f.read()).decode()}"
-        await generate_video_async(
-            prompt=anim_prompts[i],
-            output_path=clip_path, duration=dur, aspect_ratio="9:16",
-            image_url=img_b64, timeout=600,
-        )
-        logger.info("scene animated", scene=i)
+        if provider == "veo":
+            primary_model = model or "veo-3.1-lite-generate-001"
+            await _generate_veo_clip_with_retries(
+                prompt=anim_prompts[i],
+                output_path=clip_path,
+                model=primary_model,
+                duration_seconds=_veo_duration(narr_path, i),
+                aspect_ratio="9:16",
+                resolution=resolution or "720p",
+                image_path=img_path,
+                last_frame_path=img_path if is_planet_jump_format else None,
+                timeout_seconds=600,
+            )
+        else:
+            from packages.clients.grok import generate_video_async as grok_generate
 
-    await run_tasks(
-        [lambda i=i: animate_scene(i) for i in range(n_lines)],
-        parallel=True, max_concurrent=5,  # Rate limiter handles throttling
-    )
+            dur = get_clip_duration(narr_path)
+            with open(img_path, "rb") as f:
+                img_b64 = f"data:image/png;base64,{base64.b64encode(f.read()).decode()}"
+            await grok_generate(
+                prompt=anim_prompts[i],
+                output_path=clip_path,
+                duration=dur,
+                aspect_ratio="9:16",
+                image_url=img_b64,
+                timeout=600,
+            )
+        logger.info("scene animated", scene=i, provider=provider, model=model, resolution=resolution)
+
+    await _update_step(f"animating scenes with {video_provider}")
+
+    if video_provider == "veo":
+        for i in range(n_lines):
+            await animate_scene(i, video_provider, video_model, video_resolution)
+    else:
+        await run_tasks(
+            [lambda i=i: animate_scene(i, video_provider, video_model, video_resolution) for i in range(n_lines)],
+            parallel=True,
+            max_concurrent=5,
+        )
 
     # ─── STEPS 6-10: All shared ───
     await _update_step("building video")
@@ -519,7 +2479,10 @@ Return ONLY a JSON array of {n_lines} strings.""",
 
     await _update_step("building intro")
     teasers_path = os.path.join(segments_dir, "teasers.mp4")
-    actual_teaser_dur = build_intro_teasers(n_lines, narr_dir, clips_dir, segments_dir)
+    actual_teaser_dur = build_intro_teasers(
+        n_lines, narr_dir, clips_dir, segments_dir,
+        channel_id=CHANNEL_ID, concept=concept,
+    )
 
     await _update_step("concatenating")
     all_video_path, total_dur = concat_silent_video(teasers_path, segments_dir, n_lines, output_dir)
@@ -527,6 +2490,7 @@ Return ONLY a JSON array of {n_lines} strings.""",
     await _update_step("building audio")
     audio_path, seg_starts = build_numpy_audio(
         n_lines, narr_dir, MUSIC_PATH, actual_teaser_dur, seg_durations, total_dur, output_dir,
+        channel_id=CHANNEL_ID, concept=concept,
     )
 
     await _update_step("combining")

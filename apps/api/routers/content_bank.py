@@ -6,8 +6,69 @@ from fastapi import APIRouter, HTTPException
 from sqlalchemy import text
 
 from packages.clients.db import async_session
+from packages.clients.workflow_state import ensure_concept, update_concept_status
+from packages.utils.concept_formats import apply_format_strategy_defaults
+from packages.utils.game_meme_identity import normalize_game_meme_concept
+from packages.utils.hardcore_ranked_language import normalize_hardcore_ranked_concept, normalize_hardcore_ranked_viewer_text
 
 router = APIRouter(prefix="/api", tags=["content-bank"])
+
+
+def _normalize_concept_payload(raw_concept, *, channel_id: int, title: str, form_type: str) -> str:
+    concept = raw_concept
+    if isinstance(concept, str):
+        try:
+            concept = json.loads(concept)
+        except Exception:
+            concept = {}
+    elif not isinstance(concept, dict):
+        concept = {}
+
+    concept = apply_format_strategy_defaults(dict(concept), form_type=form_type)
+    concept.setdefault("channel_id", channel_id)
+    concept.setdefault("title", title)
+    concept.setdefault("form_type", form_type)
+    concept = normalize_hardcore_ranked_concept(concept, channel_id=channel_id)
+    concept = normalize_game_meme_concept(concept, channel_id=channel_id)
+    concept["title"] = normalize_hardcore_ranked_viewer_text(concept.get("title") or title)
+    return json.dumps(concept)
+
+
+async def _delete_run_dependencies(session, run_id: int):
+    """Delete or null all records that still reference a run before deleting it."""
+    await session.execute(
+        text("""
+            UPDATE concepts
+            SET latest_run_id = NULL
+            WHERE latest_run_id = :rid
+        """),
+        {"rid": run_id},
+    )
+    await session.execute(
+        text("""
+            UPDATE concepts
+            SET published_run_id = NULL
+            WHERE published_run_id = :rid
+        """),
+        {"rid": run_id},
+    )
+    await session.execute(
+        text("DELETE FROM review_tasks WHERE run_id = :rid"),
+        {"rid": run_id},
+    )
+    await session.execute(
+        text("DELETE FROM run_events WHERE run_id = :rid"),
+        {"rid": run_id},
+    )
+    await session.execute(
+        text("DELETE FROM scheduled_uploads WHERE run_id = :rid"),
+        {"rid": run_id},
+    )
+    for table_name in ["source_candidates", "templates", "ideas", "scripts", "packages", "assets"]:
+        await session.execute(
+            text(f"DELETE FROM {table_name} WHERE run_id = :rid"),
+            {"rid": run_id},
+        )
 
 
 @router.get("/content-bank")
@@ -17,7 +78,7 @@ async def list_content_bank(channel_id: int | None = None, status: str = "queued
         query = """
             SELECT cb.id, cb.channel_id, c.name as channel_name, cb.title,
                    cb.status, cb.priority, cb.created_at, cb.run_id,
-                   cb.error, cb.attempt_count
+                   cb.error, cb.attempt_count, cb.concept_id
             FROM content_bank cb
             JOIN channels c ON c.id = cb.channel_id
             WHERE 1=1
@@ -39,7 +100,7 @@ async def list_content_bank(channel_id: int | None = None, status: str = "queued
         {
             "id": r[0], "channel_id": r[1], "channel_name": r[2], "title": r[3],
             "status": r[4], "priority": r[5], "created_at": r[6].isoformat() if r[6] else None,
-            "run_id": r[7], "error": r[8], "attempt_count": r[9],
+            "run_id": r[7], "error": r[8], "attempt_count": r[9], "concept_id": r[10],
         }
         for r in rows
     ]
@@ -50,7 +111,7 @@ async def cancel_content_bank_item(item_id: int):
     """Cancel a queued, locked, or generating content bank item."""
     async with async_session() as session:
         result = await session.execute(
-            text("SELECT id, status, run_id FROM content_bank WHERE id = :id"),
+            text("SELECT id, status, run_id, concept_id FROM content_bank WHERE id = :id"),
             {"id": item_id},
         )
         item = result.fetchone()
@@ -59,6 +120,7 @@ async def cancel_content_bank_item(item_id: int):
 
         status = item[1]
         run_id = item[2]
+        concept_id = item[3]
 
         if status in ("uploaded", "generated"):
             raise HTTPException(status_code=400, detail=f"Cannot cancel item with status '{status}'")
@@ -75,6 +137,8 @@ async def cancel_content_bank_item(item_id: int):
                 text("UPDATE content_runs SET status = 'failed', error = 'cancelled by user' WHERE id = :id AND status = 'running'"),
                 {"id": run_id},
             )
+        if concept_id:
+            await update_concept_status(concept_id, status="archived", session=session)
 
         await session.commit()
 
@@ -89,7 +153,7 @@ async def clear_content_bank_item(item_id: int):
 
     async with async_session() as session:
         result = await session.execute(
-            text("SELECT cb.id, cb.status, cb.run_id FROM content_bank cb WHERE cb.id = :id"),
+            text("SELECT cb.id, cb.status, cb.run_id, cb.concept_id FROM content_bank cb WHERE cb.id = :id"),
             {"id": item_id},
         )
         item = result.fetchone()
@@ -98,6 +162,7 @@ async def clear_content_bank_item(item_id: int):
 
         status = item[1]
         run_id = item[2]
+        concept_id = item[3]
 
         if status in ("generating", "locked"):
             raise HTTPException(status_code=400, detail=f"Cannot clear actively generating item. Cancel it first.")
@@ -113,10 +178,7 @@ async def clear_content_bank_item(item_id: int):
                 text("UPDATE content_bank SET run_id = NULL WHERE id = :id"),
                 {"id": item_id},
             )
-            await session.execute(
-                text("DELETE FROM assets WHERE run_id = :rid"),
-                {"rid": run_id},
-            )
+            await _delete_run_dependencies(session, run_id)
 
         # Clear concept_drafts reference
         await session.execute(
@@ -129,6 +191,8 @@ async def clear_content_bank_item(item_id: int):
             text("DELETE FROM content_bank WHERE id = :id"),
             {"id": item_id},
         )
+        if concept_id:
+            await update_concept_status(concept_id, status="archived", session=session)
 
         # Now safe to delete the content_run
         if run_id:
@@ -151,7 +215,7 @@ async def clear_all_activity():
     async with async_session() as session:
         # Get all clearable items — skip only those whose run is actually still running
         result = await session.execute(
-            text("""SELECT cb.id, cb.run_id FROM content_bank cb
+            text("""SELECT cb.id, cb.run_id, cb.concept_id FROM content_bank cb
                     LEFT JOIN content_runs cr ON cr.id = cb.run_id
                     WHERE cb.status != 'queued'
                     AND (cr.id IS NULL OR cr.status NOT IN ('running', 'generating'))""")
@@ -159,7 +223,7 @@ async def clear_all_activity():
         items = result.fetchall()
 
         cleared = 0
-        for item_id, run_id in items:
+        for item_id, run_id, concept_id in items:
             if run_id:
                 output_dir = os.path.join(os.path.dirname(__file__), "..", "..", "..", "output", f"run_{run_id}")
                 if os.path.isdir(output_dir):
@@ -168,10 +232,7 @@ async def clear_all_activity():
                     text("UPDATE content_bank SET run_id = NULL WHERE id = :id"),
                     {"id": item_id},
                 )
-                await session.execute(
-                    text("DELETE FROM assets WHERE run_id = :rid"),
-                    {"rid": run_id},
-                )
+                await _delete_run_dependencies(session, run_id)
 
             await session.execute(
                 text("UPDATE concept_drafts SET content_bank_id = NULL WHERE content_bank_id = :id"),
@@ -181,6 +242,8 @@ async def clear_all_activity():
                 text("DELETE FROM content_bank WHERE id = :id"),
                 {"id": item_id},
             )
+            if concept_id:
+                await update_concept_status(concept_id, status="archived", session=session)
 
             if run_id:
                 await session.execute(
@@ -200,7 +263,7 @@ async def clear_all_activity():
             output_dir = os.path.join(os.path.dirname(__file__), "..", "..", "..", "output", f"run_{rid}")
             if os.path.isdir(output_dir):
                 shutil.rmtree(output_dir, ignore_errors=True)
-            await session.execute(text("DELETE FROM assets WHERE run_id = :rid"), {"rid": rid})
+            await _delete_run_dependencies(session, rid)
             await session.execute(text("DELETE FROM content_runs WHERE id = :rid"), {"rid": rid})
             cleared += 1
 
@@ -214,20 +277,40 @@ async def retry_content_bank_item(item_id: int):
     """Re-queue a failed content bank item for retry."""
     async with async_session() as session:
         result = await session.execute(
-            text("SELECT id, status FROM content_bank WHERE id = :id"),
+            text("""
+                SELECT cb.id,
+                       cb.status,
+                       cb.concept_id,
+                       cb.run_id,
+                       cr.status AS run_status
+                FROM content_bank cb
+                LEFT JOIN content_runs cr ON cr.id = cb.run_id
+                WHERE cb.id = :id
+            """),
             {"id": item_id},
         )
         item = result.fetchone()
         if not item:
             raise HTTPException(status_code=404, detail="Item not found")
 
-        if item[1] not in ("failed", "rejected"):
-            raise HTTPException(status_code=400, detail=f"Cannot retry item with status '{item[1]}'")
+        item_status = item[1]
+        run_status = item[4]
+        retryable_statuses = {"failed", "rejected"}
+        if item_status not in retryable_statuses and run_status not in retryable_statuses:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Cannot retry item with status '{item_status}'"
+                    + (f" and run status '{run_status}'" if run_status else "")
+                ),
+            )
 
         await session.execute(
             text("UPDATE content_bank SET status = 'queued', locked_at = NULL, error = NULL, run_id = NULL WHERE id = :id"),
             {"id": item_id},
         )
+        if item[2]:
+            await update_concept_status(item[2], status="queued", session=session)
         await session.commit()
 
     return {"id": item_id, "status": "queued"}
@@ -291,12 +374,17 @@ async def add_to_content_bank(item: dict):
     concept_json = item.get("concept_json") or item.get("concept")
     priority = item.get("priority", 100)
     skip_duplicate_check = item.get("skip_duplicate_check", False)
+    form_type = item.get("form_type", "short")
 
     if not channel_id or not concept_json:
         raise HTTPException(status_code=400, detail="channel_id and concept_json required")
 
-    if isinstance(concept_json, dict):
-        concept_json = json.dumps(concept_json)
+    concept_json = _normalize_concept_payload(
+        concept_json,
+        channel_id=channel_id,
+        title=title,
+        form_type=form_type,
+    )
 
     async with async_session() as session:
         if not skip_duplicate_check:
@@ -304,15 +392,37 @@ async def add_to_content_bank(item: dict):
             if dup:
                 return {"id": None, "status": "duplicate", "title": title, "duplicate_info": dup}
 
+        concept_id = await ensure_concept(
+            channel_id=channel_id,
+            title=title,
+            concept_json=concept_json,
+            origin="manual",
+            status="queued",
+            form_type=form_type,
+            priority=priority,
+            session=session,
+        )
         result = await session.execute(
-            text("""INSERT INTO content_bank (channel_id, title, concept_json, priority)
-                    VALUES (:cid, :title, :concept, :priority) RETURNING id"""),
-            {"cid": channel_id, "title": title, "concept": concept_json, "priority": priority},
+            text("""INSERT INTO content_bank (channel_id, title, concept_json, priority, concept_id)
+                    VALUES (:cid, :title, :concept, :priority, :concept_id) RETURNING id"""),
+            {"cid": channel_id, "title": title, "concept": concept_json, "priority": priority, "concept_id": concept_id},
         )
         bank_id = result.scalar_one()
+        await ensure_concept(
+            channel_id=channel_id,
+            title=title,
+            concept_json=concept_json,
+            origin="manual",
+            status="queued",
+            form_type=form_type,
+            priority=priority,
+            concept_id=concept_id,
+            content_bank_id=bank_id,
+            session=session,
+        )
         await session.commit()
 
-    return {"id": bank_id, "status": "queued", "title": title}
+    return {"id": bank_id, "concept_id": concept_id, "status": "queued", "title": title}
 
 
 @router.post("/content-bank/bulk")
@@ -334,21 +444,48 @@ async def bulk_add_to_content_bank(payload: dict):
             title = c.get("title", f"Concept {i+1}")
             concept_json = c.get("concept_json") or c.get("concept")
             priority = c.get("priority", 100)
-
-            if isinstance(concept_json, dict):
-                concept_json = json.dumps(concept_json)
+            form_type = c.get("form_type", "short")
+            concept_json = _normalize_concept_payload(
+                concept_json,
+                channel_id=channel_id,
+                title=title,
+                form_type=form_type,
+            )
 
             dup = await _check_duplicate(session, channel_id, title)
             if dup:
                 skipped.append({"title": title, "reason": dup})
                 continue
 
-            result = await session.execute(
-                text("""INSERT INTO content_bank (channel_id, title, concept_json, priority)
-                        VALUES (:cid, :title, :concept, :priority) RETURNING id"""),
-                {"cid": channel_id, "title": title, "concept": concept_json, "priority": priority},
+            concept_id = await ensure_concept(
+                channel_id=channel_id,
+                title=title,
+                concept_json=concept_json,
+                origin="manual",
+                status="queued",
+                form_type=form_type,
+                priority=priority,
+                session=session,
             )
-            ids.append(result.scalar_one())
+            result = await session.execute(
+                text("""INSERT INTO content_bank (channel_id, title, concept_json, priority, concept_id)
+                        VALUES (:cid, :title, :concept, :priority, :concept_id) RETURNING id"""),
+                {"cid": channel_id, "title": title, "concept": concept_json, "priority": priority, "concept_id": concept_id},
+            )
+            bank_id = result.scalar_one()
+            await ensure_concept(
+                channel_id=channel_id,
+                title=title,
+                concept_json=concept_json,
+                origin="manual",
+                status="queued",
+                form_type=form_type,
+                priority=priority,
+                concept_id=concept_id,
+                content_bank_id=bank_id,
+                session=session,
+            )
+            ids.append(bank_id)
         await session.commit()
 
     return {"added": len(ids), "ids": ids, "skipped": skipped}
@@ -371,6 +508,12 @@ async def update_content_bank_item(item_id: int, update: dict):
         raise HTTPException(status_code=400, detail="Nothing to update")
 
     async with async_session() as session:
+        if "status" in update:
+            concept_id = (
+                await session.execute(text("SELECT concept_id FROM content_bank WHERE id = :id"), {"id": item_id})
+            ).scalar_one_or_none()
+            if concept_id:
+                await update_concept_status(concept_id, status=update["status"], session=session)
         await session.execute(
             text(f"UPDATE content_bank SET {', '.join(sets)} WHERE id = :id"), params
         )
@@ -383,7 +526,12 @@ async def update_content_bank_item(item_id: int, update: dict):
 async def delete_content_bank_item(item_id: int):
     """Remove an item from the content bank."""
     async with async_session() as session:
+        concept_id = (
+            await session.execute(text("SELECT concept_id FROM content_bank WHERE id = :id"), {"id": item_id})
+        ).scalar_one_or_none()
         await session.execute(text("DELETE FROM content_bank WHERE id = :id"), {"id": item_id})
+        if concept_id:
+            await update_concept_status(concept_id, status="archived", session=session)
         await session.commit()
     return {"id": item_id, "deleted": True}
 
@@ -392,10 +540,55 @@ async def delete_content_bank_item(item_id: int):
 async def generate_now(item_id: int):
     """Force immediate generation by setting priority to 0."""
     async with async_session() as session:
+        concept_id = (
+            await session.execute(text("SELECT concept_id FROM content_bank WHERE id = :id"), {"id": item_id})
+        ).scalar_one_or_none()
+        active_run = (
+            await session.execute(
+                text(
+                    """
+                    SELECT id, status
+                    FROM content_runs
+                    WHERE content_bank_id = :id
+                      AND status IN ('running', 'blocked', 'pending_review')
+                    ORDER BY id DESC
+                    LIMIT 1
+                    """
+                ),
+                {"id": item_id},
+            )
+        ).fetchone()
+        if active_run:
+            run_id, run_status = active_run
+            await session.execute(
+                text(
+                    """
+                    UPDATE content_bank
+                    SET priority = 0,
+                        status = CASE
+                            WHEN :run_status IN ('running', 'blocked') THEN 'generating'
+                            ELSE status
+                        END,
+                        run_id = :run_id
+                    WHERE id = :id
+                    """
+                ),
+                {"id": item_id, "run_id": run_id, "run_status": run_status},
+            )
+            await session.commit()
+            return {
+                "id": item_id,
+                "priority": 0,
+                "message": "Item already has an active run",
+                "run_id": run_id,
+                "run_status": run_status,
+            }
         await session.execute(
-            text("UPDATE content_bank SET priority = 0, status = 'queued', locked_at = NULL WHERE id = :id"),
+            text("UPDATE content_bank SET priority = 0, status = 'queued', locked_at = NULL, run_id = NULL WHERE id = :id"),
             {"id": item_id},
         )
+        if concept_id:
+            await update_concept_status(concept_id, status="queued", session=session)
         await session.commit()
     return {"id": item_id, "priority": 0, "message": "Queued for immediate generation"}
 

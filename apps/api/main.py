@@ -15,7 +15,7 @@ from fastapi.staticfiles import StaticFiles
 
 load_dotenv()
 
-from apps.api.routers import actions, channels, concept_drafts, concepts, content_bank, metrics, runs, scheduling, status, videos
+from apps.api.routers import actions, channels, concept_drafts, concepts, content_bank, events, metrics, review_tasks, runs, scheduling, status, videos
 
 logger = logging.getLogger("orchestrator.remediation")
 
@@ -47,6 +47,8 @@ app.include_router(actions.router)
 app.include_router(concepts.router)
 app.include_router(concept_drafts.router)
 app.include_router(content_bank.router)
+app.include_router(review_tasks.router)
+app.include_router(events.router)
 app.include_router(scheduling.router)
 app.include_router(metrics.router)
 

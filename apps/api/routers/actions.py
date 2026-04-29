@@ -8,6 +8,16 @@ from pydantic import BaseModel
 from sqlalchemy import text
 
 from packages.clients.db import async_session
+from packages.clients.workflow_state import (
+    append_run_event,
+    ensure_concept,
+    ensure_run_bundle,
+    get_latest_rendered_asset,
+    get_pending_review_task,
+    resolve_review_task,
+    update_concept_status,
+    update_run_manifest,
+)
 from apps.api.schemas import (
     ExecuteConceptRequest,
     ExecuteConceptResponse,
@@ -64,14 +74,34 @@ async def execute_concept(req: ExecuteConceptRequest, background_tasks: Backgrou
 
     # Create the run row
     async with async_session() as session:
+        concept_id = await ensure_concept(
+            channel_id=req.channel_id,
+            title=req.title,
+            concept_json=concept,
+            origin="manual",
+            status="running",
+            form_type="short",
+            session=session,
+        )
         result = await session.execute(
             text(
-                "INSERT INTO content_runs (channel_id, status, content_type) "
-                "VALUES (:cid, 'running', 'unified') RETURNING id"
+                "INSERT INTO content_runs (channel_id, status, content_type, concept_id, trigger_type) "
+                "VALUES (:cid, 'running', 'unified', :concept_id, 'manual') RETURNING id"
             ),
-            {"cid": req.channel_id},
+            {"cid": req.channel_id, "concept_id": concept_id},
         )
         run_id = result.scalar_one()
+        await ensure_concept(
+            channel_id=req.channel_id,
+            title=req.title,
+            concept_json=concept,
+            origin="manual",
+            status="running",
+            form_type="short",
+            concept_id=concept_id,
+            run_id=run_id,
+            session=session,
+        )
 
         metadata = json.dumps({
             "title": req.title,
@@ -84,6 +114,23 @@ async def execute_concept(req: ExecuteConceptRequest, background_tasks: Backgrou
             {"rid": run_id, "cid": req.channel_id, "type": "publish_metadata", "content": metadata},
         )
         await session.commit()
+
+    await ensure_run_bundle(
+        run_id,
+        concept=concept,
+        channel_id=req.channel_id,
+        pipeline_mode="direct",
+        trigger_type="manual",
+        stage="starting",
+        status="running",
+    )
+    await append_run_event(
+        run_id,
+        event_type="run_started",
+        message=f"Direct pipeline started for {req.title}",
+        stage="starting",
+        data={"concept_id": concept_id},
+    )
 
     # Run pipeline directly as background task — no Temporal, no worker
     background_tasks.add_task(_run_pipeline_bg, run_id, concept)
@@ -108,7 +155,7 @@ async def publish_run(run_id: int, privacy: str = "private"):
     async with async_session() as session:
         result = await session.execute(
             text("""SELECT cr.status, c.config, cr.channel_id,
-                    (SELECT content FROM assets WHERE run_id = cr.id AND asset_type = 'youtube_upload' ORDER BY id DESC LIMIT 1) as upload_info,
+                    cr.concept_id,
                     (SELECT content FROM assets WHERE run_id = cr.id AND asset_type = 'publish_result' ORDER BY id DESC LIMIT 1) as publish_info,
                     (SELECT content FROM assets WHERE run_id = cr.id AND (asset_type LIKE 'rendered%%') ORDER BY id DESC LIMIT 1) as rendered_info,
                     (SELECT content FROM assets WHERE run_id = cr.id AND asset_type = 'publish_metadata' ORDER BY id DESC LIMIT 1) as publish_metadata,
@@ -126,6 +173,7 @@ async def publish_run(run_id: int, privacy: str = "private"):
     run_status = row[0]
     config = json.loads(row[1]) if row[1] else {}
     channel_id = row[2]
+    concept_id = row[3]
     token_file = config.get("youtube_token_file")
 
     # Derive token file from channel name if not explicitly configured
@@ -142,7 +190,7 @@ async def publish_run(run_id: int, privacy: str = "private"):
             token_file = "youtube_token.json"
 
     # --- Case 1: Already uploaded — change privacy ---
-    upload_info_raw = row[3] or row[4]
+    upload_info_raw = row[4]
     if upload_info_raw and run_status != "pending_review":
         try:
             upload_info = json.loads(upload_info_raw)
@@ -166,10 +214,19 @@ async def publish_run(run_id: int, privacy: str = "private"):
 
         async with async_session() as session:
             await session.execute(
-                text("UPDATE content_runs SET status = 'published' WHERE id = :id"),
+                text("UPDATE content_runs SET status = 'published', current_step = 'published' WHERE id = :id"),
                 {"id": run_id},
             )
+            if concept_id:
+                await update_concept_status(concept_id, status="published", latest_run_id=run_id, published_run_id=run_id, session=session)
             await session.commit()
+        await append_run_event(
+            run_id,
+            event_type="publish_updated",
+            message=f"YouTube privacy changed to {privacy}",
+            stage="publish",
+            data={"video_id": video_id},
+        )
 
         return {"run_id": run_id, "video_id": video_id, "status": privacy}
 
@@ -264,7 +321,11 @@ async def publish_run(run_id: int, privacy: str = "private"):
     if result.get("published"):
         async with async_session() as session:
             await session.execute(
-                text("UPDATE content_runs SET status = 'published' WHERE id = :id"),
+                text("UPDATE content_runs SET status = 'published', current_step = 'published' WHERE id = :id"),
+                {"id": run_id},
+            )
+            await session.execute(
+                text("UPDATE content_bank SET status = 'uploaded' WHERE run_id = :id"),
                 {"id": run_id},
             )
             # Store publish result for URL tracking
@@ -277,7 +338,17 @@ async def publish_run(run_id: int, privacy: str = "private"):
                     "content": json.dumps(result),
                 },
             )
+            if concept_id:
+                await update_concept_status(concept_id, status="published", latest_run_id=run_id, published_run_id=run_id, session=session)
             await session.commit()
+        await append_run_event(
+            run_id,
+            event_type="publish_succeeded",
+            message="Manual publish succeeded",
+            stage="publish",
+            data={"privacy": privacy, "url": result.get("url")},
+        )
+        await update_run_manifest(run_id, {"status": "published", "publish_result": result})
 
     return {"run_id": run_id, **result}
 
@@ -287,7 +358,7 @@ async def reject_run(run_id: int):
     """Reject a pending_review run — delete output files and mark as rejected."""
     async with async_session() as session:
         result = await session.execute(
-            text("""SELECT cr.status, cr.channel_id,
+            text("""SELECT cr.status, cr.channel_id, cr.concept_id,
                     (SELECT content FROM assets WHERE run_id = cr.id AND asset_type LIKE 'rendered%%' ORDER BY id DESC LIMIT 1) as rendered_info
                     FROM content_runs cr WHERE cr.id = :id"""),
             {"id": run_id},
@@ -299,9 +370,9 @@ async def reject_run(run_id: int):
 
     # Derive output directory from rendered video path
     video_path = None
-    if row[2]:
+    if row[3]:
         try:
-            rendered_info = json.loads(row[2])
+            rendered_info = json.loads(row[3])
             video_path = rendered_info.get("path")
         except (json.JSONDecodeError, TypeError):
             pass
@@ -314,6 +385,21 @@ async def reject_run(run_id: int):
 
     async with async_session() as session:
         await session.execute(
+            text(
+                """
+                UPDATE review_tasks
+                SET status = 'rejected',
+                    resolution_json = :resolution_json,
+                    resolved_at = NOW()
+                WHERE run_id = :id AND status = 'pending'
+                """
+            ),
+            {
+                "id": run_id,
+                "resolution_json": json.dumps({"source": "run_reject", "reason": "run rejected by operator"}, ensure_ascii=True),
+            },
+        )
+        await session.execute(
             text("UPDATE content_runs SET status = 'rejected' WHERE id = :id"),
             {"id": run_id},
         )
@@ -322,7 +408,16 @@ async def reject_run(run_id: int):
             text("UPDATE content_bank SET status = 'rejected' WHERE run_id = :id"),
             {"id": run_id},
         )
+        if row[2]:
+            await update_concept_status(row[2], status="rejected", latest_run_id=run_id, session=session)
         await session.commit()
+    await append_run_event(
+        run_id,
+        event_type="run_rejected",
+        message="Run rejected by operator",
+        stage="review",
+    )
+    await update_run_manifest(run_id, {"status": "rejected"})
 
     return {"run_id": run_id, "status": "rejected"}
 
@@ -332,7 +427,7 @@ async def cancel_run(run_id: int):
     """Cancel a running or pending_review run and reset its content bank item."""
     async with async_session() as session:
         result = await session.execute(
-            text("SELECT status, content_bank_id FROM content_runs WHERE id = :id"),
+            text("SELECT status, content_bank_id, concept_id FROM content_runs WHERE id = :id"),
             {"id": run_id},
         )
         row = result.fetchone()
@@ -350,7 +445,16 @@ async def cancel_run(run_id: int):
                 text("UPDATE content_bank SET status = 'skipped', attempt_count = 99 WHERE id = :id"),
                 {"id": row[1]},
             )
+        if row[2]:
+            await update_concept_status(row[2], status="archived", latest_run_id=run_id, session=session)
         await session.commit()
+    await append_run_event(
+        run_id,
+        event_type="run_cancelled",
+        message="Run cancelled by operator",
+        stage="cancelled",
+    )
+    await update_run_manifest(run_id, {"status": "failed", "error": "cancelled by user"})
 
     return {"run_id": run_id, "status": "cancelled"}
 
@@ -361,7 +465,7 @@ async def delete_video(run_id: int):
     async with async_session() as session:
         result = await session.execute(
             text("""SELECT c.config,
-                    (SELECT content FROM assets WHERE run_id = cr.id AND asset_type = 'youtube_upload' ORDER BY id DESC LIMIT 1) as upload_info
+                    (SELECT content FROM assets WHERE run_id = cr.id AND asset_type = 'publish_result' ORDER BY id DESC LIMIT 1) as upload_info
                     FROM content_runs cr
                     JOIN channels c ON c.id = cr.channel_id
                     WHERE cr.id = :id"""),
@@ -401,19 +505,55 @@ async def delete_video(run_id: int):
 @router.get("/runs/{run_id}/images")
 async def get_run_images(run_id: int):
     """Get all generated images for a run — for review before animation."""
-    import os, base64
+    import base64
+    import os
+
     images_dir = f"output/run_{run_id}/images"
     if not os.path.isdir(images_dir):
         raise HTTPException(status_code=404, detail="No images directory found")
-    
+
+    concept = None
+    concept_path = f"output/run_{run_id}/concept.json"
+    if os.path.exists(concept_path):
+        try:
+            with open(concept_path) as cf:
+                concept = json.load(cf)
+        except Exception:
+            concept = None
+    if concept is None:
+        async with async_session() as session:
+            concept_row = await session.execute(
+                text(
+                    """
+                    SELECT COALESCE(c.concept_json, cb.concept_json)
+                    FROM content_runs cr
+                    LEFT JOIN concepts c ON c.id = cr.concept_id
+                    LEFT JOIN content_bank cb ON cb.id = cr.content_bank_id
+                    WHERE cr.id = :id
+                    """
+                ),
+                {"id": run_id},
+            )
+            raw_concept = concept_row.scalar_one_or_none()
+            if raw_concept:
+                try:
+                    concept = raw_concept if isinstance(raw_concept, dict) else json.loads(raw_concept)
+                except Exception:
+                    concept = None
+
+    pending_review = await get_pending_review_task(run_id, "images")
+    expected = None
+    if pending_review:
+        expected = pending_review.get("payload", {}).get("expected_images")
+
     images = []
     seen_hashes = set()
     for f in sorted(os.listdir(images_dir)):
-        if not f.endswith('.png'):
+        if not f.endswith(".png"):
             continue
-        if '_lastframe' in f or '_feedback' in f:
+        if "_lastframe" in f or "_feedback" in f:
             continue
-        if not (f.startswith('sub_') or f.startswith('scene_') or f == 'style_anchor.png' or f == 'base_scene.png'):
+        if not (f.startswith("sub_") or f.startswith("scene_") or f == "style_anchor.png" or f == "base_scene.png"):
             continue
         path = os.path.join(images_dir, f)
         with open(path, "rb") as img:
@@ -430,11 +570,9 @@ async def get_run_images(run_id: int):
         try:
             # Load word timestamps to get narration lines
             ts_path = f"output/run_{run_id}/word_timestamps.json"
-            plan_path = f"output/run_{run_id}/images/plan.json"
             if os.path.exists(ts_path):
-                import json as _json
                 with open(ts_path) as tf:
-                    words = _json.load(tf)
+                    words = json.load(tf)
                 # Group words by line
                 lines = {}
                 for w in words:
@@ -448,8 +586,8 @@ async def get_run_images(run_id: int):
                 if os.path.exists(plan_path):
                     try:
                         with open(plan_path) as pf:
-                            plan = _json.load(pf)
-                    except:
+                            plan = json.load(pf)
+                    except Exception:
                         pass
 
                 if f.startswith("sub_"):
@@ -473,25 +611,10 @@ async def get_run_images(run_id: int):
                 # For no-narration channels: fall back to scene video_prompt from concept
                 if not narration_text:
                     try:
-                        concept_path = f"output/run_{run_id}/concept.json"
-                        if not os.path.exists(concept_path):
-                            # Try loading from content_bank
-                            from sqlalchemy import text as sa_text
-                            from packages.clients.db import async_session as _as
-                            import asyncio as _aio
-                            async def _get_concept():
-                                async with _as() as _s:
-                                    _r = await _s.execute(sa_text("SELECT cb.concept_json FROM content_bank cb JOIN content_runs cr ON cr.content_bank_id=cb.id WHERE cr.id=:r"), {"r": run_id})
-                                    _row = _r.fetchone()
-                                    return _json.loads(_row[0]) if _row and _row[0] else None
-                            _concept = _aio.get_event_loop().run_until_complete(_get_concept())
-                        else:
-                            with open(concept_path) as _cf:
-                                _concept = _json.load(_cf)
-                        if _concept and "scenes" in _concept:
+                        if concept and "scenes" in concept:
                             _scene_idx = int(f.split("_")[1].split(".")[0]) if f.startswith(("scene_", "sub_")) else 0
-                            if _scene_idx < len(_concept["scenes"]):
-                                _scene = _concept["scenes"][_scene_idx]
+                            if _scene_idx < len(concept["scenes"]):
+                                _scene = concept["scenes"][_scene_idx]
                                 narration_text = _scene.get("video_prompt", _scene.get("image_prompt", ""))[:200]
                     except Exception:
                         pass
@@ -507,7 +630,7 @@ async def get_run_images(run_id: int):
         })
     
     # Try to get expected count from the sub-action plan
-    expected = len(images)
+    expected = expected or len(images)
     plan_path = os.path.join(images_dir, "plan.json")
     if not os.path.exists(plan_path):
         # Check if shared pipeline saved the plan
@@ -517,8 +640,6 @@ async def get_run_images(run_id: int):
 
     # Get expected from the run's current step if it has "X/Y" format
     try:
-        from sqlalchemy import text
-        from packages.clients.db import async_session
         async with async_session() as session:
             result = await session.execute(
                 text("SELECT current_step FROM content_runs WHERE id = :id"),
@@ -538,7 +659,13 @@ async def get_run_images(run_id: int):
     # Count how many new-scene images are expected (exclude lastframes)
     all_sub_pngs = [f for f in os.listdir(images_dir) if f.startswith("sub_") and f.endswith(".png") and "_lastframe" not in f and "_feedback" not in f]
 
-    return {"run_id": run_id, "images": images, "total": len(images), "expected": max(expected, len(all_sub_pngs))}
+    return {
+        "run_id": run_id,
+        "images": images,
+        "total": len(images),
+        "expected": max(expected, len(all_sub_pngs)),
+        "review_task_id": pending_review["id"] if pending_review else None,
+    }
 
 
 @router.post("/runs/{run_id}/images/approve")
@@ -552,8 +679,6 @@ async def approve_run_images(run_id: int, body: ImageApprovalRequest):
     If any denied, regenerates them with feedback and returns for re-review.
     """
     import os
-    from sqlalchemy import text
-    from packages.clients.db import async_session
 
     approved = body.approved
     denied = body.denied
@@ -562,7 +687,6 @@ async def approve_run_images(run_id: int, body: ImageApprovalRequest):
     # Handle denials — regenerate with feedback
     regenerated = []
     if denied:
-        from packages.clients.grok import generate_image_dalle
         for item in denied:
             name = item.get("name", "")
             feedback = item.get("feedback", "")
@@ -571,22 +695,47 @@ async def approve_run_images(run_id: int, body: ImageApprovalRequest):
                 os.remove(path)
                 # Regenerate with feedback as additional prompt guidance
                 # For now, store the feedback — the pipeline will use it on retry
-                feedback_path = os.path.join(images_dir, name.replace('.png', '_feedback.txt'))
-                with open(feedback_path, 'w') as f:
+                feedback_path = os.path.join(images_dir, name.replace(".png", "_feedback.txt"))
+                with open(feedback_path, "w") as f:
                     f.write(feedback)
                 regenerated.append({"name": name, "feedback": feedback})
-    
+
     if regenerated:
-        # Signal pipeline to regenerate via file
+        await resolve_review_task(
+            run_id=run_id,
+            kind="images",
+            status="rejected",
+            resolution={"denied": regenerated, "approved": approved or []},
+        )
         deny_file = f"output/run_{run_id}/.images_denied"
-        with open(deny_file, 'w') as f:
+        with open(deny_file, "w") as f:
             f.write("denied")
+        await append_run_event(
+            run_id,
+            event_type="review_resolved",
+            message="Image review rejected with feedback",
+            stage="images",
+            data={"denied": regenerated},
+        )
         return {"run_id": run_id, "status": "regenerating", "regenerated": regenerated}
 
     # All approved — signal pipeline via file
+    await resolve_review_task(
+        run_id=run_id,
+        kind="images",
+        status="approved",
+        resolution={"approved": approved or []},
+    )
     approval_file = f"output/run_{run_id}/.images_approved"
-    with open(approval_file, 'w') as f:
+    with open(approval_file, "w") as f:
         f.write("approved")
+    await append_run_event(
+        run_id,
+        event_type="review_resolved",
+        message="Image review approved",
+        stage="images",
+        data={"approved_count": len(approved or [])},
+    )
 
     return {"run_id": run_id, "status": "approved", "message": "All images approved — continuing to animation"}
 
@@ -597,8 +746,21 @@ async def approve_all_images(run_id: int):
     approval_file = f"output/run_{run_id}/.images_approved"
     import os
     os.makedirs(f"output/run_{run_id}", exist_ok=True)
-    with open(approval_file, 'w') as f:
+    await resolve_review_task(
+        run_id=run_id,
+        kind="images",
+        status="approved",
+        resolution={"approved_all": True},
+    )
+    with open(approval_file, "w") as f:
         f.write("approved")
+    await append_run_event(
+        run_id,
+        event_type="review_resolved",
+        message="Image review approved",
+        stage="images",
+        data={"approved_all": True},
+    )
     return {"run_id": run_id, "status": "approved"}
 
 

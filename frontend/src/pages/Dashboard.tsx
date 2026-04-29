@@ -33,7 +33,6 @@ export default function Dashboard() {
   const pausedChannels = channelCards.filter((c) => c.paused);
 
   const today = data.today_stats;
-  const generatingCount = data.running_pipelines.length;
   const readyCount = data.recent_runs.filter(r => r.status === 'pending_review').length;
 
   return (

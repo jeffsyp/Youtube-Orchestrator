@@ -64,10 +64,15 @@ cp .env.example .env
 # Start PostgreSQL and run migrations
 uv run alembic upgrade head
 
-# Start services
-uv run uvicorn apps.api.main:app --host 0.0.0.0 --port 8000 --reload  # API
-uv run python -m apps.worker.main                                      # Worker
-cd frontend && npm install && npm run dev                               # Dashboard
+# Start / stop / inspect the whole local stack
+bash scripts/start_stack.sh
+bash scripts/status_stack.sh
+bash scripts/stop_stack.sh
+
+# Or start services individually if needed
+bash scripts/run_api.sh
+bash scripts/run_worker.sh
+bash scripts/run_frontend.sh
 
 # YouTube auth (per channel)
 uv run python -m apps.publishing_service.auth --token-file youtube_token_<channel>.json

@@ -14,6 +14,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
 from dotenv import load_dotenv
+from packages.clients.workflow_state import append_run_event, ensure_run_bundle, update_concept_status, update_run_manifest
 
 load_dotenv()
 
@@ -24,7 +25,7 @@ def _get_bg_session():
 
     Creates a new engine each time to avoid event loop conflicts.
     """
-    db_url = os.getenv("DATABASE_URL", "postgresql+asyncpg://orchestrator:orchestrator@localhost:5432/orchestrator")
+    db_url = os.getenv("DATABASE_URL", "postgresql+asyncpg://postgres:postgres@localhost:5432/youtube_orchestrator")
     if "asyncpg" not in db_url:
         db_url = db_url.replace("postgresql://", "postgresql+asyncpg://")
     engine = create_async_engine(db_url, pool_size=1, max_overflow=0)
@@ -37,6 +38,14 @@ HEIGHT = 1280
 async def run_pipeline(run_id: int, concept: dict):
     """Run the full video generation pipeline directly."""
     try:
+        await ensure_run_bundle(
+            run_id,
+            concept=concept,
+            channel_id=concept.get("channel_id"),
+            pipeline_mode="direct",
+            stage="starting",
+            status="running",
+        )
         await _update_step(run_id, "starting")
         channel_id = concept.get("channel_id", 1)
         video_engine = concept.get("video_engine", "grok")
@@ -75,6 +84,9 @@ async def run_pipeline(run_id: int, concept: dict):
         file_size = os.path.getsize(final_path)
 
         # 6. Store rendered asset
+        await _store_asset(run_id, channel_id, "rendered_video", json.dumps({
+            "path": final_path, "file_size_bytes": file_size,
+        }))
         await _store_asset(run_id, channel_id, "rendered_unified_short", json.dumps({
             "path": final_path, "file_size_bytes": file_size,
         }))
@@ -98,11 +110,17 @@ async def run_pipeline(run_id: int, concept: dict):
         # 9. Mark pending review
         await _update_step(run_id, "pending_review")
         async with _get_bg_session() as session:
+            concept_id = (
+                await session.execute(text("SELECT concept_id FROM content_runs WHERE id = :id"), {"id": run_id})
+            ).scalar_one_or_none()
             await session.execute(
                 text("UPDATE content_runs SET status = 'pending_review', completed_at = NOW() WHERE id = :id"),
                 {"id": run_id},
             )
+            if concept_id:
+                await update_concept_status(concept_id, status="ready", latest_run_id=run_id, session=session)
             await session.commit()
+        await update_run_manifest(run_id, {"status": "pending_review", "stage": "pending_review", "final_video": final_path})
 
         logger.info("pipeline complete", run_id=run_id, path=final_path,
                     size_mb=round(file_size / 1024 / 1024, 1))
@@ -110,11 +128,17 @@ async def run_pipeline(run_id: int, concept: dict):
     except Exception as e:
         logger.error("pipeline failed", run_id=run_id, error=str(e)[:300])
         async with _get_bg_session() as session:
+            concept_id = (
+                await session.execute(text("SELECT concept_id FROM content_runs WHERE id = :id"), {"id": run_id})
+            ).scalar_one_or_none()
             await session.execute(
                 text("UPDATE content_runs SET status = 'failed', error = :err WHERE id = :id"),
                 {"id": run_id, "err": str(e)[:500]},
             )
+            if concept_id:
+                await update_concept_status(concept_id, status="failed", latest_run_id=run_id, session=session)
             await session.commit()
+        await update_run_manifest(run_id, {"status": "failed", "error": str(e)[:500]})
 
 
 # ---------------------------------------------------------------------------
@@ -688,6 +712,8 @@ async def _update_step(run_id: int, step: str):
                 {"id": run_id, "step": step},
             )
             await session.commit()
+        await append_run_event(run_id, event_type="stage_started", message=step, stage=step)
+        await update_run_manifest(run_id, {"stage": step})
     except Exception:
         pass
 

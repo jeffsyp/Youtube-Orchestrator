@@ -43,7 +43,7 @@ def main():
         from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
         from sqlalchemy import text as sa_text
 
-        db_url = os.getenv("DATABASE_URL", "postgresql+asyncpg://orchestrator:orchestrator@localhost:5432/orchestrator")
+        db_url = os.getenv("DATABASE_URL", "postgresql+asyncpg://postgres:postgres@localhost:5432/youtube_orchestrator")
         if "asyncpg" not in db_url:
             db_url = db_url.replace("postgresql://", "postgresql+asyncpg://")
 

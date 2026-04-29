@@ -4,6 +4,8 @@ Each channel can have its own build pipeline that handles
 image generation, animation, music, subtitles, etc.
 """
 
+from packages.clients.channel_profiles import get_channel_builder_slug
+
 from apps.orchestrator.channel_builders.skeletorinio import build_skeletorinio
 from apps.orchestrator.channel_builders.nature_receipts import build_nature_receipts
 from apps.orchestrator.channel_builders.hardcore_ranked import build_hardcore_ranked
@@ -15,6 +17,20 @@ from apps.orchestrator.channel_builders.one_on_ones import build_one_on_ones
 from apps.orchestrator.channel_builders.deity_drama import build_deity_drama
 from apps.orchestrator.channel_builders.historic_ls import build_historic_ls
 from apps.orchestrator.channel_builders.schmoney_facts import build_schmoney_facts
+
+BUILDER_REGISTRY = {
+    "munchlax_lore": build_munchlax_lore,
+    "skeletorinio": build_skeletorinio,
+    "spookland": build_spookland,
+    "one_on_ones": build_one_on_ones,
+    "deity_drama": build_deity_drama,
+    "nature_receipts": build_nature_receipts,
+    "hardcore_ranked": build_hardcore_ranked,
+    "deep_we_go": build_deep_we_go,
+    "nightnight": build_nightnight,
+    "historic_ls": build_historic_ls,
+    "schmoney_facts": build_schmoney_facts,
+}
 
 # Map channel IDs to their custom builder functions
 CHANNEL_BUILDERS = {
@@ -32,6 +48,28 @@ CHANNEL_BUILDERS = {
 }
 
 
-def get_channel_builder(channel_id: int):
+def _normalize_builder_slug(raw: object) -> str | None:
+    if raw is None:
+        return None
+    text = str(raw).strip().lower()
+    if not text:
+        return None
+    return text.replace("-", "_").replace(" ", "_")
+
+
+def get_channel_builder(channel_id: int, concept: dict | None = None):
     """Return the custom builder for a channel, or None for default pipeline."""
+    concept = concept or {}
+
+    override = concept.get("builder_override")
+    if override is not None:
+        if isinstance(override, int) or (isinstance(override, str) and override.strip().isdigit()):
+            return CHANNEL_BUILDERS.get(int(override))
+        override_slug = _normalize_builder_slug(override)
+        if override_slug:
+            return BUILDER_REGISTRY.get(override_slug)
+
+    builder_slug = _normalize_builder_slug(get_channel_builder_slug(channel_id))
+    if builder_slug:
+        return BUILDER_REGISTRY.get(builder_slug)
     return CHANNEL_BUILDERS.get(channel_id)

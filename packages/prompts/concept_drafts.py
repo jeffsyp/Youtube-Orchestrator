@@ -5,6 +5,12 @@ Two-phase generation:
 2. build_script_prompt — writes the full beat-by-beat script for one pitch
 """
 
+from packages.utils.concept_formats import (
+    FORMAT_STRATEGY_DESCRIPTIONS,
+    get_format_strategy_spec,
+    normalize_format_strategy,
+)
+
 
 def build_concept_pitches_prompt(
     channel_name: str,
@@ -28,6 +34,213 @@ ALREADY MADE OR REJECTED (do NOT repeat these or anything too similar):
 {trending}
 
 Study these titles. They went viral as shorts. Ask yourself WHY each one worked — what made someone click, watch the whole thing, and share it. Use that understanding to create concepts that tap into the same psychology. Do NOT copy these titles. Create original concepts INSPIRED by what's working.
+"""
+
+    hardcore_ranked_pitch_block = ""
+    if channel_name.lower() == "hardcore ranked":
+        hardcore_ranked_pitch_block = """
+
+HARDCORE RANKED CONCEPT RULES (CRITICAL):
+- Prefer BIG, measurable experiment questions that feel like something viewers have secretly wondered forever.
+- Strong examples:
+  - "HOW LONG WOULD IT TAKE TO REACH THE CENTER OF THE EARTH?"
+  - "HOW FAR DOWN BEFORE THE OCEAN CRUSHES YOU?"
+  - "HOW LONG COULD YOU SURVIVE ON EVERY PLANET?"
+  - "EVERY SUPERHERO RANKED BY HOW LONG THEY SURVIVE IN SPACE WITH NO SUIT"
+  - "EVERY MATERIAL RANKED BY HOW LONG IT LASTS INSIDE A VOLCANO"
+- The best Hardcore Ranked ideas feel like:
+  - one repeated scientific test
+  - one variable changing each beat
+  - obvious escalation from survivable to impossible
+  - a clean answer the viewer wants to know
+- Favor concepts about time, depth, pressure, speed, force, temperature, survival, falling, distance, escape, or destruction.
+- A very strong Hardcore Ranked pattern is: ONE impossible destination or challenge, then rank the methods/tools/vehicles/strategies by how far they actually get before failing.
+  - Example: "How long would it take to reach the center of the Earth using different machines?" should climb in SMALL, intuitive upgrades: shovel → handheld drill → mining drill → mega-bore → absurd sci-fi tunnel rig.
+  - Do not skip too fast from primitive tool to giant sci-fi machine. The fun is feeling each upgrade earn a little more depth before the next one takes over.
+  - Example: "How far down before the ocean crushes you?" should become swimsuit → diving suit → submarine → research bathysphere.
+- The viewer should instantly understand the experiment from the title alone.
+- Avoid concepts that mostly depend on fandom jokes, prison logic, doctor jokes, HR jokes, or “what if X in real life” social commentary.
+- Avoid concepts that require totally different settings or rules every beat. If the same test rig cannot stay mostly consistent, it is probably the wrong Hardcore Ranked concept.
+- Avoid gimmick concepts where the measurement is arbitrary, the fail-state is visually muddy, or the ranking logic changes from beat to beat.
+- If the viewer cannot instantly picture the repeated test rig from the title alone, reject the idea.
+- Reject concepts where the whole payoff depends on subtle inch-by-inch or centimeter-by-centimeter differences inside one rig.
+  - BAD: liquid/material/armor tests where the viewer would need to compare 6 inches vs 8 inches vs 30 inches inside the same tank.
+  - BAD: any concept where the caption must do the explaining because the picture will not read instantly.
+  - GOOD: outcomes the viewer can read at a glance — exits the other side, stops halfway, burns through, cracks instantly, survives a full minute, reaches the checkpoint, gets crushed immediately.
+- If the result would only feel accurate with scientific precision or a ruler on screen, it is the wrong Hardcore Ranked concept.
+- Avoid weak mascot framing. Never pitch titles or briefs around "frog suit guy", "frog mascot", or "skeleton mascot". The viewer-facing subject is always "you".
+- If a concept can be reframed as a bigger, more universal, more physics-driven question, do that.
+"""
+
+    schmoney_facts_pitch_block = ""
+    if channel_name.lower() == "schmoney facts":
+        schmoney_facts_pitch_block = """
+
+SCHMONEY FACTS CONCEPT RULES (CRITICAL):
+- The only hard requirement is that the concept is MONEY-RELATED. It does NOT have to be a debt trap, bank fee, mortgage, or investing lecture.
+- In a batch of 5, use at least 4 DIFFERENT premise families.
+- At most ONE concept in the batch may be a personal-finance pain story about interest, debt, credit cards, loans, mortgages, or silent bank fees ruining your life.
+- Mix premise families aggressively:
+  1. hidden fee / scam / financial trap
+  2. absurd price shock or cost comparison
+  3. weird rich-person / celebrity / athlete spending
+  4. salary / hourly wage / take-home-pay reality
+  5. business model / profit margin / markup reveal
+  6. luxury operating cost (private jet, yacht, mansion, supercar)
+  7. casino / cash logistics / vault / money movement
+  8. inflation / opportunity cost / investing
+  9. tax / loophole / fine / subscription / financing trick
+  10. "what if you had X money" fantasy flex
+- Mix emotions too. A full batch of outrage is a FAIL. Mix disgust, envy, curiosity, aspiration, disbelief, admiration, and horror.
+- Avoid repetitive title skeletons like:
+  - "X STOLE Y FROM YOU"
+  - "YOUR $X ACTUALLY COSTS $Y"
+  - "THE $X LOAN THAT BECOMES $Y"
+  - "$100 AT 22 VS 32"
+- Avoid generic personal-finance preaching. Schmoney Facts can cover business, luxury, scams, spending, pricing tricks, taxes, rich flexes, weird money systems, cash handling, and black-market-style economics too.
+- Strong examples:
+  - "WHY AIRPORT WATER COSTS 8X MORE"
+  - "HOW MUCH A PRIVATE JET COSTS PER HOUR"
+  - "WHY COSTCO'S HOT DOG STILL COSTS $1.50"
+  - "THE $20 POPCORN THAT MAKES MOVIE THEATERS RICH"
+  - "WHAT $1 MILLION A YEAR ACTUALLY LOOKS LIKE AFTER TAXES"
+  - "HOW CASINOS MOVE MILLIONS IN CASH EVERY NIGHT"
+- Business-model / profit-margin ideas must expose WHERE the money comes from and why the split feels unfair, weird, or shocking. Pure revenue trivia is weak.
+- Avoid concepts that are just "this company makes a lot of money" unless the mechanism itself is the hook.
+- Avoid sports concession trivia, celebrity net-worth fluff, and generic millionaire flexes unless the cash-flow mechanics are the entire punchline.
+- In a batch of 5, at least 3 concepts should make the viewer think "wait, THAT'S how the money works?"
+- A batch with two titles about interest, debt, or loan math is a FAIL even if the exact products differ.
+- If two pitches are basically the same "money pain math" with different nouns, keep the better one and replace the other.
+"""
+
+    skeletorinio_pitch_block = ""
+    if channel_name.lower() == "skeletorinio":
+        skeletorinio_pitch_block = """
+
+SKELETORINIO CONCEPT RULES (CRITICAL):
+- In a batch of 5, use at least 4 DIFFERENT premise families:
+  1. mythic power theft or artifact misuse
+  2. modern tool dropped into a historical catastrophe
+  3. portal / era collision
+  4. tournament / raid-boss / final-boss escalation
+  5. god-domain mismatch
+  6. cursed object or forbidden item
+- At most ONE title may start with "WHAT IF YOU ACCIDENTALLY BECAME".
+- At most TWO titles in the batch may use the exact shell "WHAT IF YOU..." at all.
+- Prefer strong specific trigger verbs: grabbed, stole, opened, touched, wore, drank, entered, awakened, pulled, brought.
+- Avoid vague power-inheritance concepts where the only hook is "you became some powerful role." The viewer should instantly picture the first visual consequence.
+- The best ideas start with one obvious action and spiral into increasingly absurd world-scale consequences.
+- Avoid predictable one-way ladders where scene 2 already tells the viewer exactly how scenes 3-6 will escalate.
+- Especially avoid time-regression / portal / curse ideas that are only:
+  "thing changes" → "more things change" → "the whole world changes."
+- Strong Skeletorinio concepts need a SECOND QUESTION in the middle, not just a bigger version of the first answer.
+- Prefer premises that naturally create one of these midpoint turns:
+  1. hidden cost or tradeoff
+  2. new rule discovered halfway through
+  3. antagonist / creature / rival arrives
+  4. false fix or second artifact makes it worse
+  5. countdown / limited uses / last chance decision
+  6. the power affects everyone EXCEPT you, or you EXCEPT everyone else
+- In a batch of 5, at least 3 concepts should clearly imply a midpoint complication the viewer would still want to discover after the hook lands.
+"""
+
+    one_on_ones_pitch_block = ""
+    if channel_name.lower() == "one on ones for fun":
+        one_on_ones_pitch_block = """
+
+ONE ON ONES CONCEPT RULES (CRITICAL):
+- The batch needs MATCHUP variety AND TITLE-SHELL variety.
+- At most TWO titles may use the exact shell "X VS Y WHO WINS THE REAL FIGHT".
+- Mix title frames like:
+  - "X VS Y: THE REAL WINNER"
+  - "COULD X ACTUALLY BEAT Y?"
+  - "WHY X ACTUALLY DESTROYS Y"
+  - "X VS Y ONLY ENDS ONE WAY"
+- Mix matchup families: comics, anime, games, myth, sci-fi, horror. A batch dominated by one universe or one publisher is a FAIL.
+- Every matchup needs one clean debate axis the viewer instantly understands: speed, durability, hax, intelligence, regeneration, range, or raw force.
+- Avoid soft "close call" wording. Pick matchups where the verdict feels sharp, debatable, and replayable.
+"""
+
+    nature_receipts_pitch_block = ""
+    if channel_name.lower() == "nature receipts":
+        nature_receipts_pitch_block = """
+
+NATURE RECEIPTS CONCEPT RULES (CRITICAL):
+- Stop defaulting to the same title skeleton: "[animal] was the size of X and discovered Y."
+- In a batch of 5, use 5 DIFFERENT lead animals and at least 4 DIFFERENT premise engines.
+- At most ONE giant-size concept in the batch.
+- At most ONE "discovers a generic human place/system" concept in the batch.
+- Prefer SPECIFIC collisions over generic destinations.
+  GOOD: airport baggage belt, koi pond filtration room, national cheese cave, shipping container yard, sunflower seed silo
+  BAD: downtown, the city, taxes, a store, the neighborhood, rush hour
+- Make the animal's REAL instinct the reason the scenario escalates.
+  GOOD: raccoon pries open sealed containers, otter hoards one object obsessively, penguin melts down in dry heat, octopus infiltrates vents and locks
+  BAD: the animal just becomes a generic chaos monster
+- Mix premise families aggressively:
+  1. habitat inversion
+  2. predator / prey reversal
+  3. impossible trait or physical power-up
+  4. human system collision
+  5. swarm / pack takeover
+  6. imprinting / obsession with one object or machine
+- The best Nature Receipts ideas feel like tiny wildlife disaster documentaries, not random animal Mad Libs.
+"""
+
+    nightnight_pitch_block = ""
+    if channel_name.lower() == "nightnightshorts":
+        nightnight_pitch_block = """
+
+NIGHTNIGHTSHORTS CONCEPT RULES (CRITICAL):
+- These are narrated ANIME STORY shorts now, not just crossover premises and not stat-sheet fight debates.
+- The best NightNight concepts feel like the craziest non-canon scene you would instantly click, understand, and retell.
+- Every pitch needs a STORY ENGINE, not just a mashup:
+  1. exact scenario / canon event,
+  2. first impossible move,
+  3. host-world answer or counter,
+  4. twist / survival / reversal,
+  5. final payoff image.
+- In a batch of 5, at least 3 concepts must clearly imply a midpoint turn in the brief or structure.
+- Avoid flat premises where line 2 already tells the viewer the whole video:
+  BAD: "Light writes Hisoka. Hisoka revives. Light is scared."
+  GOOD: "Light writes Hisoka. Hisoka dies, restarts his heart, and turns the hunt back on Light."
+- If the premise is basically a direct confrontation, trap, threat, bluff, or chase between a small cast, structure it so the beats could work as a SPEAKING SKIT too.
+- That means the key rule should be sayable out loud in plain English, and at least two beats should imply what the characters would actually say to each other in the scene.
+- GOOD skit-friendly shape: "Light writes the name and says the notebook kills anyone he writes. Hisoka dies, stands back up, then talks back and turns the chase on Light."
+- BAD skit-friendly shape: "Texture Surprise happens. Bungee Gum reacts. Light is rattled." This is lore shorthand, not a followable scene.
+- Prefer scenarios people would NEVER see in the real anime, but can follow instantly with zero lore context.
+- Use SPECIFIC canon events, tests, arcs, locations, bosses, tournaments, or battles — not generic "X enters Y universe."
+- KEY FACTS must explain any special rule in plain English. If the twist depends on one power or mechanic, spell out what it DOES.
+- STRUCTURE should read like a sequence of escalating beats, not a vibe description.
+- Strong story shapes:
+  - outsider invades canon event → canon rule hits them → outsider breaks it → stronger canon answer → insane ending
+  - villain uses signature trick → target survives or counters weirdly → villain changes plan → final reversal
+  - matchup starts simple → one named move lands → opponent reveals a weirder answer → decisive ending
+"""
+
+    coldcase_pitch_block = ""
+    if channel_name.lower() == "coldcasecartoons":
+        coldcase_pitch_block = """
+
+COLDCASECARTOONS CONCEPT RULES (CRITICAL):
+- This is a narrator-led TRUE CRIME channel now, not a skit channel and not characters talking in scenes.
+- Pitch concise case-breakdown shorts the narrator can explain clearly in 20-30 seconds.
+- Strong premise families:
+  1. search-party betrayal
+  2. insurance or inheritance motive
+  3. poisoning / medical manipulation
+  4. escaped victim or mistaken death
+  5. alibi collapse or forensic breakthrough
+  6. trusted insider did it: spouse, best friend, sibling, doctor, business partner
+- Titles should state the role + twist clearly:
+  GOOD: "HER BEST FRIEND LED THE SEARCH PARTY AWAY FROM THE BODY"
+  GOOD: "HE BOUGHT THE LIFE INSURANCE POLICY THE DAY BEFORE THE ACCIDENT"
+  BAD: "SHE SMILED TOO MUCH AT THE FUNERAL"
+  BAD: "THE CASE THAT CHANGED EVERYTHING"
+- The structure should feel like:
+  case setup → suspicious detail → what broke the case open → what happened next.
+- KEY FACTS must include the specific relationship, method, clue, timeline beat, and reveal. Do not leave it at vague lines like "investigators got suspicious."
+- Avoid fictional banter, imaginary press-conference dialogue, or meme punchlines. The tension should come from the case itself.
+- Avoid generic killer trivia or random shock premises. Each pitch needs one distinct betrayal or investigative turn viewers can instantly picture.
 """
 
     system = f"""You pitch YouTube Shorts concepts for "{channel_name}" — a channel about {niche}.
@@ -55,12 +268,25 @@ WHAT MAKES A GOOD CONCEPT:
 - It should make people REACT — shock, disbelief, "no way", tag a friend
 - It should work for someone who knows NOTHING about the topic
 - Simple enough for a 10 year old to follow
+- LEAN INTO THE PRETTY-MUCH-IMPOSSIBLE VERSION of the idea. We have AI visuals, so do not sand concepts down into mild, sheepish, low-stakes versions if the bigger version is still instantly understandable.
+- Avoid timid framing like "you didn't mean to", "you never wanted this", "somehow this happened" unless that reluctance is the actual joke. Prefer domination, escalation, spectacle, catastrophe, flexing, transformation, or absurd world-scale consequences.
+- If the concept involves power, mythology, combat, space, animals, disasters, or extreme comparisons, push it toward the wildest visually obvious version rather than the safest small one.
+- If the concept is about becoming a final boss, raid boss, dungeon lord, chosen tyrant, or world-ending threat, do NOT pitch it as cozy administration, city-building, tourism, or paperwork. Pitch escalating fights, stronger challengers, bigger powers, phase changes, summons, armies, and an undefeated ending.
+{hardcore_ranked_pitch_block}{schmoney_facts_pitch_block}{skeletorinio_pitch_block}{one_on_ones_pitch_block}{nature_receipts_pitch_block}{coldcase_pitch_block}{nightnight_pitch_block}
+
+FORMAT STRATEGY (choose the SIMPLEST one that still makes the idea work):
+- "single_frame" = the whole premise works as one instantly legible image plus an optional tiny aftermath
+- "attack_result" = one clear setup beat followed by one clear consequence beat
+- "mini_story" = 3-5 clean beats with a small escalation
+- "full_story" = only use this when the viewer truly needs a step-by-step sequence; never by default
+- Most strong Shorts should be "single_frame", "attack_result", or "mini_story". "full_story" is the exception.
 
 WHAT TO AVOID:
 - Vague openings that need context ("everyone argues this" — argues WHAT?)
 - Info dumps or complex explanations — if it needs a diagram, it's not a Short
 - Topics only fans/experts would care about
 - Concepts that need more than 30 seconds to land — save those for long-form
+- Mild irony with no real escalation. "Oops, I guess this got weird" is rarely enough. The best concepts feel like they spiral into something viewers did not think you could actually show.
 
 OUTPUT — return a JSON array of {count} pitches:
 [
@@ -69,6 +295,7 @@ OUTPUT — return a JSON array of {count} pitches:
     "brief": "One sentence — why will someone watch this to the end",
     "key_facts": "The SPECIFIC real details the script writer needs to tell this story accurately. Include: real names, real dates, real places, real numbers, what actually happened step by step. The script writer will ONLY know what you put here — if you leave out a name, the script will say 'a player' instead of the actual name. Be thorough.",
     "structure": "Setup: [specific detail] → Escalation: [specific detail] → Punchline: [specific detail]",
+    "format_strategy": "single_frame|attack_result|mini_story|full_story",
     "hook_type": "curiosity_gap|escalation|identity|shock|ranking|debate"
   }}
 ]
@@ -94,11 +321,39 @@ def build_script_prompt(
     brief: str,
     structure: str,
     key_facts: str = "",
+    format_strategy: str = "mini_story",
 ) -> tuple[str, str]:
     """Phase 2: Write narration-only script for one concept pitch.
 
     Visuals are planned later AFTER narration is generated and timestamped.
     """
+    format_strategy = normalize_format_strategy(format_strategy)
+    format_spec = get_format_strategy_spec(format_strategy)
+    format_description = FORMAT_STRATEGY_DESCRIPTIONS[format_strategy]
+    is_coldcase = channel_id in COLDCASE_CHANNELS
+    if is_coldcase:
+        tone_block = """
+- This channel is NARRATED TRUE CRIME, not comedy and not character dialogue.
+- Treat the short like a concise case breakdown: shocking premise → suspicious detail → clue or reveal → consequence.
+- Never invent dialogue, taunts, or emotional one-liners for people in the case unless a documented quote is in KEY FACTS.
+- Line 1 should lead with the betrayal, disappearance, or impossible clue — not a joke and not throat-clearing.
+- Use a tense, factual tone. The viewer should feel pulled into a real case file, not a skit.
+- End on the case-turning clue, arrest, confession, or devastating implication — not a wink.
+- Be specific about the evidence that mattered: policy date, toxicology, timeline gap, phone ping, witness statement, search-map hole, receipt, DNA match, or hidden route.
+- If the title promises a betrayal or clue, the narration must explain exactly what it was.
+"""
+        humor_block = """
+- DO NOT go for jokes, roast energy, or party-story banter. Clarity, tension, and specificity win here.
+"""
+        delivery_line = "Make every line sound like a tense but controlled true-crime retelling. The visual director will handle the reenactment after hearing your narration."
+    else:
+        tone_block = ""
+        humor_block = """
+- BE FUNNY. But remember — this is read by an AI voice with zero comic timing. The humor must come from the WORDS AND SITUATION, not delivery. Absurd imagery, unexpected comparisons, escalating ridiculousness, and "wait that actually happened?" moments work. Dry wit and sarcasm do NOT work — they need vocal inflection that AI can't do.
+  GOOD: "Your team celebrated. Your bot lane typed 'nice.' And then Tryndamere killed your entire backline from beyond the grave." (funny because of the situation)
+  BAD: "Your screen said he was dead. He was not dead." (needs delivery to be funny, AI reads it flat)
+"""
+        delivery_line = "Make every line sound like someone excitedly telling a story at a party. The visual director will handle everything else AFTER hearing your narration."
 
     system = f"""You are a scriptwriter for "{channel_name}" — a YouTube Shorts channel about {niche}.
 
@@ -108,17 +363,17 @@ YOUR GOAL: Maximum watch time. Every word must earn its place.
 
 WRITING RULES:
 - STRICT LENGTH RULES:
-  * 4-6 narration lines MAXIMUM. Not 7. Not 8. Count them.
+  * This concept's format strategy is "{format_strategy}".
+  * Keep it as simple as possible: {format_description}.
+  * Write {format_spec["min_lines"]}-{format_spec["max_lines"]} narration lines total. Do NOT upscale it into a bigger format.
   * Each line MUST be under 15 words. If you wrote more, cut it or split it.
-  * Total video MUST be 20-30 seconds. Count: 15 words ≈ 5 seconds. So 4 lines × 15 words = ~20 seconds. 6 lines × 15 words = ~30 seconds.
-  * If your script would take more than 30 seconds to read aloud, DELETE lines until it fits.
+  * Total video MUST be under {format_spec["max_duration"]:.0f} seconds.
+  * If the idea lands in one image and one line, STOP there. Do not add filler just to sound complete.
 - Each line = one visual = one video clip. MORE short lines = MORE visual cuts = MORE stimulating.
 - Each narration line = one visual on screen. One sentence per line, not a paragraph. More lines = more visual cuts = more stimulating.
 - A viewer scrolling on their phone should be able to follow this with ZERO effort. If they have to think hard or rewind to understand, you've lost them.
 - Simple language. Simple structure. Setup → twist → punchline. That's it.
-- BE FUNNY. But remember — this is read by an AI voice with zero comic timing. The humor must come from the WORDS AND SITUATION, not delivery. Absurd imagery, unexpected comparisons, escalating ridiculousness, and "wait that actually happened?" moments work. Dry wit and sarcasm do NOT work — they need vocal inflection that AI can't do.
-  GOOD: "Your team celebrated. Your bot lane typed 'nice.' And then Tryndamere killed your entire backline from beyond the grave." (funny because of the situation)
-  BAD: "Your screen said he was dead. He was not dead." (needs delivery to be funny, AI reads it flat)
+{tone_block}{humor_block}
 - Line 1 MUST tell the viewer what this video is about. Shorts viewers do NOT see the title — they have ZERO context. Line 1 is the only way they know what they're watching. State the topic clearly AND make it compelling.
   GOOD: "What if World War 2 never happened? Here's the world we'd be living in." (clear topic + hook)
   GOOD: "3,000 rabbits once charged Napoleon and he literally had to run for his life." (clear topic + shocking)
@@ -135,6 +390,7 @@ WRITING RULES:
   4. Final line: End with a REACTION or personality, not a summary. "Honestly? Respect." or "And nobody ever found out." NOT "So that's how it happened." The ending should make people REPLAY — replays are the #1 signal to YouTube's algorithm.
 - Every line must add NEW information. Never repeat the same beat. If you can combine two lines into one, do it.
 - Use real names and real details — but only the ones that matter. Don't dump every fact. Pick the 2-3 details that make the story hit.
+- When the premise implies scale, power, or chaos, write the BIG version. Do not retreat into understatements, hesitant phrasing, or "well this is awkward" reactions when the better version is visually overwhelming and instantly understandable.
 - ALWAYS use the specific name of things. "Litwick" not "a candle Pokemon." "A lionfish" not "a fish." "Walter Moody Jr." not "a lawyer." Every time you reference something, use its actual name so the visuals can show the right thing.
 - DELIVER ON THE PROMISE. If the title says "a bug was found" — the script MUST explain WHAT the bug was specifically. If the title says "this broke the game" — explain HOW it broke. Never tease something and leave it vague. The viewer clicked because they wanted to KNOW — if you don't tell them, they feel cheated. Use the key_facts to include the actual specific details.
 - NEVER use vague descriptions when specific ones exist: "a logic error" is vague — "a divide-by-zero in the altitude calculation routine" is specific. "unpredictable behavior" is vague — "the landing radar could have shown the wrong altitude" is specific. The key_facts field has the real details — USE THEM.
@@ -171,6 +427,7 @@ OUTPUT — return a JSON object:
   "tags": ["specific_tag", "broader_tag", "niche_tag", "shorts"],
   "voice_id": "{voice_id}",
   "channel_id": {channel_id},
+  "format_strategy": "{format_strategy}",
   "format_version": 2
 }}
 
@@ -186,19 +443,23 @@ VS CHANNEL RULES (CRITICAL — shorts viewers do NOT see the title):
 - Final line: declare a CLEAR WINNER. No cop-outs, no "it depends." Pick a side and commit.
 - Structure: VS announcement → Fighter A breakdown → Fighter B breakdown → verdict."""
 
-    # Ranking channel override — strict numbered countdown
+    # Ranking channel override — numbered countdown / method ladder
     ranking_block = ""
     if channel_id in RANKING_CHANNELS:
         ranking_block = """
-RANKING CHANNEL RULES (STRICT FORMAT — each number gets TWO lines):
-- Line 1: Announce the list. "Top 5 video game abilities so broken they had to be deleted."
-- Then for EACH number, write TWO lines:
-  - Line A: JUST the number. "Number 5." That's it. ~1.5 seconds. This gets a bold number card visual.
-  - Line B: The name + one punchy sentence why. "Akuma in Street Fighter II had an instant kill move so broken, Capcom cut him from the arcade release." This gets an action scene visual.
-- So the full structure is: Title → "Number 5." → explanation → "Number 4." → explanation → ... → "Number 1." → explanation → optional punchline
-- This creates a punchy rhythm: NUMBER CARD → SCENE → NUMBER CARD → SCENE
-- Number 1 gets the biggest reaction — save the most surprising/controversial pick for last.
-- Total: ~12 lines for a Top 5 (title + 5×2 + optional punchline). This is fine for shorts up to 45 seconds."""
+RANKING CHANNEL RULES (STRICT FORMAT):
+- Hardcore Ranked still uses numbers, but the numbers can represent ONE of TWO valid structures:
+  1. A normal ranked list: different items ranked by the same measurable outcome.
+  2. A METHOD LADDER: one impossible destination/challenge, then each number is a different method or machine that gets farther before failing. Number 1 can be the insane contraption that finally does it.
+- Line 1: Announce the experiment or list clearly.
+- Then for EACH number, give:
+  - Line A: the number only. "Number 5."
+  - Line B: the method/item + one punchy outcome. "A shovel gets you through dirt... then the heat cooks you alive."
+- For method-ladder concepts, every number must feel like a genuine upgrade over the previous attempt.
+- For method-ladder concepts, upgrades should usually be ADJACENT and intuitive, not giant jumps. Viewers should feel "okay, that is the obvious next thing to try."
+- Number 1 should be the craziest but still instantly understandable solution.
+- The full structure is: title → number card → explanation → number card → explanation...
+- Keep the answer concrete. The viewer should understand exactly why each method fails or succeeds."""
 
     # Comedy channel override — humor over analysis
     comedy_block = ""
@@ -225,14 +486,39 @@ Notice the difference: specific champion, specific items, specific absurd detail
 
 - Structure: set up a painfully relatable moment → pile on increasingly absurd specifics → punchline that makes people screenshot and send to friends."""
 
+    schmoney_block = ""
+    if channel_id in SCHMONEY_CHANNELS:
+        schmoney_block = """
+SCHMONEY FACTS RULES (CRITICAL):
+- This channel is about MONEY in the broadest sense: prices, spending, scams, salaries, taxes, business models, luxury costs, cash logistics, investing, and financial absurdity.
+- Do NOT force every concept into "what if you had X dollars" or "the bank secretly robbed you."
+- Line 1 must state the exact money premise clearly, using the specific thing, company, object, or dollar amount.
+- Every later line must add a NEW money beat: a new number, cost, comparison, consequence, reveal, or flex. Do not repeat the same fee or loan math in slightly different words.
+- Use exact numbers constantly. Dollar amounts, salaries, margins, hourly burn, taxes, fees, profits, or totals are the hook.
+- Tone should match the premise: hype, disgust, disbelief, envy, admiration, or horror. Not every video should sound angry.
+- If the title is about "you", use second person. If it's about a company, billionaire, product, or scam, name it directly.
+- Great Schmoney angles include:
+  * absurd markup
+  * hidden cost
+  * luxury burn rate
+  * rich flex escalation
+  * salary vs take-home reality
+  * scam / loophole / fee trap
+  * business profit reveal
+  * insane real-world cost comparison
+- End on the sharpest number, total, or reaction. The final line should make the viewer say "that's insane."
+- Keep the narration visually legible. Favor things the viewer can instantly picture: grocery carts, jets, casinos, yachts, cash bricks, vaults, taxes, checkout counters, gas pumps, mansions, chips, and armored trucks."""
+
     user = f"""Write the narration for this approved concept:
 
 TITLE: {title}
 PITCH: {brief}
 KEY FACTS: {key_facts}
 STRUCTURE: {structure}
-{vs_block}{comedy_block}{ranking_block}
-Write ONLY the words that will be spoken. No visual descriptions. Use the KEY FACTS — these are the real details that make the story specific and credible. Name the actual people, places, dates, and numbers. Make every line sound like someone excitedly telling a story at a party. The visual director will handle everything else AFTER hearing your narration."""
+{vs_block}{comedy_block}{ranking_block}{schmoney_block}
+FORMAT STRATEGY: {format_strategy}
+
+Write ONLY the words that will be spoken. No visual descriptions. Use the KEY FACTS — these are the real details that make the story specific and credible. Name the actual people, places, dates, and numbers. {delivery_line}"""
 
     return system, user
 
@@ -244,7 +530,13 @@ KIDS_CHANNELS = {24}  # Blanket Fort Cartoons
 VS_CHANNELS = {21, 28}  # One on Ones For Fun, NightNightShorts
 
 # Comedy-first channels — prioritize humor over accuracy/analysis
-COMEDY_CHANNELS = {13, 14, 16, 22, 30, 31}  # Munchlax Lore, ToonGunk, CrabRaveShorts, Deity Drama, Historic Ls, Schmoney Facts
+COMEDY_CHANNELS = {13, 14, 16, 22, 30}  # Munchlax Lore, ToonGunk, CrabRaveShorts, Deity Drama, Historic Ls
+
+# Money/economics channel — concrete numbers and specific money mechanics matter more than generic roast tone
+SCHMONEY_CHANNELS = {31}  # Schmoney Facts
+
+# Narrated true-crime channels — tense factual retelling, not comedy and not dialogue skits
+COLDCASE_CHANNELS = {20}  # ColdCaseCartoons
 
 # Ranking/list channels — strict numbered countdown format
 RANKING_CHANNELS = {26}  # Hardcore Ranked
@@ -834,10 +1126,21 @@ ASK YOURSELF: "What is the specific equation, formula, probability, or algorithm
     else:
         niche_enforcement = ""
 
+    channel_enforcement = ""
+    if channel_name.lower() == "techognizer":
+        channel_enforcement = """
+CRITICAL — TECHOGNIZER BATCH RULES:
+- Do NOT let all 5 pitches be AI model internals or agent mechanics.
+- In a batch of 5, at least 2 concepts must be about broader software / internet / product / infrastructure systems people actually touch:
+  - browsers, APIs, GPS, app stores, cloud pricing, compression, recommendation systems, databases, software security, code signing, syncing, search, maps, video delivery
+- At most 3 concepts may be about language models, AI agents, AI benchmarking, or model-vs-model comparisons.
+- Favor mechanics builders can use, notice, or argue about this week over abstract AI trivia.
+"""
+
     system = f"""You pitch educational YouTube Shorts concepts for "{channel_name}" — a channel about {niche}.
 
-YOUR GOAL: 20-30 second educational shorts that make the viewer feel smarter. One concept, one "aha" moment, one takeaway. The viewer should finish and think "huh, I never knew that."
-{niche_enforcement}
+    YOUR GOAL: 20-30 second educational shorts that make the viewer feel smarter. One concept, one "aha" moment, one takeaway. The viewer should finish and think "huh, I never knew that."
+{niche_enforcement}{channel_enforcement}
 
 You are ONLY pitching ideas — NOT writing scripts. For each concept:
 1. Title (ALL CAPS) — must be a clear question or reveal. "HOW GPS ACTUALLY FINDS YOU" not "GPS IS LYING TO YOU". Educational, not clickbait.
@@ -987,9 +1290,28 @@ ALREADY MADE OR REJECTED (do NOT repeat these or anything too similar):
 Study these titles. They went viral. Ask yourself WHY — what made someone click and watch 3-5 minutes. Use that psychology. Do NOT copy titles.
 """
 
+    channel_block = ""
+    if channel_name.lower() == "nature receipts":
+        channel_block = """
+
+NATURE RECEIPTS MIDFORM RULES (CRITICAL):
+- This channel is wildlife anomaly documentary, not a generic talking-animal comedy channel.
+- The best long ideas follow ONE animal / trait / swarm / habitat collision through a real-world system and let the consequences escalate step by step.
+- Prefer titles like:
+  - "WHAT HAPPENS WHEN A RACCOON TAKES OVER AN AIRPORT BAGGAGE SYSTEM"
+  - "WHAT HAPPENS WHEN AN OCTOPUS GETS INTO A SUPERYACHT MARINA"
+  - "WHY A THOUSAND SQUIRRELS COULD BREAK A NATIONAL SEED VAULT"
+- Avoid anthropomorphic civic or school satire:
+  - BAD: animal goes to high school, becomes mayor, runs for office, gets elected, hosts a talk show
+- Avoid generic "discovered a place" or "raised by X" shells unless the real animal behavior is the whole point.
+- The animal's real instinct must DRIVE the entire story: prying, hoarding, swarming, overheating, tunneling, imprinting, locking, chewing, sliding, ambushing.
+- Use specific settings, not generic places. GOOD: baggage system, seed vault, marina, casino chip cart, freezer aisle. BAD: downtown, the mall, school, city hall.
+"""
+
     system = f"""You pitch mid-length YouTube video concepts for "{channel_name}" — a channel about {niche}.
 
 YOUR GOAL: A 3-5 minute video that TEACHES something clearly. The viewer clicks because of curiosity, stays because every sentence adds understanding, and leaves feeling smarter.
+{channel_block}
 
 THE VIDEO IS 3-5 MINUTES. Not 10. Not 15. A tight, focused explainer. One topic, one clear throughline, no filler. Think of it as explaining something fascinating to a friend in a single conversation — you wouldn't ramble for 15 minutes. You'd give them the tight version that makes them go "wait, really?"
 
@@ -1162,11 +1484,11 @@ SATISFYING_CHANNELS = {15}  # Very Clean Very Good
 # Character dialogue channels — story-driven content where characters speak their own lines
 # These need context/narrative that can't be told with pure visual slapstick
 CHARACTER_DIALOGUE_CHANNELS = {
+    16,  # CrabRaveShorts — game meme banter skits
     14,  # ToonGunk — cartoon/pop culture facts
     17,  # Smooth Brain Academy — science explainers
     18,  # What If City — hypothetical scenarios
     19,  # SpookLand — creepy stories
-    20,  # ColdCaseCartoons — true crime betrayal stories
     21,  # One on Ones For Fun — VS battles
     22,  # Deity Drama — mythology stories need characters talking
     23,  # Techognizer — AI/tech explainers
@@ -1209,14 +1531,125 @@ ALREADY MADE OR REJECTED (do NOT repeat these or anything too similar):
 Study these. What made them go viral? Use that psychology — don't copy.
 """
 
+    channel_diversity_block = ""
+    if channel_id == 28:
+        channel_diversity_block = """
+
+NIGHTNIGHTSHORTS CHARACTER ROTATION RULES (CRITICAL):
+- Stop defaulting to the same 5-6 anchor characters. Freshness matters.
+- In this batch, use 5 DIFFERENT lead characters and at least 4 DIFFERENT franchises.
+- At most ONE concept in the batch may use any of these overused anchors: Goku, Saitama, Naruto, Tanjiro, Light, Luffy, Gojo.
+- Look at the ALREADY MADE / REJECTED titles above and infer which characters have been overused recently. Avoid repeating those names unless the angle is truly exceptional.
+- Prefer underused anime characters from a wider roster such as: Ichigo, Aizen, Yuji, Sukuna, Megumi, Todo, Denji, Makima, Power, Eren, Levi, Reiner, Gon, Killua, Hisoka, Meruem, Edward Elric, Roy Mustang, Mob, Reigen, Lelouch, Frieren, Fern, Aqua, Subaru, Rimuru, Jotaro, Dio, Yusuke, Hiei, Kakashi, Madara, Itachi, Vegeta, Piccolo, Sanji, Zoro.
+- Mix HEROES and VILLAINS. Mix MAIN CHARACTERS and fan-favorite side characters.
+- A batch that leans on Goku/Saitama/Naruto/Light again is a FAIL unless the ideas are radically stronger than the alternatives.
+- Cold-viewer rule: the brief and key_facts must make the twist understandable to someone who does NOT know the lore. If the crossover depends on one special power/rule, explain that rule in plain English.
+- GOOD key_facts: "Light writes Hisoka's name, Hisoka dies, then restarts his own heart and stands back up."
+- BAD key_facts: "Texture Surprise activates and Bungee Gum reacts." with no plain-English explanation of why that matters.
+"""
+    elif channel_id == 25:
+        channel_diversity_block = """
+
+NATURE RECEIPTS PREMISE RULES (CRITICAL):
+- Stop defaulting to the same title skeleton: "[animal] was the size of a skyscraper and discovered a city/store/highway."
+- In this batch, use 5 DIFFERENT lead animals and at least 4 DIFFERENT premise engines.
+- At most ONE giant-size concept in the batch.
+- At most ONE "discovers a generic human place/system" concept in the batch. "discovers downtown / a city / a grocery store / a highway / taxes / rush hour" is overused.
+- Prefer SPECIFIC collisions over generic destinations. GOOD: one sunflower seed silo, an airport baggage belt, a luxury koi pond, a national cheese cave. BAD: "a city", "downtown", "the neighborhood", "rush hour."
+- Make the animal's REAL instinct the reason the scenario is funny. A raccoon should steal and pry things open. A penguin should slide, huddle, or panic in heat. An otter should hoard, juggle, or obsess over one object.
+- Mix premise families:
+  1. habitat inversion
+  2. predator/prey reversal
+  3. impossible power-up or physical trait
+  4. human system collision (government, airports, shipping, sports, finance, etc.)
+  5. swarm/pack takeover
+  6. imprinting/obsession with one object or machine
+- Mix PETS, WILD MAMMALS, BIRDS, OCEAN ANIMALS, REPTILES, and SMALL CHAOTIC CREATURES.
+- Avoid dog/hamster/corgi/bunny-heavy batches unless one concept is clearly exceptional.
+- Each idea should feel like a tiny disaster movie with one instantly visual image, one escalation ladder, and one replayable ending.
+- A batch full of generic "animal + power + discovers place" ideas is a FAIL.
+"""
+    elif channel_id == 33:
+        channel_diversity_block = """
+
+THATS A MEME DIVERSITY RULES (CRITICAL):
+- Do NOT build the whole batch around one tiny social setting.
+- At most ONE concept in the batch may be about a parent borrowing your device / charger / phone.
+- At most ONE concept may be about a door-knock / wave-back / social-acknowledgment misunderstanding.
+- Mix premise families:
+  1. family phone invasion
+  2. payment or restaurant awkwardness
+  3. mistaken social signal
+  4. roommate / friend audacity
+  5. tiny tech dependency panic
+  6. public etiquette failure
+- Every title should feel like a sentence someone instantly recognizes from real life and wants to send to a friend.
+"""
+    elif channel_id == 16:
+        channel_diversity_block = """
+
+CRABRAVESHORTS PLAYER-VOICE RULES (CRITICAL):
+- These are GAME SKITS, not silent memes now. The humor should land because the dialogue sounds exactly like real players in VC or Discord.
+- Use clipped, reactive gamer speech: "bro", "nah", "yo", "no shot", "you are trolling", "we are stacked", "split the loot", "full buy", "eco", "rotate", "one tap", "griefed", "free win".
+- NEVER write polished sitcom dialogue or full formal sentences. If a real player would not say it mid-match, do not write it.
+- Write the dialogue how a person would actually SAY it out loud, not how someone would TYPE it in all-chat. Bad: "JUNG COME JUNG COME HES LOW". Good: "Jung, come mid, he's one."
+- Prefer fragments, interruptions, repeats, and half-finished thoughts over clean grammar. "yo wait wait" beats "please stop for a moment."
+- Players should sound like they are reacting live while moving, not narrating the joke for the audience afterward.
+- Recognition alone is NOT enough. "Everyone knows this situation" is only the setup. The concept still needs a sharper payoff: a humiliating reveal, insane audacity, immediate karma, or a line so specific it feels clip-worthy.
+- Reject bland gamer pain. A title that is only "friend steals loot" or "teammate throws" is too generic unless the ending has a distinctive twist people would actually send to a friend.
+- If the joke depends on a gameplay action, the visuals MUST show the action clearly. Do not replace the key beat with a random reaction close-up. The viewer should literally see the steal, gank, misplay, trap, escape, or grief happen in sequence.
+- Use game-specific vocabulary naturally:
+  * Minecraft: stacked, full diamond, split the loot, strip mine, griefed, spawn, chest, pick, redstone
+  * Valorant: eco, full buy, one tap, rotate, spike, whiffed
+  * League: gank, inting, diff, flash, ult, troll
+- At least 3 concepts in the batch should center on two-player conflict, betrayal, blame, or instant voice-chat reaction.
+- The funniest CrabRave concepts should feel like a real lobby meltdown someone clipped, not an outsider explaining a game joke.
+- End on the funniest SPECIFIC line in the whole concept. The last scene should escalate or reframe the joke, not just restate the premise.
+"""
+
     is_satisfying = channel_id in SATISFYING_CHANNELS
     is_character_dialogue = channel_id in CHARACTER_DIALOGUE_CHANNELS
 
-    # Resolve channel-specific art style up front so any branch's f-string can reference it
-    from apps.orchestrator.pipeline import CHANNEL_ART_STYLE
+    format_strategy_block = """FORMAT STRATEGY (choose the SIMPLEST version that still lands):
+- "single_frame" = one instantly legible thesis image. Optional micro-aftermath only if it makes the joke clearer.
+- "attack_result" = one clear setup beat and one clear consequence beat. Usually 2-3 scenes max.
+- "mini_story" = 3-5 connected beats with a tiny escalation. Use this only when the premise truly benefits from sequence.
+- "full_story" = avoid for no-narration shorts unless the concept absolutely breaks without it.
+- Ask this FIRST: "If this were one strong image with one caption, would it still be compelling?" If yes, keep it simple.
+- Do NOT inflate a simple joke into extra scenes just because AI can generate them.
+
+SCENE COUNT BY STRATEGY:
+- single_frame: 1 scene, or 2 only if the second is a tiny aftermath
+- attack_result: 2-3 scenes
+- mini_story: 3-5 scenes
+- full_story: only if absolutely necessary, and still keep it short
+"""
+
+    # Resolve channel-specific art style up front so any branch's f-string can reference it.
+    from apps.orchestrator.pipeline import get_channel_art_style
+
     _DEFAULT_STYLE = "Simple crude cartoon — thick wobbly outlines, flat bold colors, exaggerated round heads, simple bodies. Deliberately ugly and charming like a funny doodle. NOT noir, NOT graphic novel, NOT serious."
-    _channel_style = CHANNEL_ART_STYLE.get(channel_id, _DEFAULT_STYLE) if channel_id else _DEFAULT_STYLE
+    _channel_style = get_channel_art_style(channel_id) if channel_id else _DEFAULT_STYLE
     art_style_field = f',\n    "art_style": "{_channel_style}"' if (is_character_dialogue or not is_satisfying) else ""
+    system_mode_label = "native-dialogue" if is_character_dialogue else "no-narration"
+    channel_visual_identity_block = ""
+    if channel_id == 16:
+        channel_visual_identity_block = """
+
+GAME VISUAL IDENTITY RULES (CRITICAL):
+- The image must prove the exact game world before the dialogue lands. Recognition cannot come from the title alone.
+- For League of Legends concepts, EVERY scene must explicitly place the character on Summoner's Rift or a Summoner's Rift location and keep at least TWO recognizable MOBA cues in frame:
+  cracked stone lane path, side brush, river edge, jungle entrance or camp, chunky defense turret base, doodled minimap corner, health bar, ping circles, recall ring.
+- Even close-ups still need environment/HUD proof. A face floating on a blank or generic fantasy background is a FAIL.
+- Use actual champion names when possible. If you do not name one, describe an unmistakable League champion silhouette or archetype: fox-mage tails, blind-monk red headband, wind swordsman topknot, bandaged mummy wraps, tiny scout cap. Never generic fantasy rogue/archer/hooded ranger.
+- Translate League slang into literal visuals:
+  * gank = jungler bursting from brush or jungle entrance onto a lane
+  * under turret = champion on lane stones with a chunky stone turret base nearby
+  * recall = blue recall ring under the champion
+  * low = almost-empty doodled health bar above the champion
+- BAD League prompts: "guy in a forest", "hooded ranger with a trophy", "generic fantasy ruins", "random campfire jungle"
+- GOOD League prompt: "Close-up of Ahri on Summoner's Rift mid lane, cracked stone path and river brush behind her, low doodled health bar overhead, ping circles near a minimap corner."
+"""
 
     if is_character_dialogue:
         style_guidance = f"""CHARACTER DIALOGUE SHORTS FORMAT — CHARACTERS SPEAK THEIR OWN LINES:
@@ -1225,12 +1658,14 @@ This is for "{channel_name}" ({niche}). The story needs context that pure visual
 
 THE GOLDEN RULES:
 1. CHARACTERS SPEAK — NO narrator, NO TTS voiceover. Each scene has ONE character who says a short line of dialogue. The dialogue goes in the video_prompt so Grok generates the character actually saying it.
-2. ONE CHARACTER PER SCENE — Grok handles voices best when there's only one character speaking. Close-up shots of whoever is talking.
+2. ONE SPEAKER PER SCENE — Grok handles voices best when only one character is talking at a time. Silent background characters are allowed when the gameplay beat needs them.
 3. SHORT PUNCHY LINES — Each character says 3-10 words max. "Yeah, he's guilty." not "I would like to testify that the defendant is in fact guilty of the crime." Short lines sound natural, long lines sound robotic.
 4. THE DIALOGUE IS THE COMEDY — Lines should be funny, absurd, or shocking on their own. Casual tone like someone talking to a friend, not a script being read.
 5. SHOW DON'T TELL — If a character goes to prison, show them being dragged away. Don't skip to the next location with a hard cut.
 
-ART STYLE: Simple crude cartoon — thick wobbly outlines, flat bold colors, exaggerated round heads, simple bodies. Deliberately ugly and charming. NOT serious, NOT noir, NOT realistic. This keeps it feeling like entertainment, not a documentary.
+ART STYLE: {_channel_style}
+This style should stay entertaining and visually readable, not stiff or overcomplicated.
+{channel_visual_identity_block}
 
 SCENE FLOW IS CRITICAL:
 - Each scene must visually connect to the next — the viewer must understand what changed
@@ -1240,9 +1675,13 @@ SCENE FLOW IS CRITICAL:
 
 DIALOGUE STYLE:
 - Casual and reactive: "Bro what?" not "I cannot believe this"
+- Prefer broken-up real speech over complete polished sentences. Fragments, overlap, and repeating a word are good when it sounds human.
+- Never write typed gamer shorthand in the spoken line. Use commas, contractions, and normal speech rhythm so the model says it like a person.
 - Characters react to what just happened: disbelief, smugness, devastation
 - The PUNCHLINE is always the last line of dialogue — it should subvert expectations
 - Absurd specific details make it funnier: "eating HIS limited edition hot cheetos" not "eating his food"
+
+{channel_diversity_block}
 
 PROVEN PATTERNS:
 1. Betrayal → escalation → the betrayer acts like nothing happened (punchline is the audacity)
@@ -1260,16 +1699,23 @@ WHAT DOESN'T WORK:
 
 CHANNEL CONTEXT: This is for "{channel_name}" ({niche}). Every concept must fit this channel's world and niche."""
 
-        scene_format = """Each scene needs:
-- "image_prompt": Simple crude cartoon illustration. ALWAYS start with "Simple crude cartoon — thick wobbly outlines, flat colors." ONE character per scene (the one speaking). Close-up framing. Exaggerated facial expression matching the dialogue. Add "One character only. NO text anywhere." at the end.
+        scene_format = f"""Each scene needs:
+- "image_prompt": Start with "{_channel_style}". Keep ONE clearly dominant speaker in the foreground, but silent background players/enemies/props are allowed when they make the joke readable. Use the widest framing needed to show the actual beat; not every scene should be a face-only close-up. The background still needs enough specific game-world detail to instantly prove the franchise. If the concept is League of Legends, literally say "Summoner's Rift", "lane", "river brush", "jungle entrance", "stone turret base", "minimap corner", "health bar", etc. Add "One speaking character in the foreground. Background characters allowed as silent silhouettes. NO text anywhere." at the end.
+  GOOD: "Simple crude cartoon... Ahri in the foreground on Summoner's Rift mid lane, cracked stone path and river brush behind her, low doodled health bar overhead, enemy silhouette barely alive in the distance. One speaking character in the foreground. Background characters allowed as silent silhouettes. NO text anywhere."
+  GOOD: "Simple crude cartoon... Lee Sin bursting from river brush onto mid lane, Ahri and the low enemy visible as tiny background silhouettes, kill-feed icons popping near the lane. One speaking character in the foreground. Background characters allowed as silent silhouettes. NO text anywhere."
+  BAD: "Simple crude cartoon... Close-up of a worried mage in a forest. One character only. NO text anywhere."
 - "video_prompt": Describe what the character DOES and SAYS. The dialogue must be written naturally in the prompt so Grok generates the character speaking it. Also include sound effects.
   GOOD: "Guy leans forward into the microphone smugly and says yeah he is guilty, shrugs his shoulders. Courtroom murmur, dramatic dun dun sound."
   GOOD: "Guy slams his hands on the table and yells but you are my best friend, tears fly off his face. Table slam, crowd gasps."
   GOOD: "Guy sips his coffee, raises one eyebrow and says can I help you in a confused annoyed tone. Coffee sip, dead silence, cricket chirp."
+  GOOD: "Minecraft guy panic-jumps and blurts yo wait wait where'd the stack go, voice cracking mid-sentence. Pickaxe clank, inventory rustle, cave echo."
+  GOOD: "Mid laner spam-pings toward river brush and blurts jung, come mid, he's one, hurry. Ping spam, spell crackle, minion chatter."
   BAD: "Camera slowly zooms out" (boring — nothing moves)
   BAD: "Guy looks sad" (no dialogue, no physical action)
+  BAD: "Player keeps mining while dramatic music plays." (still mute, still not a dialogue scene)
+  BAD: "Player screams JUNG COME JUNG COME HES LOW." (typed shorthand, sounds robotic when voiced)
   RULE: One character speaks per scene. Keep dialogue under 10 words. Describe their physical reaction while speaking.
-- "duration": 3-4 seconds per scene. Total video 12-16 seconds, 5 scenes max."""
+- "duration": 3-4 seconds per scene. Use as few scenes as the chosen format_strategy needs. Total video 12-16 seconds, 5 scenes max."""
     elif is_satisfying:
         style_guidance = """SATISFYING VIDEO RULES:
 - These videos should make viewers say "wait... is that real? That's TOO perfect." The goal is IMPOSSIBLE PRECISION that makes people question if it's AI or real.
@@ -1286,6 +1732,9 @@ WHAT ACTUALLY GOES VIRAL (aim for these):
 THE FORMULA: Make the viewer's jaw drop TWICE — once at how bad it is, once at how perfect it becomes. They HAVE to rewatch it.
 
 ART STYLE: Photorealistic but SURREAL. The scene should look real enough to question, but the perfection should feel impossible.
+
+FORMAT NOTE:
+- Satisfying concepts should almost always be "single_frame". One mesmerizing transformation is usually enough.
 
 AI VIDEO GENERATOR LIMITATIONS:
 - The generator can do ONE simple motion in 5-10 seconds.
@@ -1324,11 +1773,13 @@ TRANSITIONS BETWEEN SCENES ARE CRITICAL:
 - Each scene must flow visually into the next so the viewer never loses track of the story
 
 SCENE STRUCTURE:
-- 3-5 scenes total (including transition scenes). Under 15 seconds total.
+- Use the fewest scenes possible. Under 15 seconds total.
+- single_frame = one dominant image, optional tiny aftermath
+- attack_result = setup → consequence
+- mini_story = setup → escalation → punchline
 - Each main scene: 3-5 seconds
-- Each transition scene: 2 seconds
-- The story must be: setup → (transition) → escalation → (transition) → punchline
-- Hold the PUNCHLINE scene longest — give viewers time to process and laugh
+- Each transition scene: 2 seconds only when the viewer genuinely needs that bridge
+- Hold the PUNCHLINE or CONSEQUENCE scene longest — give viewers time to process and laugh
 
 PROVEN PATTERNS:
 1. Plant/build something → time passes → it grows huge → it gets destroyed instantly (the bigger the buildup, the funnier the collapse)
@@ -1364,14 +1815,16 @@ CHARACTERS MUST BE SPECIFIC:
   GOOD: "Guy jumps up celebrating with fists pumping, coins rain from tree. Triumphant fanfare, coins clattering."
   BAD: "Camera slowly zooms out" (boring — nothing moves)
   RULE: image_prompt = the STARTING state. video_prompt = what PHYSICALLY HAPPENS. The bigger the movement, the better.
-- "duration": 2-5 seconds per scene. Total video should be 10-15 seconds max.
+- "duration": 2-5 seconds per scene. Total video should match the chosen format_strategy and stay under 15 seconds.
 
 CHANNEL ART STYLE: {_channel_style}
 Every image_prompt MUST start with this art style description."""
 
-    system = f"""You create viral no-narration YouTube Shorts for "{channel_name}" — {niche}.
+    system = f"""You create viral {system_mode_label} YouTube Shorts for "{channel_name}" — {niche}.
 
 {style_guidance}
+
+{format_strategy_block}
 
 {scene_format}
 
@@ -1380,6 +1833,7 @@ OUTPUT — return a JSON array of {count} complete concepts:
   {{
     "title": "ALL CAPS TITLE",
     "brief": "One sentence — why will someone watch/share this",
+    "format_strategy": "single_frame|attack_result|mini_story|full_story",
     "scenes": [
       {{
         "image_prompt": "Full image generation prompt",
@@ -1401,6 +1855,7 @@ Return ONLY valid JSON, no markdown."""
 
 {trending_block}
 {past_block}
+{channel_diversity_block}
 
 Each concept must be complete with all scenes ready to generate. Make them scroll-stopping."""
 
