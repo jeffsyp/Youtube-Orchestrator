@@ -144,20 +144,178 @@ BOSS / RAID VISUAL DIVERSITY:
 - At least one post-hook scene must show loot or legendary gear dropped after a wipe.
 """
 
-SCRIPT_PROMPT = """Write a narration script for a Skeletorinio YouTube video.
+OUTLINE_PROMPT = """Design the plot outline for a Skeletorinio "What If" video.
 
 CONCEPT: {title}
 BRIEF: {brief}
 
+This outline becomes the structural target for the script-writing step. Get the structure right; the lines come later.
+
+HOOK RUBRIC — the hook must satisfy all four:
+1. Names a SPECIFIC PICTURABLE NOUN (sword, lamp, dragon, jetpack, fountain, throne, crater, contract). NOT abstract (power, destiny, fate, greatness, importance, role, change).
+2. A viewer hearing only the hook must picture a single specific image within 2 seconds. "What if you became a mall Santa for one day?" → image of a mall + Santa throne. Passes. "What if you became chosen for greatness?" → no specific image. Fails.
+3. The noun in the hook MUST be the recurring_element of the script — it must visibly appear in the ending. If you cannot show the same noun in the final beat, change the hook.
+4. Format is "What if you [trigger event with specific noun]?" — second person, what-if framing, names the noun.
+
+JOKE CRAFT (these constrain the structure of the outline):
+- Plants are VISUAL ELEMENTS introduced early. The viewer must SEE them on screen, not just hear them mentioned. ("Annoyed expression" is borderline — fine if a face can be framed, weak if it's a personality note.)
+- Payoffs reference plants in a recognizable visual way — same noun, same visual configuration. The ending must show a plant in a new state.
+- The TWIST flips an assumption from the hook. Not "things get bigger" — something the viewer assumed about the premise turns out to be wrong, costly, or reversed.
+- The PUNCHLINE recontextualizes the premise visually. The final scene reframes what the hook meant. Not a clever line — a picture that flips the meaning.
+- NO new visual elements may appear after the midpoint twist except direct consequences of things already on screen.
+- Surprising but inevitable: when the viewer rewatches with the ending in mind, the early plants should look like obvious foreshadowing.
+
+REFERENCE OUTLINE — Chosen One (the gold standard):
+{{
+  "premise": "you pull a sword from a stone in a quiet field, expecting nothing",
+  "hook": "What if you accidentally pulled a sword from a stone?",
+  "plants": [
+    {{"id": "P1", "what": "the sword screams when pulled — it is awake, it has agency", "intro_line": 1}},
+    {{"id": "P2", "what": "knights kneel the moment the sword screams — the world responds to the sword, not to you", "intro_line": 1}}
+  ],
+  "escalations": [
+    {{"beat_summary": "more powerful beings keep arriving to serve you because the sword called them — dragon, kingdoms, prophecies", "develops": "P2"}},
+    {{"beat_summary": "you build a mythic empire, the sword still glowing or visible at your side in every beat", "develops": "P1"}}
+  ],
+  "twist": {{
+    "beat_summary": "decades later, the sword leaves you and returns itself to the stone, untouched",
+    "flips_assumption": "the hook implied YOU were the chosen one. the sword chose you and used you. you were the vehicle."
+  }},
+  "punchline": {{
+    "beat_summary": "the sword sits back in the stone, waiting for the next person to pull it",
+    "pays_off": "P1",
+    "recontextualizes": "the sword's scream in line 1 was the start of a contract, not a celebration. The cycle is the joke."
+  }},
+  "recurring_element": "the sword (and the stone)"
+}}
+
+REFERENCE OUTLINE — Jetpack in Ancient Rome:
+{{
+  "premise": "you arrive in Ancient Rome with a strap-on jetpack and accidentally start a religion",
+  "hook": "What if you brought a jetpack to Ancient Rome?",
+  "plants": [
+    {{"id": "P1", "what": "the fuel gauge starts at 92% and is visible on the jetpack", "intro_line": 1}},
+    {{"id": "P2", "what": "the senate kneels and calls you a god the moment you fly", "intro_line": 2}}
+  ],
+  "escalations": [
+    {{"beat_summary": "statues and temples go up around the city while the gauge starts blinking red", "develops": "P1"}},
+    {{"beat_summary": "you fly higher each day, crowds fill streets, the gauge blinks faster", "develops": "P2"}}
+  ],
+  "twist": {{
+    "beat_summary": "fuel runs out mid-flight over the Forum and you crash into the stones",
+    "flips_assumption": "the hook implied a goofy fish-out-of-water gag. it's actually how a religion gets accidentally founded."
+  }},
+  "punchline": {{
+    "beat_summary": "centuries later, the crater is a marble bath house with a jetpack carved into the ceiling",
+    "pays_off": "P1",
+    "recontextualizes": "the fuel gauge was the punchline the whole time. religion got built on a man with a fuel tank."
+  }},
+  "recurring_element": "the jetpack (and its fuel gauge)"
+}}
+
+OUTPUT FORMAT — return ONLY JSON, no commentary, no markdown:
+{{
+  "premise": "string — the concrete situation a viewer can picture in 2 seconds",
+  "hook": "string — the exact line 0, 'What if you...?' format, names the specific noun",
+  "plants": [
+    {{"id": "P1", "what": "string — visual element introduced early, viewer can see it", "intro_line": 0}},
+    {{"id": "P2", "what": "string — visual element introduced early, viewer can see it", "intro_line": 1}}
+  ],
+  "escalations": [
+    {{"beat_summary": "string — develops a plant in a new visual category", "develops": "P1"}},
+    {{"beat_summary": "string — develops a plant in a new visual category", "develops": "P2"}}
+  ],
+  "twist": {{
+    "beat_summary": "string — midpoint that flips an assumption from the hook",
+    "flips_assumption": "string — what the viewer assumed in line 0 that turns out wrong"
+  }},
+  "punchline": {{
+    "beat_summary": "string — final scene, a picture that reframes the hook's meaning",
+    "pays_off": "P1",
+    "recontextualizes": "string — how the final image flips the meaning of the hook"
+  }},
+  "recurring_element": "string — the persistent visible thing across the script"
+}}
+"""
+
+
+SCRIPT_PROMPT = """Write the narration script for a Skeletorinio video. Hit the outline.
+
+CONCEPT: {title}
+BRIEF: {brief}
+
+OUTLINE (your structural target — every beat in the outline becomes one or two narration lines):
+{outline_json}
+
+Each escalation in the outline becomes one or two narration lines. Plants from the outline must visibly appear on screen by line 2 at the latest. The twist becomes the midpoint line. The punchline becomes the final line. Hit the outline.
+
 THE FORMAT:
-- Line 1 is the HOOK — it MUST state the concept directly so a viewer with ZERO title context knows what the video is about. Shorts viewers don't see the title.
-  - THE HOOK SHOULD BASICALLY MIRROR THE TITLE AS A "What if..." QUESTION.
-  - TITLE: "WHAT IF YOU ACCIDENTALLY SUMMONED A DEMON YOU COULDN'T SEND BACK" → HOOK: "What if you accidentally summoned a demon you couldn't send back?"
-  - TITLE: "WHAT IF YOU ACCIDENTALLY BECAME THE CHOSEN ONE" → HOOK: "What if you accidentally pulled a sword from a stone?" (close paraphrase — the sword-from-stone IS the becoming-chosen-one moment)
-  - TITLE: "WHAT IF YOU BROUGHT A JETPACK TO ANCIENT ROME" → HOOK: "What if you brought a jetpack to Ancient Rome?"
-- BAD HOOK (skips the concept): TITLE is "SUMMONED A DEMON" but line 1 says "What if you read one line from an old book out loud?" — a viewer has no idea what this is about, no context for the demon that appears in line 2
-- The hook must LABEL the concept — use the specific noun from the title (demon, sword, jetpack, dragon, time portal, genie, etc.) in line 1, not a vague setup
-- If the title says "ACCIDENTALLY X" — the hook must include "accidentally" and name what X is
+- Line 0 IS the hook from the outline. Use the outline's `hook` field verbatim, or near-verbatim if you must. Do not invent a different hook.
+- The outline's `recurring_element` must visibly appear in at least 3 separate post-hook narration lines, including the final line.
+
+JOKE CRAFT — RULE 0 OVERRIDES EVERYTHING.
+
+0. VISUAL-FIRST. THE COMEDY IS IN THE PICTURE, NOT THE WORDS — BUT THE NARRATION STILL SOUNDS LIKE A PERSON.
+   This is the most important rule. Every other rule is in service of it.
+
+   Narration's job is to be a straight-faced observer of an absurd visual situation. Think of a nature documentary narrator describing a baboon stealing a tourist's hat: "The baboon approaches the tourist, and just like that, the hat is gone." Flat about the absurdity, but with normal English flow — connective words, mild reactional framing, sentences that link cause to consequence. The viewer laughs at WHAT THEY SEE, not at how the line is phrased.
+
+   The deadpan-podcast test: imagine your script read aloud as audio-only by a flat AI voice with no comedic timing. If a line is funny ON ITS OWN in that test — if a listener with no visual would laugh at the wording — it is WRONG. The line should describe something that only becomes funny once the picture appears. But the line should still SOUND like a person telling you a story, not a court reporter reading bullet points.
+
+   CALIBRATION — these are the bar:
+
+   GOOD (correct calibration):
+   - "Day 2: You wish for a mansion, but the genie builds it inside your apartment instead." — "but...instead" is connective storytelling. Flat about the absurdity. Comedy = the visual of a mansion bursting out of an apartment.
+   - "Day 2: The senate kneels in the Forum and calls you a god, while you wave from the sky." — "while you wave" links two visual beats naturally. Visual = senators kneeling at a flying skeleton.
+   - "Year 2: A stranger at a flea market polishes the lamp, and of course you tumble out in a cloud of smoke, glaring." — "of course" is mild narrator hedging acknowledging inevitability — not a punchline. Visual = you-as-the-new-genie.
+
+   BAD — over-stripped (robotic court-reporter voice):
+   - "You wish for a mansion. The genie builds it inside your apartment." — Two flat declarations with no connective tissue. Reads like a stage-direction list. A real narrator would say "but the genie builds it inside your apartment instead." Add the connective word.
+
+   BAD — page-comedy punchline (line is funny on its own):
+   - "The wifi is surprisingly good." — Pure verbal wit. No visual the camera can frame.
+   - "The plaque does not mention fuel." — Narrator-aside / wink about an omission. Replace with a visual (jetpack carved into the bath-house ceiling).
+   - "You wear sunglasses." — Smirk in word form.
+
+   BAD — invisible interiority:
+   - "You realize the nodding was the contract." — Internal thought, no camera target. Replace with the visible action: "You shake your head. The kid walks away empty-handed."
+
+   ALLOWED — connective storytelling language. Use these freely; they make narration sound human, not robotic:
+   - Cause-effect connectors: "but," "but then," "and then," "instead," "and so," "now"
+   - Sequence markers: "by now," "by then," "this time," "for the first time," "at last"
+   - Mild reactional hedges: "of course," "naturally," "for some reason," "somehow"
+   - Sentence flow that links cause to consequence ("X happens, and Y follows") rather than listing facts ("X happens. Y happens.")
+
+   BANNED — words and patterns that DO the comedic lift on the page:
+   - Editorial adjectives doing the joke: "absurdly," "inexplicably," "miraculously," "unfortunately"
+     ("of course" and "naturally" are mild hedges acknowledging inevitability, NOT editorial joke-makers — those stay allowed. The line is "is this word doing the comedic work?" If yes → cut. If it's connective glue → keep.)
+   - Wry understatement as punchline: "surprisingly good," "still doesn't know what it does" — unless that exact anticlimax is the entire payoff AND the camera has a clear visual to frame
+   - Narrator winks / aside humor: "history does not record," "the plaque does not mention," "no one is sure how"
+   - Interior monologue: "you realize," "you understand," "you wonder," "you decide"
+   - Outcome-stating motivation: "to silence the doubters," "to prove a point" — replace with the visible action ("Crowds fill the streets to watch.")
+
+   THE TEST FOR EVERY LINE:
+   1. Name the single visual the camera will frame for that beat. If you can't, the line is too verbal — rewrite it.
+   2. Read the line as flat AI audio with no visual. If it gets a laugh on its own, it's page comedy — rewrite it.
+   3. Read the line as flat AI audio over the visual. It should sound like a person telling you what's on screen, in normal connective English — not a court reporter listing events. If it sounds robotic, add the connective tissue back.
+
+1. PLANTS BEFORE PAYOFFS — plants are VISUAL ELEMENTS, not verbal setups.
+   The thing the punchline pays off must be visible in an earlier line, not just mentioned. A viewer watching with the sound off must be able to SEE both the plant and the payoff.
+   - GOOD: line 1 shows fuel gauge at 92%; line 5 shows the jetpack sputtering and the skeleton crashing. Both are visible.
+   - BAD: line 1 says "the genie was annoyed"; line 7 references "his annoyance" — annoyance is an emotion, not a visible recurring object the viewer can track.
+
+2. NO NEW VISUAL ELEMENTS IN THE BACK HALF.
+   You may not introduce a new character, object, or location after the midpoint twist unless it's a direct visible consequence of something already on screen.
+
+3. CALLBACKS MUST BE THE SAME VISIBLE THING.
+   When a later line calls back to an earlier line, it must show the same noun in a recognizable visual configuration. Same object, same body language, same composition if possible.
+   - GOOD: line 1 "a genie tumbles out in a cloud of smoke, glaring" → line 5 "you tumble out in a cloud of smoke, glaring." Identical visual frame, swapped subject.
+
+4. THE PUNCHLINE MUST RECONTEXTUALIZE THE PREMISE — VISUALLY.
+   The final beat must be a SCENE that makes the viewer rethink the hook. Not a clever line, not an observation. A picture that flips the meaning.
+
+5. SURPRISING BUT INEVITABLE — VISUALLY.
+   When the viewer rewatches with the ending in mind, the early visual elements should look like obvious foreshadowing.
 - The story is about the SITUATION — but once the premise starts, push it HARD. Do not write the protagonist as a passive bystander for six lines straight.
 - Avoid timid underreactions like "you did not want this" / "you did not ask for this" / "you still don't know what it does" unless that exact anticlimax is the entire punchline. In most cases, those lines make the concept feel smaller than it should.
 - We have AI visuals. Use them. Favor huge powers, impossible consequences, warped cities, divine flexes, monsters, castles, collapsing reality, accidental empires, giant status shifts, and absurd new normals over mild shrug-comedy.
@@ -913,52 +1071,160 @@ def _fallback_story_novelty_rewrite(title: str, brief: str, narration_lines: lis
     return narration_lines
 
 
-def _maybe_strengthen_story_novelty(title: str, brief: str, narration_lines: list[str]) -> list[str]:
-    if not _is_predictable_ladder_story(title, brief, narration_lines):
+def _validate_outline_hook(hook: str) -> tuple[bool, str]:
+    """Programmatic checks on the outline's hook against the rubric.
+    Returns (passes, reason_if_fail)."""
+    if not hook:
+        return False, "empty hook"
+    h = hook.strip().lower()
+    if not h.startswith("what if"):
+        return False, "hook must start with 'What if'"
+    if "you" not in h:
+        return False, "hook must use second person ('you')"
+    word_count = len(h.split())
+    if word_count < 6:
+        return False, f"hook too short ({word_count} words)"
+    if word_count > 18:
+        return False, f"hook too long ({word_count} words)"
+    abstract_terms = [
+        "destiny", "fate", "greatness", "importance", "amazing",
+        "incredible", "powerful", "successful", "the best",
+    ]
+    for term in abstract_terms:
+        if term in h:
+            return False, f"abstract term '{term}' in hook — name a concrete noun instead"
+    return True, ""
+
+
+def _generate_outline(title: str, brief: str, max_attempts: int = 3) -> dict:
+    """Generate the plot outline. Retries up to max_attempts if the hook fails the rubric."""
+    from packages.clients.claude import generate as claude_generate
+
+    last_error = ""
+    for attempt in range(max_attempts):
+        prompt = OUTLINE_PROMPT.format(title=title, brief=brief)
+        if last_error and attempt > 0:
+            prompt += (
+                f"\n\nPRIOR ATTEMPT FAILED THE HOOK RUBRIC: {last_error}\n"
+                "Regenerate with a hook that satisfies all four rubric checks."
+            )
+        resp = claude_generate(prompt=prompt, max_tokens=1500)
+        match = re.search(r"\{.*\}", resp, re.DOTALL)
+        if not match:
+            last_error = "no JSON in response"
+            continue
+        try:
+            outline = json.loads(match.group())
+        except json.JSONDecodeError as e:
+            last_error = f"invalid JSON: {e}"
+            continue
+        hook = outline.get("hook", "")
+        passes, reason = _validate_outline_hook(hook)
+        if passes:
+            logger.info("outline generated", title=title, hook=hook, attempt=attempt + 1)
+            return outline
+        last_error = reason
+        logger.warning(
+            "outline hook failed rubric — retrying",
+            title=title, hook=hook, reason=reason, attempt=attempt + 1,
+        )
+    raise ValueError(f"Failed to generate valid outline after {max_attempts} attempts. Last error: {last_error}")
+
+
+def _generate_narration_from_outline(title: str, brief: str, outline: dict) -> tuple[list[str], str]:
+    """Run SCRIPT_PROMPT against the outline. Returns (narration_lines, possibly_updated_title)."""
+    from packages.clients.claude import generate as claude_generate
+
+    outline_json = json.dumps(outline, indent=2, ensure_ascii=False)
+    resp = claude_generate(
+        prompt=SCRIPT_PROMPT.format(title=title, brief=brief, outline_json=outline_json),
+        max_tokens=2000,
+    )
+    match = re.search(r"\{.*\}", resp, re.DOTALL)
+    if not match:
+        raise ValueError("No JSON in script response")
+    parsed = json.loads(match.group())
+    narration = parsed.get("narration") or []
+    new_title = parsed.get("title") or title
+    if not narration:
+        raise ValueError("Empty narration in script response")
+    return narration, new_title
+
+
+def _punchline_pays_off_plant(narration_lines: list[str], outline: dict | None) -> bool:
+    """Heuristic: does the final line reference a plant or recurring_element from the outline?"""
+    if not narration_lines or not outline:
+        return True
+    final_line = narration_lines[-1].lower()
+    stop_words = {
+        "the", "and", "with", "from", "into", "your", "this", "that",
+        "what", "you", "have", "are", "is", "but", "for", "all", "now",
+        "their", "they", "them", "back", "down", "over", "still", "just",
+        "where", "when", "while", "until", "than", "then", "next", "last",
+        "every", "each", "some", "more", "most",
+    }
+    candidates: list[str] = []
+    recurring = (outline.get("recurring_element") or "").lower()
+    if recurring:
+        candidates.append(recurring)
+    for plant in outline.get("plants") or []:
+        what = (plant.get("what") or "").lower()
+        if what:
+            candidates.append(what)
+    for c in candidates:
+        for word in re.findall(r"\b[a-z]{4,}\b", c):
+            if word in stop_words:
+                continue
+            if word in final_line:
+                return True
+    return False
+
+
+def _maybe_strengthen_story_novelty(
+    title: str,
+    brief: str,
+    narration_lines: list[str],
+    outline: dict | None = None,
+) -> list[str]:
+    """Circuit-breaker for predictable-ladder narration and free-floating punchlines.
+
+    Detects two failure modes:
+    (1) predictable-ladder story (same effect scaling up) via _is_predictable_ladder_story
+    (2) final line doesn't reference any plant or recurring_element from the outline
+
+    On detection, regenerates ONCE through the full outline → narration pipeline. If still
+    failing, falls through to the hardcoded fallback (fountain-of-youth template)."""
+    predictable = _is_predictable_ladder_story(title, brief, narration_lines)
+    payoff_missing = outline is not None and not _punchline_pays_off_plant(narration_lines, outline)
+    if not predictable and not payoff_missing:
         return narration_lines
 
+    logger.info(
+        "circuit-breaker triggered",
+        title=title,
+        predictable_ladder=predictable,
+        payoff_missing=payoff_missing,
+    )
+
     try:
-        from packages.clients.claude import generate as claude_generate
-
-        resp = claude_generate(
-            prompt=f"""Rewrite this Skeletorinio narration so the viewer is still discovering NEW story information after line 2 instead of just watching the same effect scale up.
-
-TITLE: {title}
-BRIEF: {brief}
-CURRENT NARRATION:
-{json.dumps(narration_lines, ensure_ascii=False)}
-
-RULES:
-- Keep the same core premise and comedic tone.
-- Keep 6-8 lines total.
-- Every line under 15 words.
-- Keep the hook as a clear "What if..." line naming the concept.
-- By line 3 or 4, add a MIDPOINT TURN: new rule, hidden cost, antagonist, trap, misfire, false fix, countdown, or impossible choice.
-- At least 3 distinct post-hook beat categories must appear across the script:
-  1. personal/body consequence
-  2. social/public reaction
-  3. world/environment change
-  4. creature/antagonist arrival
-  5. rule/cost/discovery
-  6. impossible choice / false solution
-- Do NOT make every line just "the same effect but bigger."
-- Every line should imply a fresh scene or a fresh kind of scene.
-- The penultimate line is the craziest peak.
-- The final line lands in a concrete weird new normal or a final choice that completes the story.
-
-Return ONLY JSON:
-{{"narration": ["line 1", "line 2", "..."]}}""",
-            max_tokens=450,
+        new_outline = _generate_outline(title, brief)
+        candidate, _ = _generate_narration_from_outline(title, brief, new_outline)
+        still_predictable = _is_predictable_ladder_story(title, brief, candidate)
+        still_missing = not _punchline_pays_off_plant(candidate, new_outline)
+        if candidate and not still_predictable and not still_missing:
+            logger.info(
+                "circuit-breaker regenerated",
+                title=title, before=narration_lines, after=candidate,
+            )
+            return candidate
+        logger.warning(
+            "circuit-breaker regen still failing — falling through to hardcoded fallback",
+            title=title,
+            still_predictable=still_predictable,
+            still_missing=still_missing,
         )
-        match = re.search(r"\{.*\}", resp, re.DOTALL)
-        if match:
-            parsed = json.loads(match.group())
-            candidate = parsed.get("narration") or []
-            if candidate and not _is_predictable_ladder_story(title, brief, candidate):
-                logger.info("strengthened story novelty", title=title, before=narration_lines, after=candidate)
-                return candidate
     except Exception as e:
-        logger.warning("story novelty rewrite fallback", title=title, error=str(e)[:120])
+        logger.warning("circuit-breaker regen errored", title=title, error=str(e)[:120])
 
     fallback = _fallback_story_novelty_rewrite(title, brief, narration_lines)
     if fallback != narration_lines:
@@ -982,26 +1248,25 @@ async def build_skeletorinio(run_id: int, concept: dict, output_dir: str, _updat
     for d in [narr_dir, segments_dir]:
         os.makedirs(d, exist_ok=True)
 
-    # ─── STEP 1: Write script if not provided ───
+    # ─── STEP 1: Generate outline + narration ───
+    outline: dict | None = concept.get("outline") if isinstance(concept.get("outline"), dict) else None
     if not narration_lines:
+        if outline is None:
+            await _update_step("planning outline")
+            outline = _generate_outline(title, brief)
+            concept["outline"] = outline
+        outline_path = os.path.join(output_dir, "outline.json")
+        with open(outline_path, "w") as f:
+            json.dump(outline, f, indent=2, ensure_ascii=False)
+
         await _update_step("writing script")
-        from packages.clients.claude import generate as claude_generate
-        resp = claude_generate(
-            prompt=SCRIPT_PROMPT.format(title=title, brief=brief),
-            max_tokens=2000,
-        )
-        json_match = re.search(r'\{.*\}', resp, re.DOTALL)
-        if json_match:
-            script_data = json.loads(json_match.group())
-            narration_lines = script_data.get("narration", [])
-            if script_data.get("title"):
-                title = script_data["title"]
+        narration_lines, title = _generate_narration_from_outline(title, brief, outline)
         if not narration_lines:
             raise ValueError("Failed to generate narration script")
 
     narration_lines = _maybe_strengthen_power_narration(title, brief, narration_lines)
     narration_lines = _maybe_strengthen_boss_raid_narration(title, brief, narration_lines)
-    narration_lines = _maybe_strengthen_story_novelty(title, brief, narration_lines)
+    narration_lines = _maybe_strengthen_story_novelty(title, brief, narration_lines, outline)
     concept["narration"] = narration_lines
 
     if _is_training_story_concept(title, brief, narration_lines):
