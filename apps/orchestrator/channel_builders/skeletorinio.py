@@ -258,6 +258,27 @@ JOKE CRAFT — RULE 0 OVERRIDES EVERYTHING.
 0. VISUAL-FIRST. THE COMEDY IS IN THE PICTURE, NOT THE WORDS — BUT THE NARRATION STILL SOUNDS LIKE A PERSON.
    This is the most important rule. Every other rule is in service of it.
 
+   HARD CAP: 15 WORDS PER LINE. NON-NEGOTIABLE.
+   Count the words in each line before you finalize. If a line exceeds 15 words, you have packed multiple beats into one — split it. Lines that violate this cap will be rejected, no matter how good the joke craft is. When in doubt, count words. Splitting is always safer than cramming.
+
+   SPLIT EXAMPLES (overlong → two or three clean lines):
+
+   BAD (23 words): "Seventh bite: every effect cancels at once, everyone blinks and walks away, and the apple core sits in your hand with all seven marks complete."
+   GOOD (split, 11 + 11 words):
+     "Seventh bite: every effect cancels and everyone around you blinks and walks away."
+     "The apple core sits in your hand, all seven bite marks now complete."
+
+   BAD (33 words): "Then the detector shrieks its longest tone yet, right at the center of the forum, and you dig and find nothing — because the signal is the magma pushing up beneath the city, and the battery bar is down to one sliver."
+   GOOD (split, 13 + 10 + 9 words):
+     "The detector shrieks its longest tone yet at the center of the forum."
+     "You dig and find nothing. Vesuvius lights up on the horizon."
+     "The battery bar drops to one sliver."
+
+   BAD (32 words): "You keep going to fill the silence — the dog is now a legal person, a stranger in the back pew is now their godparent, the caterer is now their business partner, and guests are handing you sticky notes."
+   GOOD (split, 14 + 13 words):
+     "You keep going. The dog is now a legal person, a stranger is now their godparent."
+     "The caterer is now their business partner. Guests start handing you sticky notes."
+
    Narration's job is to be a straight-faced observer of an absurd visual situation. Think of a nature documentary narrator describing a baboon stealing a tourist's hat: "The baboon approaches the tourist, and just like that, the hat is gone." Flat about the absurdity, but with normal English flow — connective words, mild reactional framing, sentences that link cause to consequence. The viewer laughs at WHAT THEY SEE, not at how the line is phrased.
 
    The deadpan-podcast test: imagine your script read aloud as audio-only by a flat AI voice with no comedic timing. If a line is funny ON ITS OWN in that test — if a listener with no visual would laugh at the wording — it is WRONG. The line should describe something that only becomes funny once the picture appears. But the line should still SOUND like a person telling you a story, not a court reporter reading bullet points.
@@ -293,6 +314,12 @@ JOKE CRAFT — RULE 0 OVERRIDES EVERYTHING.
    - Narrator winks / aside humor: "history does not record," "the plaque does not mention," "no one is sure how"
    - Interior monologue: "you realize," "you understand," "you wonder," "you decide"
    - Outcome-stating motivation: "to silence the doubters," "to prove a point" — replace with the visible action ("Crowds fill the streets to watch.")
+   - Narrator-explained causation: "...because [reason]." If a line uses 'because' to explain why something happens, replace with the visible event that shows the cause. The camera doesn't need a narrator to explain what it's already showing.
+     - BAD: "You dig and find nothing — because the signal is the magma pushing up beneath the city."
+     - GOOD: "You dig and find nothing. Vesuvius lights up on the horizon." (the cause is the eruption — show it, don't explain it)
+   - Narrator-summary closers: lines that wrap the story by stating what happened in retrospect — "...and that's how X became Y," "...and the detector found them on day one." Replace with the final visible scene and stop.
+     - BAD: "The detector found them on day one, and the volcano locked them in."
+     - GOOD: end at the visible image (the excavated detector and cache together, no narrator commentary).
 
    THE TEST FOR EVERY LINE:
    1. Name the single visual the camera will frame for that beat. If you can't, the line is too verbal — rewrite it.
